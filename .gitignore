@@ -1,0 +1,57 @@
+# =====================
+# PlatformIO / ESP32
+# =====================
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/.browse.cvt
+.clang_complete
+.gcc-flags.json
+
+# =====================
+# 빌드/테스트 산출물
+# =====================
+.test_runner
+.test_runner.dSYM/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+*.elf
+*.bin
+*.hex
+*.map
+
+# =====================
+# macOS
+# =====================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+*.swp
+*~
+
+# =====================
+# IDE / 에디터
+# =====================
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# =====================
+# 기타 공통
+# =====================
+*.log
+*.tmp
+*.temp
+*.bak
+*.backup
+.env
+.env.local
+*.local
