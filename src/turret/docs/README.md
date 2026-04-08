@@ -57,6 +57,8 @@ topic 기본값:
 battlebang/turrets/{turret_id}/command
 ```
 
+공식 topic / payload 형식은 아래 contract 문서를 기준으로 합니다.
+
 ### 빌드 방법
 
 #### PlatformIO
@@ -128,6 +130,11 @@ Arduino IDE를 계속 쓸 경우:
   - `turret_1` 기준 빌드/업로드 예시
   - local secrets 주입 방식
   - 민감정보 처리 원칙
+- `mqtt-command-contract.md`
+  - command center -> turret MQTT command contract
+  - topic 규칙
+  - payload JSON 형식
+  - command별 필수/선택 필드와 예시
 - `turret-v2-current-spec.md`
   - 현재 시리얼 통신 방식
   - 정확한 핀 번호
