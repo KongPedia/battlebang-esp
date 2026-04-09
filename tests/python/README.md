@@ -29,13 +29,21 @@ pytest tests/python/test_turret_state_contract.py
 
 ```bash
 export TURRET_RUN_HW_TESTS=1
-export TURRET_TEST_SERIAL_PORT=/dev/cu.usbserial-0001
+export TURRET_TEST_SERIAL_PORT=/dev/cu.usbserial-1130
+export TURRET_TEST_TURRET_ID=turret_5
 pytest tests/python/test_turret_mqtt_integration.py -m hardware
 ```
 
 ### 안전 관련 주의
 
-`target` 명령은 보드를 실제로 움직일 수 있고, 빌드 설정에 따라 auto-fire 동작까지 이어질 수 있습니다.
+현재 기본 펌웨어는 **event-driven** 입니다.
+
+- 부팅 직후 기본 모드: `HOLD`
+- `idle` 명령을 받아야 searching 시작
+- `target` 은 조준만 수행
+- `fire` 만 실제 발사 시퀀스를 시작
+
+`target` 명령은 보드를 실제로 움직일 수 있습니다.
 
 따라서 `dead -> target` 테스트는 기본적으로 skip 되며, 아래 환경 변수를 준 경우에만 실행됩니다.
 
@@ -47,4 +55,11 @@ export TURRET_TEST_ALLOW_TARGET_MOTION=1
 
 - 안전한 테스트 벤치
 - 발사 기구 비활성화 또는 분리
-- auto-fire 설정을 이해한 상태
+
+실제 발사 시퀀스까지 MQTT로 검증하려면 아래 환경 변수를 추가해야 합니다.
+
+```bash
+export TURRET_TEST_ALLOW_LIVE_FIRE=1
+```
+
+이 옵션은 **실제 발사 하드웨어가 충분히 안전한 경우에만** 사용합니다.

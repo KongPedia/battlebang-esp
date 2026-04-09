@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "notes": "Per-turret install coordinates in centimeters. Only turret_5 is configured right now; fill the rest before building them.",
+  "turrets": {
+    "turret_1": { "configured": false },
+    "turret_2": { "configured": false },
+    "turret_3": { "configured": false },
+    "turret_4": { "configured": false },
+    "turret_5": {
+      "configured": true,
+      "x_cm": -170.0,
+      "y_cm": 190.0,
+      "z_cm": 134.5,
+      "default_target_z_cm": 70.0
+    },
+    "turret_6": { "configured": false }
+  }
+}

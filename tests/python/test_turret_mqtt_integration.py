@@ -19,13 +19,14 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class IntegrationConfig:
-    serial_port: str = os.getenv("TURRET_TEST_SERIAL_PORT", "/dev/cu.usbserial-0001")
+    serial_port: str = os.getenv("TURRET_TEST_SERIAL_PORT", "/dev/cu.usbserial-1130")
     baudrate: int = int(os.getenv("TURRET_TEST_BAUDRATE", "115200"))
     broker_host: str = os.getenv("TURRET_TEST_BROKER_HOST", "127.0.0.1")
     broker_port: int = int(os.getenv("TURRET_TEST_BROKER_PORT", "1883"))
-    turret_id: str = os.getenv("TURRET_TEST_TURRET_ID", "turret_1")
+    turret_id: str = os.getenv("TURRET_TEST_TURRET_ID", "turret_5")
     timeout_s: float = float(os.getenv("TURRET_TEST_TIMEOUT_S", "8"))
     allow_target_motion: bool = _env_bool("TURRET_TEST_ALLOW_TARGET_MOTION", False)
+    allow_live_fire: bool = _env_bool("TURRET_TEST_ALLOW_LIVE_FIRE", False)
 
     @property
     def command_topic(self) -> str:
@@ -52,6 +53,16 @@ def _publish(command: str, *, target: dict[str, float] | None = None) -> None:
         json.dumps(payload),
         hostname=CFG.broker_host,
         port=CFG.broker_port,
+    )
+
+
+def _wait_for_mqtt_ready(ser: serial.Serial) -> str:
+    return _wait_for_patterns(
+        ser,
+        [
+            f"[MQTT] subscribed to {CFG.command_topic}",
+        ],
+        timeout_s=max(CFG.timeout_s, 12.0),
     )
 
 
@@ -84,6 +95,7 @@ def test_dead_to_idle_transition_over_mqtt() -> None:
 
     with serial.Serial(CFG.serial_port, CFG.baudrate, timeout=0.2) as ser:
         ser.reset_input_buffer()
+        _wait_for_mqtt_ready(ser)
 
         _publish("dead")
         dead_log = _wait_for_patterns(
@@ -117,11 +129,12 @@ def test_dead_to_target_transition_over_mqtt() -> None:
     if not CFG.allow_target_motion:
         pytest.skip(
             "Set TURRET_TEST_ALLOW_TARGET_MOTION=1 only on a safe bench "
-            "with auto-fire disabled or mechanically safe to move."
+            "with firing mechanism disabled or mechanically safe to move."
         )
 
     with serial.Serial(CFG.serial_port, CFG.baudrate, timeout=0.2) as ser:
         ser.reset_input_buffer()
+        _wait_for_mqtt_ready(ser)
 
         _publish("dead")
         _wait_for_patterns(ser, ['"command": "dead"', "=== MODE CHANGE: -> DEAD ==="])
@@ -147,3 +160,82 @@ def test_dead_to_target_transition_over_mqtt() -> None:
         )
         assert "Target X [cm]" in target_log
         assert "Target Y [cm]" in target_log
+        assert "Auto fire on target: DISABLED" in target_log
+
+
+@pytest.mark.hardware
+@pytest.mark.integration
+def test_fire_is_blocked_in_dead_mode_over_mqtt() -> None:
+    _require_hardware()
+
+    with serial.Serial(CFG.serial_port, CFG.baudrate, timeout=0.2) as ser:
+        ser.reset_input_buffer()
+        _wait_for_mqtt_ready(ser)
+
+        _publish("dead")
+        _wait_for_patterns(
+            ser,
+            [
+                f'[MQTT] topic={CFG.command_topic}',
+                '"command": "dead"',
+                "=== MODE CHANGE: -> DEAD ===",
+            ],
+        )
+
+        ser.reset_input_buffer()
+        _publish("fire")
+        fire_log = _wait_for_patterns(
+            ser,
+            [
+                f'[MQTT] topic={CFG.command_topic}',
+                '"command": "fire"',
+                "[WARN] fire ignored in DEAD mode from MQTT",
+            ],
+        )
+        assert "=== MODE CHANGE: -> DEAD ===" not in fire_log
+
+
+@pytest.mark.hardware
+@pytest.mark.integration
+def test_live_fire_sequence_over_mqtt() -> None:
+    _require_hardware()
+
+    if not CFG.allow_live_fire:
+        pytest.skip(
+            "Set TURRET_TEST_ALLOW_LIVE_FIRE=1 only when the firing mechanism "
+            "is known safe for live bench testing."
+        )
+
+    with serial.Serial(CFG.serial_port, CFG.baudrate, timeout=0.2) as ser:
+        ser.reset_input_buffer()
+        _wait_for_mqtt_ready(ser)
+
+        _publish(
+            "target",
+            target={
+                "x": 1.25,
+                "y": -0.40,
+                "z": 0.70,
+            },
+        )
+        _wait_for_patterns(
+            ser,
+            [
+                f'[MQTT] topic={CFG.command_topic}',
+                '"command": "target"',
+                "========== TARGET UPDATE ==========",
+            ],
+        )
+
+        ser.reset_input_buffer()
+        _publish("fire")
+        fire_log = _wait_for_patterns(
+            ser,
+            [
+                f'[MQTT] topic={CFG.command_topic}',
+                '"command": "fire"',
+                "[FIRE]",
+            ],
+            timeout_s=max(CFG.timeout_s, 12.0),
+        )
+        assert "keepalive refreshed" in fire_log or "queued until aim reached" in fire_log or "immediate trigger" in fire_log

@@ -415,14 +415,14 @@ JSON payload를 읽어서 내부 명령 API로 변환:
 ### 추가된 파일
 
 - `src/turret/main.cpp`
-- `src/turret/build_config.h`
+- `src/turret/turrets.json`
 
 ### 적용한 선택
 
 1. **제어 로직은 한 파일 유지**
    - 너무 길게 쪼개지 않도록 `src/turret/main.cpp` 중심으로 구현
 2. **터렛별 차이만 헤더/빌드 플래그로 분리**
-   - `build_config.h`
+   - `turrets.json`
 3. **MQTT와 Serial 둘 다 같은 내부 제어 흐름으로 연결**
 4. **topic 기본값은 demo 구조와 맞춤**
    - `battlebang/turrets/{turret_id}/command`

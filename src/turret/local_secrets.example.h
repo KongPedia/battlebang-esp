@@ -20,4 +20,4 @@
 
 // 1: fire automatically after aim reached on target command
 // 0: only aim on target command, require fire command separately
-#define TURRET_AUTO_FIRE_ON_TARGET 1
+#define TURRET_AUTO_FIRE_ON_TARGET 0

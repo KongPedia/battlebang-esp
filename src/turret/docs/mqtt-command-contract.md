@@ -5,9 +5,9 @@
 기준 구현:
 
 - 수신 펌웨어: `src/turret/main.cpp`
-- 기본 설정: `src/turret/build_config.h`
+- 기본 설정: `src/turret/build_config.h` + `src/turret/turrets.json` + `src/turret/local_secrets.h`
 
-> 현재 이 contract는 실제 `turret_1` 보드에서 업로드 후 MQTT 수신까지 확인했습니다.
+> 현재 contract 자체와 상태 전이는 코드/단위 테스트로 검증했고, 실보드 기준 활성 preset은 `turret_5` 입니다.
 
 ---
 
@@ -19,6 +19,7 @@
 
 - MQTT **command subscribe** 는 구현됨
 - MQTT **status / heartbeat publish** 는 아직 구현되지 않음
+- 기본 동작은 **event-driven mode control**
 
 즉, 지금은 응답 topic이 없고, 모니터링은 주로 **Serial log** 로 확인합니다.
 
@@ -50,13 +51,13 @@ battlebang/turrets/turret_3/command
 
 ```cpp
 TURRET_MQTT_TOPIC_PREFIX = "battlebang/turrets"
-TURRET_ID = "turret_1" // 예시
+TURRET_ID = "turret_5" // 예시
 ```
 
-따라서 `turret_1` 펌웨어는 아래 topic만 subscribe 합니다.
+따라서 `turret_5` 펌웨어는 아래 topic만 subscribe 합니다.
 
 ```text
-battlebang/turrets/turret_1/command
+battlebang/turrets/turret_5/command
 ```
 
 ---
@@ -104,6 +105,7 @@ TURRET_MQTT_FIELD_TARGET_Z  = "z"
 - 현재 발사 시퀀스 중이면 중단
 - 출력 safe off
 - IDLE 모드 진입
+- 이때만 idle searching / sweep 동작 시작
 
 예시:
 
@@ -141,7 +143,10 @@ TURRET_MQTT_FIELD_TARGET_Z  = "z"
 
 - 바로 발사 가능하면 즉시 발사
 - 현재 `target` 모드인데 아직 조준이 안 맞았으면 조준 완료 후 발사 queue
-- 이미 발사 중이거나 DEAD 모드면 무시될 수 있음
+- DEAD 모드면 무시
+- 이미 발사 중이면 **새 fire 명령을 keepalive로 처리**
+- keepalive 시간은 현재 **3초**
+- 3초 안에 fire 명령이 다시 들어오면 발사 유지 시간이 다시 3초로 갱신됨
 
 예시:
 
@@ -160,7 +165,8 @@ TURRET_MQTT_FIELD_TARGET_Z  = "z"
 
 - 목표 좌표를 받아 yaw / pitch 계산
 - TARGET 모드 진입
-- `TURRET_AUTO_FIRE_ON_TARGET=1` 이면 조준 완료 후 자동 발사
+- **조준만 하고 자동 발사는 하지 않음**
+- 실제 발사는 별도의 `fire` command 로만 시작
 
 예시:
 
@@ -299,10 +305,11 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 
 | 현재 상태 | `idle` | `dead` | `target` | `fire` |
 |---|---|---|---|---|
-| `IDLE` | 유지 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 즉시 발사 가능 |
+| `HOLD`(부팅 기본값) | `IDLE` 로 전이 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 즉시 발사 가능 |
+| `IDLE` | 유지 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 발사 후 자동 idle 복귀 없음 |
 | `TARGET` | `IDLE` 로 전이 | `DEAD` 로 전이 | 새 target으로 갱신 | 조준 전이면 queue, 조준 완료면 발사 |
 | `DEAD` | `IDLE` 로 전이 | 유지 | `TARGET` 으로 전이 | 무시 |
-| 발사 중 | 발사 중단 후 `IDLE` | 발사 중단 후 `DEAD` | 무시 | 무시 |
+| 발사 중 | 발사 중단 후 `IDLE` | 발사 중단 후 `DEAD` | 무시 | keepalive 갱신 또는 재시작 예약 |
 
 즉 질문한 핵심인 아래 두 가지는 **현재 코드에서 이미 가능**합니다.
 
@@ -310,6 +317,14 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 2. `DEAD -> TARGET`
 
 단, `DEAD -> FIRE` 는 막혀 있습니다.
+
+### 중요한 동작 변경
+
+- 부팅 직후 기본 모드는 `IDLE` 서칭이 아니라 `HOLD`
+- `idle` 명령을 받아야만 searching 시작
+- `target` 은 조준만 수행
+- `fire` 가 끝나도 자동으로 `idle` 로 돌아가지 않음
+- `fire` 는 3초 keepalive 기반으로 유지되며, 연속 fire 명령이 오면 계속 발사 유지 가능
 
 ---
 
@@ -340,17 +355,17 @@ r
 
 ## 10. 추천 publish 예시
 
-## 9.1 Python
+## 10.1 Python
 
 ```python
 import json
 import paho.mqtt.publish as publish
 
 publish.single(
-    "battlebang/turrets/turret_1/command",
+    "battlebang/turrets/turret_5/command",
     json.dumps({
         "command": "target",
-        "turret_id": "turret_1",
+        "turret_id": "turret_5",
         "target": {
             "x": 1.25,
             "y": -0.40,
@@ -362,14 +377,14 @@ publish.single(
 )
 ```
 
-## 9.2 mosquitto_pub
+## 10.2 mosquitto_pub
 
 ```bash
 mosquitto_pub \
   -h 127.0.0.1 \
   -p 1883 \
-  -t battlebang/turrets/turret_1/command \
-  -m '{"command":"idle","turret_id":"turret_1"}'
+  -t battlebang/turrets/turret_5/command \
+  -m '{"command":"idle","turret_id":"turret_5"}'
 ```
 
 ---
@@ -381,7 +396,7 @@ mosquitto_pub \
 대신 Serial monitor 에서 아래를 확인할 수 있습니다.
 
 - 구독 성공:
-  - `[MQTT] subscribed to battlebang/turrets/turret_1/command`
+  - `[MQTT] subscribed to battlebang/turrets/turret_5/command`
 - 수신 payload:
   - `[MQTT] topic=... payload=...`
 - 연결 상태:
