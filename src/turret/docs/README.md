@@ -5,11 +5,18 @@
 
 ## 현재 기준 파일
 
-- 펌웨어 본체: `src/turret/main.cpp`
+- 펌웨어 entrypoint: `src/turret/main.cpp`
+- 런타임 조각: `src/turret/runtime/*.inc`
+  - `state.inc`: 전역 상태/상수/forward declaration
+  - `support.inc`: 하드웨어, aiming, ADC, PID helper
+  - `control.inc`: mode/fire/target/serial command
+  - `network.inc`: Wi-Fi/MQTT/logging
 - 빌드/로컬 설정 헤더: `src/turret/build_config.h`
 - 터렛별 좌표/프리셋: `src/turret/turrets.json`
 - 로컬 Wi-Fi/MQTT 시크릿: `src/turret/local_secrets.h` (`.gitignore`, 커밋 금지)
 - PlatformIO 주입 스크립트: `scripts/turret_config.py`
+
+`runtime/*.inc`는 독립 번역 단위가 아니라 `main.cpp`가 순서대로 include하는 구현 조각입니다. Arduino/PIO 전역 하드웨어 상태를 유지하면서 파일만 보기 좋게 나누기 위한 구조입니다.
 
 ## PlatformIO env
 
