@@ -38,6 +38,28 @@ esp32dev_turret_6
 ./.venv-pio/bin/pio run -e esp32dev_turret_5 -t upload --upload-port /dev/cu.usbserial-1130
 ```
 
+가장 간단한 현장용 명령은:
+
+```bash
+./bin/turret ports
+./bin/turret show 5
+./bin/turret upload 5
+./bin/turret upload 5 /dev/cu.usbserial-1130
+```
+
+여러 터렛을 USB 포트별로 순차 빌드/업로드하려면:
+
+```text
+src/turret/docs/build-upload-workflow.md
+```
+
+를 참고하고, 자동화 스크립트는 아래를 사용합니다.
+
+```bash
+python3 scripts/turret_flash.py list-ports
+python3 scripts/turret_flash.py flash --target turret_5=/dev/cu.usbserial-1130
+```
+
 포트 확인:
 
 ```bash

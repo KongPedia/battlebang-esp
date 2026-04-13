@@ -63,3 +63,4 @@ src/turret/local_secrets.h
 .venv-turret-tests/
 
 __pycache__/
+src/turret/upload_targets.toml
