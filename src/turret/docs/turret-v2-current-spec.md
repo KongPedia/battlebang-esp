@@ -344,51 +344,46 @@ ADC는:
 
 ## 9. 발사 시퀀스
 
-현재 발사는 **직접 `fire` 명령을 받는 구조가 아닙니다.**
-
-현재 구조는:
-
-1. `x,y` 입력
-2. MODE_TARGET 진입
-3. 조준 완료
-4. 자동 발사 시작
-
-입니다.
+현재 발사는 `fire` 명령을 받아야 시작하는 이벤트 기반 구조입니다.
 
 ### 발사 시작 조건
 
-- `MODE_TARGET`
+- `dead` 모드가 아님
 - `fireState == FIRE_IDLE`
-- 아직 이번 타겟에 대해 발사 안 함
-- `isAimReached() == true`
+- `target` 이동 중이면 조준 완료 후 실행
+- 이미 발사 중이면 새 `fire` 명령은 3초 hold 시간을 갱신하거나 restart를 queue
 
 ### 발사 순서
 
-현재 순서는 정확히 아래입니다.
+현재 순서는 아래입니다. 핵심은 **fire 명령이 들어오면 BLDC/ESC RUN 신호를 즉시 내보낸다**는 점입니다.
 
-1. `CH2 ON`
-2. 250ms 대기
-3. `CH1 ON`
-4. 250ms 대기
-5. `CH3 ON`
+부팅 시점에는 `ESC = 1000us` STOP 신호를 먼저 걸어둡니다. 그래서 BLDC/ESC 배터리를 ESP 부팅 이후에 연결해도, ESC는 평소에 low-throttle 신호를 받을 수 있습니다.
+
+1. 부팅 또는 첫 fire 시 ESC signal attach
+2. 평소 `ESC = 1000us` STOP 신호 유지
+3. `fire` 명령 수신
+4. `ESC = 1800us` 즉시 출력
+5. `CH2 ON`
 6. 250ms 대기
-7. `ESC = 1800us`
-8. 5000ms 유지
-9. `ESC = 1000us`
-10. 250ms 대기
-11. `CH3 OFF`
+7. `CH1 ON`
+8. 250ms 대기
+9. `CH3 ON`
+10. `FIRE_COMMAND_HOLD_MS` 동안 유지
+11. `ESC = 1000us`
 12. 250ms 대기
-13. `CH1 OFF`
+13. `CH3 OFF`
 14. 250ms 대기
-15. `CH2 OFF`
-16. IDLE 복귀
+15. `CH1 OFF`
+16. 250ms 대기
+17. `CH2 OFF`
+18. fire state 종료
 
 ### 타이밍 상수
 
 | 항목 | 값 |
 |---|---:|
 | `RELAY_STEP_DELAY_MS` | 250 |
-| `FIRE_HOLD_MS` | 5000 |
+| `FIRE_COMMAND_HOLD_MS` | 3000 |
 | `ESC_RUN_US` | 1800 |
 | `ESC_STOP_US` | 1000 |
 

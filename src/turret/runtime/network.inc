@@ -262,6 +262,9 @@ void logBuildConfig() {
 #if TURRET_LAZY_ARM_ESC
   Serial.print(", lazy ESC arm");
 #endif
+#if TURRET_ESC_STOP_SIGNAL_AT_BOOT
+  Serial.print(", ESC stop signal at boot");
+#endif
 #if TURRET_LAZY_RELAY_OUTPUTS
   Serial.print(", lazy relay outputs");
 #endif
@@ -279,4 +282,3 @@ void logBuildConfig() {
   Serial.println(" ms");
   Serial.println("===========================");
 }
-

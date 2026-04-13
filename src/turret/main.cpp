@@ -58,7 +58,9 @@ void setup() {
   Serial.println("[POWER] motion servos deferred until first command");
 #endif
 
-#if !TURRET_LAZY_ARM_ESC
+#if TURRET_ESC_STOP_SIGNAL_AT_BOOT
+  ensureEscStopSignal("boot-ready");
+#elif !TURRET_LAZY_ARM_ESC
   ensureEscArmed("boot");
 #else
   Serial.println("[POWER] ESC arm deferred until fire command");

@@ -119,6 +119,10 @@
 #define TURRET_LAZY_ARM_ESC 1
 #endif
 
+#ifndef TURRET_ESC_STOP_SIGNAL_AT_BOOT
+#define TURRET_ESC_STOP_SIGNAL_AT_BOOT 1
+#endif
+
 #ifndef TURRET_LAZY_RELAY_OUTPUTS
 #define TURRET_LAZY_RELAY_OUTPUTS 1
 #endif
@@ -474,6 +478,7 @@ void forceOutputsSafeOff() {
   }
   if (escAttached) {
     esc.writeMicroseconds(ESC_STOP_US);
+    escArmed = false;
   }
   if (relayOutputsAttached) {
     relayAllOff();
@@ -519,6 +524,7 @@ void ensureEscAttached(const char* reason) {
   esc.attach(ESC_PIN, ESC_MIN_US, ESC_MAX_US);
   esc.writeMicroseconds(ESC_STOP_US);
   escAttached = true;
+  escArmed = false;
 }
 
 void ensureEscArmed(const char* reason) {
@@ -532,6 +538,21 @@ void ensureEscArmed(const char* reason) {
   delay(TURRET_ESC_ARM_DELAY_MS);
   escArmed = true;
   Serial.println("[POWER] ESC arm complete");
+}
+
+void ensureEscStopSignal(const char* reason) {
+  ensureEscAttached(reason);
+  esc.writeMicroseconds(ESC_STOP_US);
+  Serial.print("[POWER] ESC STOP signal ready for ");
+  Serial.println(reason);
+}
+
+void runEscNow(const char* reason) {
+  ensureEscAttached(reason);
+  esc.writeMicroseconds(ESC_RUN_US);
+  escArmed = true;
+  Serial.print("[FIRE] ESC RUN immediate for ");
+  Serial.println(reason);
 }
 
 float radToDeg(float rad) {
@@ -848,17 +869,14 @@ void updateDeadModeTarget() {
 
 void startFireSequence() {
   if (fireState != FIRE_IDLE) return;
-#if TURRET_LAZY_ARM_ESC
-  ensureEscArmed("fire");
-#endif
+  ensureEscStopSignal("fire");
 #if TURRET_LAZY_RELAY_OUTPUTS
   ensureRelayOutputsAttached("fire");
 #endif
   postFireMode = (currentMode == MODE_IDLE) ? MODE_HOLD : currentMode;
-  if (fireKeepAliveUntilMs == 0) {
-    fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;
-  }
   Serial.println("[FIRE] Start sequence");
+  runEscNow("fire-command");
+  fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;
   relayWrite(RELAY_CH2_PIN, true);
   fireState = FIRE_CH2_ON_WAIT;
   fireStateTs = millis();
@@ -1410,6 +1428,9 @@ void logBuildConfig() {
 #if TURRET_LAZY_ARM_ESC
   Serial.print(", lazy ESC arm");
 #endif
+#if TURRET_ESC_STOP_SIGNAL_AT_BOOT
+  Serial.print(", ESC stop signal at boot");
+#endif
 #if TURRET_LAZY_RELAY_OUTPUTS
   Serial.print(", lazy relay outputs");
 #endif
@@ -1466,7 +1487,9 @@ void setup() {
   Serial.println("[POWER] motion servos deferred until first command");
 #endif
 
-#if !TURRET_LAZY_ARM_ESC
+#if TURRET_ESC_STOP_SIGNAL_AT_BOOT
+  ensureEscStopSignal("boot-ready");
+#elif !TURRET_LAZY_ARM_ESC
   ensureEscArmed("boot");
 #else
   Serial.println("[POWER] ESC arm deferred until fire command");

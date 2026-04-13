@@ -89,6 +89,7 @@ void forceOutputsSafeOff() {
   }
   if (escAttached) {
     esc.writeMicroseconds(ESC_STOP_US);
+    escArmed = false;
   }
   if (relayOutputsAttached) {
     relayAllOff();
@@ -134,6 +135,7 @@ void ensureEscAttached(const char* reason) {
   esc.attach(ESC_PIN, ESC_MIN_US, ESC_MAX_US);
   esc.writeMicroseconds(ESC_STOP_US);
   escAttached = true;
+  escArmed = false;
 }
 
 void ensureEscArmed(const char* reason) {
@@ -147,6 +149,21 @@ void ensureEscArmed(const char* reason) {
   delay(TURRET_ESC_ARM_DELAY_MS);
   escArmed = true;
   Serial.println("[POWER] ESC arm complete");
+}
+
+void ensureEscStopSignal(const char* reason) {
+  ensureEscAttached(reason);
+  esc.writeMicroseconds(ESC_STOP_US);
+  Serial.print("[POWER] ESC STOP signal ready for ");
+  Serial.println(reason);
+}
+
+void runEscNow(const char* reason) {
+  ensureEscAttached(reason);
+  esc.writeMicroseconds(ESC_RUN_US);
+  escArmed = true;
+  Serial.print("[FIRE] ESC RUN immediate for ");
+  Serial.println(reason);
 }
 
 float radToDeg(float rad) {
@@ -317,4 +334,3 @@ bool isAimReached() {
   float pitchErr = fabs(pitchTargetDeg - pitchCurrentDeg);
   return (yawErr <= YAW_REACHED_TOL_DEG) && (pitchErr <= PITCH_REACHED_TOL_DEG);
 }
-

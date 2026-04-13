@@ -167,4 +167,3 @@ FireState fireState = FIRE_IDLE;
 unsigned long fireStateTs = 0;
 unsigned long fireKeepAliveUntilMs = 0;
 bool fireRestartRequested = false;
-

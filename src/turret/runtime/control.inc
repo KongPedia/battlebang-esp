@@ -144,17 +144,14 @@ void updateDeadModeTarget() {
 
 void startFireSequence() {
   if (fireState != FIRE_IDLE) return;
-#if TURRET_LAZY_ARM_ESC
-  ensureEscArmed("fire");
-#endif
+  ensureEscStopSignal("fire");
 #if TURRET_LAZY_RELAY_OUTPUTS
   ensureRelayOutputsAttached("fire");
 #endif
   postFireMode = (currentMode == MODE_IDLE) ? MODE_HOLD : currentMode;
-  if (fireKeepAliveUntilMs == 0) {
-    fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;
-  }
   Serial.println("[FIRE] Start sequence");
+  runEscNow("fire-command");
+  fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;
   relayWrite(RELAY_CH2_PIN, true);
   fireState = FIRE_CH2_ON_WAIT;
   fireStateTs = millis();
@@ -185,7 +182,6 @@ void updateFireSequence() {
 
     case FIRE_CH3_ON_WAIT:
       if (now - fireStateTs >= RELAY_STEP_DELAY_MS) {
-        esc.writeMicroseconds(ESC_RUN_US);
         fireState = FIRE_BLDC_HOLD;
         fireStateTs = now;
       }
@@ -453,4 +449,3 @@ void handleSerialNonBlocking() {
     }
   }
 }
-
