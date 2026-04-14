@@ -179,15 +179,40 @@ void mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
   Serial.println(command);
 }
 
+bool subscribeMqttCommandTopic(const char* reason) {
+  if (!mqttClient.connected()) return false;
+
+  // Re-subscribing is idempotent and helps recover when the first SUBSCRIBE
+  // after Wi-Fi/MQTT startup is missed by the link or broker.
+  bool ok = mqttClient.subscribe(mqttCommandTopic);
+  Serial.print("[MQTT] ");
+  Serial.print(ok ? "subscribed" : "subscribe failed");
+  Serial.print(" (");
+  Serial.print(reason);
+  Serial.print(") to ");
+  Serial.println(mqttCommandTopic);
+  lastMqttResubscribeMs = millis();
+  return ok;
+}
+
 void ensureMqttConnected() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (isEmptyOrPlaceholder(BUILD_CONFIG.mqttHost)) {
     Serial.println("[MQTT] host not configured. Override TURRET_MQTT_HOST at build time.");
     return;
   }
-  if (mqttClient.connected()) return;
 
   unsigned long now = millis();
+  if (mqttClient.connected()) {
+    // Some brokers/links occasionally miss the first SUBSCRIBE after a radio
+    // reconnect even though the TCP session reports UP.  Re-subscribing is
+    // idempotent and makes first-boot command reception deterministic.
+    if (now - lastMqttResubscribeMs >= MQTT_RESUBSCRIBE_INTERVAL_MS) {
+      subscribeMqttCommandTopic("refresh");
+    }
+    return;
+  }
+
   if (now - lastMqttRetryMs < MQTT_RETRY_INTERVAL_MS) return;
   lastMqttRetryMs = now;
 
@@ -216,13 +241,7 @@ void ensureMqttConnected() {
     return;
   }
 
-  if (mqttClient.subscribe(mqttCommandTopic)) {
-    Serial.print("[MQTT] subscribed to ");
-    Serial.println(mqttCommandTopic);
-  } else {
-    Serial.print("[MQTT] subscribe failed for ");
-    Serial.println(mqttCommandTopic);
-  }
+  subscribeMqttCommandTopic("connect");
 }
 
 void logBuildConfig() {

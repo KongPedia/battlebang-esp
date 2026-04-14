@@ -22,7 +22,7 @@ static const TurretBuildConfig BUILD_CONFIG = makeTurretBuildConfig();
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(50);
 
 #if TURRET_DISABLE_BROWNOUT_DETECTOR
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -74,7 +74,6 @@ void setup() {
 #else
   updateCurrentAngles();
 #endif
-  currentMode = MODE_HOLD;
   yawTargetDeg = yawCurrentDeg;
   pitchTargetDeg = pitchCurrentDeg;
   idleSweepForward = true;
@@ -87,6 +86,7 @@ void setup() {
   lastMqttStatusMs = 0;
   resetPidState();
   clearPendingFireFlags();
+  enterIdleMode();
 
   Serial.println("=== TURRET FIRMWARE READY ===");
   Serial.println("Serial input:");
@@ -100,7 +100,9 @@ void setup() {
   logBuildConfig();
 
 #if TURRET_WIFI_CONNECT_IN_LOOP
-  Serial.println("[WIFI] boot connect deferred to loop()");
+  Serial.println("[WIFI] starting immediately (non-blocking)");
+  startWiFiConnection();
+  lastWiFiRetryMs = millis();
 #else
   connectWiFiBlocking();
   ensureMqttConnected();
@@ -145,19 +147,6 @@ void loop() {
                PITCH_I_LIMIT,
                pitchPrevErrorPseudo,
                pitchIntegralPseudo);
-  }
-
-  bool fireRequested = manualFireQueued;
-  if (currentMode == MODE_TARGET &&
-      fireState == FIRE_IDLE &&
-      !fireTriggeredForCurrentTarget &&
-      fireRequested &&
-      isAimReached()) {
-    fireTriggeredForCurrentTarget = true;
-    pendingFireWhenAimReached = false;
-    manualFireQueued = false;
-    fireKeepAliveUntilMs = now + FIRE_COMMAND_HOLD_MS;
-    startFireSequence();
   }
 
   updateFireSequence();

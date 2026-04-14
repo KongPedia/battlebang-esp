@@ -17,7 +17,7 @@ class FireState(Enum):
     SHUTTING_DOWN = auto()
 
 
-FIRE_KEEPALIVE_MS = 3000
+FIRE_KEEPALIVE_MS = 1000
 
 
 @dataclass
@@ -101,23 +101,10 @@ class TurretStateSpec:
             self.fire_restart_requested = True
             return "restart_queued"
 
-        if self.mode == Mode.TARGET and not aim_reached:
-            self.manual_fire_queued = True
-            self.fire_triggered_for_current_target = False
-            return "queued_until_aim_reached"
-
         self.manual_fire_queued = False
         self.fire_triggered_for_current_target = True
         self._begin_fire_sequence()
         return "started_immediately"
-
-    def on_aim_reached(self) -> str | None:
-        if self.mode == Mode.TARGET and self.manual_fire_queued and self.fire_state == FireState.IDLE:
-            self.manual_fire_queued = False
-            self.fire_triggered_for_current_target = True
-            self._begin_fire_sequence()
-            return "started_after_queue"
-        return None
 
     def on_fire_keepalive_expired(self) -> str:
         self.fire_state = FireState.SHUTTING_DOWN
@@ -171,16 +158,14 @@ def test_target_never_auto_fires() -> None:
     assert turret.fire_state == FireState.IDLE
 
 
-def test_fire_from_target_can_wait_for_aim_then_start() -> None:
+def test_fire_from_target_starts_immediately_even_before_aim_reached() -> None:
     turret = TurretStateSpec(mode=Mode.TARGET)
 
     result = turret.command_fire(aim_reached=False)
-    assert result == "queued_until_aim_reached"
-    assert turret.manual_fire_queued is True
-    assert turret.fire_state == FireState.IDLE
 
-    result = turret.on_aim_reached()
-    assert result == "started_after_queue"
+    assert result == "started_immediately"
+    assert turret.manual_fire_queued is False
+    assert turret.fire_triggered_for_current_target is True
     assert turret.fire_state == FireState.SPINNING
 
 

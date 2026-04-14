@@ -142,11 +142,11 @@ TURRET_MQTT_FIELD_TARGET_Z  = "z"
 의미:
 
 - 바로 발사 가능하면 즉시 발사
-- 현재 `target` 모드인데 아직 조준이 안 맞았으면 조준 완료 후 발사 queue
+- 현재 `target` 모드이고 아직 조준이 안 맞았어도 현재 각도 기준으로 즉시 발사
 - DEAD 모드면 무시
 - 이미 발사 중이면 **새 fire 명령을 keepalive로 처리**
-- keepalive 시간은 현재 **3초**
-- 3초 안에 fire 명령이 다시 들어오면 발사 유지 시간이 다시 3초로 갱신됨
+- keepalive 시간은 현재 **1초**
+- 1초 안에 fire 명령이 다시 들어오면 발사 유지 시간이 다시 1초로 갱신됨
 
 예시:
 
@@ -305,9 +305,9 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 
 | 현재 상태 | `idle` | `dead` | `target` | `fire` |
 |---|---|---|---|---|
-| `HOLD`(부팅 기본값) | `IDLE` 로 전이 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 즉시 발사 가능 |
+| `HOLD` | `IDLE` 로 전이 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 즉시 발사 가능 |
 | `IDLE` | 유지 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 발사 후 자동 idle 복귀 없음 |
-| `TARGET` | `IDLE` 로 전이 | `DEAD` 로 전이 | 새 target으로 갱신 | 조준 전이면 queue, 조준 완료면 발사 |
+| `TARGET` | `IDLE` 로 전이 | `DEAD` 로 전이 | 새 target으로 갱신 | 현재 각도 기준으로 즉시 발사 |
 | `DEAD` | `IDLE` 로 전이 | 유지 | `TARGET` 으로 전이 | 무시 |
 | 발사 중 | 발사 중단 후 `IDLE` | 발사 중단 후 `DEAD` | 무시 | keepalive 갱신 또는 재시작 예약 |
 
@@ -320,11 +320,11 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 
 ### 중요한 동작 변경
 
-- 부팅 직후 기본 모드는 `IDLE` 서칭이 아니라 `HOLD`
-- `idle` 명령을 받아야만 searching 시작
+- 부팅 직후 기본 모드는 `IDLE`이며 즉시 searching을 시작
+- `idle` 명령은 언제든 `IDLE` searching으로 복귀시키는 명령
 - `target` 은 조준만 수행
 - `fire` 가 끝나도 자동으로 `idle` 로 돌아가지 않음
-- `fire` 는 3초 keepalive 기반으로 유지되며, 연속 fire 명령이 오면 계속 발사 유지 가능
+- `fire` 는 1초 keepalive 기반으로 유지되며, 연속 fire 명령이 오면 계속 발사 유지 가능
 
 ---
 

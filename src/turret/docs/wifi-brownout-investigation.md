@@ -272,9 +272,9 @@ Brownout detector was triggered
 MQTT turret 쪽에는 이미 아래 방향의 소프트웨어 방어책이 들어가 있다.
 
 - 부팅 직후 자동 발사/자동 target 금지
-- 기본 상태를 `HOLD`로 두고 `idle`, `target`, `fire`, `dead` 명령 기반으로 동작
-- 서보/ESC/릴레이를 부팅 즉시 attach하지 않고 필요한 순간에 lazy attach
-- Wi-Fi 시작 전 delay (`TURRET_WIFI_BOOT_DELAY_MS`)
+- 현재 실사용 펌웨어는 부팅 직후 `IDLE` searching을 바로 시작하도록 변경됨
+- 즉시 `IDLE` 동작을 위해 motion servo는 부팅 시 attach하며, ESC/릴레이는 필요한 순간까지 lazy attach
+- Wi-Fi 시작 전 delay는 실사용 요청에 따라 `TURRET_WIFI_BOOT_DELAY_MS=0`으로 제거됨
 - Wi-Fi 저출력 시도 (`TURRET_WIFI_REDUCED_TX_POWER`)
 - 수동 Wi-Fi 시작 env 제공 (`esp32dev_turret_5_manual_wifi_test`)
 

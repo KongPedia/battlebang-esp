@@ -35,7 +35,7 @@
 
 - idle에서 **yaw + pitch 둘 다 sweep**
 - 현재 터렛 좌표가 다름
-- `ESC_RUN_US = 1800`
+- `ESC_RUN_US = 1900`
 - 사실상 현재 운용 기준은 v2 mod 파일
 
 ---
@@ -252,8 +252,8 @@ z_target = 70.0
 ### MODE_TARGET
 
 - `x,y`를 받아 yaw/pitch 목표각 계산
-- 목표 도달 시 자동 발사
-- 발사 완료 후 다시 IDLE 복귀
+- `target`은 조준만 수행하고 자동 발사하지 않음
+- 발사 완료 후 자동 IDLE 복귀 없음
 
 ### MODE_DEAD
 
@@ -350,8 +350,8 @@ ADC는:
 
 - `dead` 모드가 아님
 - `fireState == FIRE_IDLE`
-- `target` 이동 중이면 조준 완료 후 실행
-- 이미 발사 중이면 새 `fire` 명령은 3초 hold 시간을 갱신하거나 restart를 queue
+- `target` 이동 중이어도 현재 각도 기준으로 즉시 실행
+- 이미 발사 중이면 새 `fire` 명령은 1초 hold 시간을 갱신하거나 restart를 queue
 
 ### 발사 순서
 
@@ -362,7 +362,7 @@ ADC는:
 1. 부팅 또는 첫 fire 시 ESC signal attach
 2. 평소 `ESC = 1000us` STOP 신호 유지
 3. `fire` 명령 수신
-4. `ESC = 1800us` 즉시 출력
+4. `ESC = 1900us` 즉시 출력
 5. `CH2 ON`
 6. 250ms 대기
 7. `CH1 ON`
@@ -383,8 +383,8 @@ ADC는:
 | 항목 | 값 |
 |---|---:|
 | `RELAY_STEP_DELAY_MS` | 250 |
-| `FIRE_COMMAND_HOLD_MS` | 3000 |
-| `ESC_RUN_US` | 1800 |
+| `FIRE_COMMAND_HOLD_MS` | 1000 |
+| `ESC_RUN_US` | 1900 |
 | `ESC_STOP_US` | 1000 |
 
 ### 중단 가능 여부

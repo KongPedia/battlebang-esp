@@ -18,13 +18,14 @@ const int ESC_PIN       = 25;
 // ===== Relay / Fire timing =====
 const bool RELAY_ACTIVE_LOW = true;
 const unsigned long RELAY_STEP_DELAY_MS = 250;
-const unsigned long FIRE_COMMAND_HOLD_MS = 3000;
+const unsigned long FIRE_COMMAND_HOLD_MS = 1000;
 
 // ===== Serial / network timing =====
 const unsigned long SERIAL_PRINT_INTERVAL_MS = TURRET_SERIAL_PRINT_INTERVAL_MS;
 const unsigned long WIFI_RETRY_INTERVAL_MS = 5000;
 const unsigned long MQTT_RETRY_INTERVAL_MS = 3000;
 const unsigned long MQTT_STATUS_INTERVAL_MS = 10000;
+const unsigned long MQTT_RESUBSCRIBE_INTERVAL_MS = 5000;
 const unsigned long WIFI_CONNECT_WAIT_MS = 12000;
 
 // ===== ADC limits =====
@@ -38,7 +39,7 @@ const int SERVO_STOP_US = 1500;
 const int SERVO_MAX_US  = 500;
 const int ESC_MIN_US  = 1000;
 const int ESC_MAX_US  = 2000;
-const int ESC_RUN_US  = 1800;
+const int ESC_RUN_US  = 1900;
 const int ESC_STOP_US = 1000;
 
 // ===== PID gains =====
@@ -83,9 +84,9 @@ const float PITCH_CMD_MAX_DEG = ((PITCH_HIGH_CUT - 2050.0f) * 180.0f) / (3110.0f
 const float IDLE_YAW_MIN = -70.0f;
 const float IDLE_YAW_MAX =  70.0f;
 const float IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC = 25.0f;
-const float IDLE_PITCH_MIN_DEG = -30.0f;
-const float IDLE_PITCH_MAX_DEG = 30.0f;
-const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = 30.0f;
+const float IDLE_PITCH_MIN_DEG = -10.0f;
+const float IDLE_PITCH_MAX_DEG = 0.0f;
+const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = 12.0f;
 
 // ===== MQTT =====
 const size_t MQTT_PAYLOAD_BUFFER_SIZE = 512;
@@ -94,6 +95,7 @@ char mqttClientId[64] = {0};
 unsigned long lastWiFiRetryMs = 0;
 unsigned long lastMqttRetryMs = 0;
 unsigned long lastMqttStatusMs = 0;
+unsigned long lastMqttResubscribeMs = 0;
 
 // ===== Devices =====
 Servo yawServo;
@@ -149,7 +151,7 @@ enum ControlMode {
   MODE_DEAD
 };
 
-ControlMode currentMode = MODE_HOLD;
+ControlMode currentMode = MODE_IDLE;
 ControlMode postFireMode = MODE_HOLD;
 
 enum FireState {

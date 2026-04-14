@@ -238,4 +238,4 @@ def test_live_fire_sequence_over_mqtt() -> None:
             ],
             timeout_s=max(CFG.timeout_s, 12.0),
         )
-        assert "keepalive refreshed" in fire_log or "queued until aim reached" in fire_log or "immediate trigger" in fire_log
+        assert "keepalive refreshed" in fire_log or "immediate trigger" in fire_log

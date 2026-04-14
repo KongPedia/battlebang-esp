@@ -132,7 +132,7 @@
 #endif
 
 #ifndef TURRET_WIFI_BOOT_DELAY_MS
-#define TURRET_WIFI_BOOT_DELAY_MS 8000
+#define TURRET_WIFI_BOOT_DELAY_MS 0
 #endif
 
 #ifndef TURRET_WIFI_START_ON_SERIAL
@@ -140,11 +140,11 @@
 #endif
 
 #ifndef TURRET_WIFI_PRE_MODE_DELAY_MS
-#define TURRET_WIFI_PRE_MODE_DELAY_MS 500
+#define TURRET_WIFI_PRE_MODE_DELAY_MS 0
 #endif
 
 #ifndef TURRET_WIFI_STAGE_DELAY_MS
-#define TURRET_WIFI_STAGE_DELAY_MS 100
+#define TURRET_WIFI_STAGE_DELAY_MS 0
 #endif
 
 #ifndef TURRET_DISABLE_BT_AT_BOOT
@@ -238,13 +238,14 @@ const int ESC_PIN       = 25;
 // ===== Relay / Fire timing =====
 const bool RELAY_ACTIVE_LOW = true;
 const unsigned long RELAY_STEP_DELAY_MS = 250;
-const unsigned long FIRE_COMMAND_HOLD_MS = 3000;
+const unsigned long FIRE_COMMAND_HOLD_MS = 1000;
 
 // ===== Serial / network timing =====
 const unsigned long SERIAL_PRINT_INTERVAL_MS = TURRET_SERIAL_PRINT_INTERVAL_MS;
 const unsigned long WIFI_RETRY_INTERVAL_MS = 5000;
 const unsigned long MQTT_RETRY_INTERVAL_MS = 3000;
 const unsigned long MQTT_STATUS_INTERVAL_MS = 10000;
+const unsigned long MQTT_RESUBSCRIBE_INTERVAL_MS = 5000;
 const unsigned long WIFI_CONNECT_WAIT_MS = 12000;
 
 // ===== ADC limits =====
@@ -258,7 +259,7 @@ const int SERVO_STOP_US = 1500;
 const int SERVO_MAX_US  = 500;
 const int ESC_MIN_US  = 1000;
 const int ESC_MAX_US  = 2000;
-const int ESC_RUN_US  = 1800;
+const int ESC_RUN_US  = 1900;
 const int ESC_STOP_US = 1000;
 
 // ===== PID gains =====
@@ -303,9 +304,9 @@ const float PITCH_CMD_MAX_DEG = ((PITCH_HIGH_CUT - 2050.0f) * 180.0f) / (3110.0f
 const float IDLE_YAW_MIN = -70.0f;
 const float IDLE_YAW_MAX =  70.0f;
 const float IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC = 25.0f;
-const float IDLE_PITCH_MIN_DEG = -30.0f;
-const float IDLE_PITCH_MAX_DEG = 30.0f;
-const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = 30.0f;
+const float IDLE_PITCH_MIN_DEG = -10.0f;
+const float IDLE_PITCH_MAX_DEG = 0.0f;
+const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = 12.0f;
 
 // ===== MQTT =====
 const size_t MQTT_PAYLOAD_BUFFER_SIZE = 512;
@@ -314,6 +315,7 @@ char mqttClientId[64] = {0};
 unsigned long lastWiFiRetryMs = 0;
 unsigned long lastMqttRetryMs = 0;
 unsigned long lastMqttStatusMs = 0;
+unsigned long lastMqttResubscribeMs = 0;
 
 // ===== Devices =====
 Servo yawServo;
@@ -369,7 +371,7 @@ enum ControlMode {
   MODE_DEAD
 };
 
-ControlMode currentMode = MODE_HOLD;
+ControlMode currentMode = MODE_IDLE;
 ControlMode postFireMode = MODE_HOLD;
 
 enum FireState {
@@ -907,7 +909,6 @@ void updateFireSequence() {
 
     case FIRE_CH3_ON_WAIT:
       if (now - fireStateTs >= RELAY_STEP_DELAY_MS) {
-        esc.writeMicroseconds(ESC_RUN_US);
         fireState = FIRE_BLDC_HOLD;
         fireStateTs = now;
       }
@@ -1044,16 +1045,6 @@ void commandFire(const char* source) {
       Serial.print("[FIRE] keepalive refreshed from ");
       Serial.println(source);
     }
-    return;
-  }
-
-  if (currentMode == MODE_TARGET && !isAimReached()) {
-    manualFireQueued = true;
-    pendingFireWhenAimReached = false;
-    fireTriggeredForCurrentTarget = false;
-    ensureMotionServosAttached("fire-while-targeting");
-    Serial.print("[FIRE] queued until aim reached from ");
-    Serial.println(source);
     return;
   }
 
@@ -1349,15 +1340,35 @@ void mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
   Serial.println(command);
 }
 
+bool subscribeMqttCommandTopic(const char* reason) {
+  if (!mqttClient.connected()) return false;
+
+  bool ok = mqttClient.subscribe(mqttCommandTopic);
+  Serial.print("[MQTT] ");
+  Serial.print(ok ? "subscribed" : "subscribe failed");
+  Serial.print(" (");
+  Serial.print(reason);
+  Serial.print(") to ");
+  Serial.println(mqttCommandTopic);
+  lastMqttResubscribeMs = millis();
+  return ok;
+}
+
 void ensureMqttConnected() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (isEmptyOrPlaceholder(BUILD_CONFIG.mqttHost)) {
     Serial.println("[MQTT] host not configured. Override TURRET_MQTT_HOST at build time.");
     return;
   }
-  if (mqttClient.connected()) return;
 
   unsigned long now = millis();
+  if (mqttClient.connected()) {
+    if (now - lastMqttResubscribeMs >= MQTT_RESUBSCRIBE_INTERVAL_MS) {
+      subscribeMqttCommandTopic("refresh");
+    }
+    return;
+  }
+
   if (now - lastMqttRetryMs < MQTT_RETRY_INTERVAL_MS) return;
   lastMqttRetryMs = now;
 
@@ -1386,13 +1397,7 @@ void ensureMqttConnected() {
     return;
   }
 
-  if (mqttClient.subscribe(mqttCommandTopic)) {
-    Serial.print("[MQTT] subscribed to ");
-    Serial.println(mqttCommandTopic);
-  } else {
-    Serial.print("[MQTT] subscribe failed for ");
-    Serial.println(mqttCommandTopic);
-  }
+  subscribeMqttCommandTopic("connect");
 }
 
 void logBuildConfig() {
@@ -1451,7 +1456,7 @@ void logBuildConfig() {
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(50);
 
 #if TURRET_DISABLE_BROWNOUT_DETECTOR
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -1503,7 +1508,6 @@ void setup() {
 #else
   updateCurrentAngles();
 #endif
-  currentMode = MODE_HOLD;
   yawTargetDeg = yawCurrentDeg;
   pitchTargetDeg = pitchCurrentDeg;
   idleSweepForward = true;
@@ -1516,6 +1520,7 @@ void setup() {
   lastMqttStatusMs = 0;
   resetPidState();
   clearPendingFireFlags();
+  enterIdleMode();
 
   Serial.println("=== TURRET FIRMWARE READY ===");
   Serial.println("Serial input:");
@@ -1529,7 +1534,9 @@ void setup() {
   logBuildConfig();
 
 #if TURRET_WIFI_CONNECT_IN_LOOP
-  Serial.println("[WIFI] boot connect deferred to loop()");
+  Serial.println("[WIFI] starting immediately (non-blocking)");
+  startWiFiConnection();
+  lastWiFiRetryMs = millis();
 #else
   connectWiFiBlocking();
   ensureMqttConnected();
@@ -1574,19 +1581,6 @@ void loop() {
                PITCH_I_LIMIT,
                pitchPrevErrorPseudo,
                pitchIntegralPseudo);
-  }
-
-  bool fireRequested = manualFireQueued;
-  if (currentMode == MODE_TARGET &&
-      fireState == FIRE_IDLE &&
-      !fireTriggeredForCurrentTarget &&
-      fireRequested &&
-      isAimReached()) {
-    fireTriggeredForCurrentTarget = true;
-    pendingFireWhenAimReached = false;
-    manualFireQueued = false;
-    fireKeepAliveUntilMs = now + FIRE_COMMAND_HOLD_MS;
-    startFireSequence();
   }
 
   updateFireSequence();

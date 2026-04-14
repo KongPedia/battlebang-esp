@@ -328,16 +328,6 @@ void commandFire(const char* source) {
     return;
   }
 
-  if (currentMode == MODE_TARGET && !isAimReached()) {
-    manualFireQueued = true;
-    pendingFireWhenAimReached = false;
-    fireTriggeredForCurrentTarget = false;
-    ensureMotionServosAttached("fire-while-targeting");
-    Serial.print("[FIRE] queued until aim reached from ");
-    Serial.println(source);
-    return;
-  }
-
   fireTriggeredForCurrentTarget = true;
   manualFireQueued = false;
   pendingFireWhenAimReached = false;
