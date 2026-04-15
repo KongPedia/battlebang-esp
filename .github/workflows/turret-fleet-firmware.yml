@@ -1,0 +1,110 @@
+name: Turret Fleet Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Firmware version label for the artifact"
+        required: true
+        default: "0.1.0-manual"
+      build:
+        description: "Numeric firmware build. Must increase for OTA version checks."
+        required: true
+        default: "1"
+      firmware_base_url:
+        description: "Optional HTTP base URL reachable by ESP32 devices, e.g. http://10.2.80.105:8080/firmware"
+        required: false
+        default: ""
+      create_release:
+        description: "Also create/update a GitHub Release for this manual run"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: python -m pip install --upgrade platformio
+
+      - name: Derive firmware version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          BUILD="${{ inputs.build }}"
+          if ! [[ "${BUILD}" =~ ^[0-9]+$ ]]; then
+            echo "build input must be numeric, got: ${BUILD}" >&2
+            exit 2
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate firmware version header
+        shell: bash
+        run: |
+          cat > src/turret_fleet/app/version_autogen.h <<EOF_VERSION
+          #pragma once
+          #define BB_TURRET_FLEET_VERSION "${{ steps.version.outputs.version }}"
+          #define BB_TURRET_FLEET_BUILD ${{ steps.version.outputs.build }}
+          #define BB_TURRET_FLEET_GIT_SHA "${GITHUB_SHA}"
+          EOF_VERSION
+
+      - name: Build firmware
+        run: pio run -e esp32dev_turret_fleet
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          FIRMWARE_NAME="battlebang-turret-fleet-${{ steps.version.outputs.version }}.bin"
+          BASE_URL="${{ inputs.firmware_base_url }}"
+          if [[ -n "${BASE_URL}" ]]; then
+            FIRMWARE_URL="${BASE_URL%/}/${FIRMWARE_NAME}"
+          elif [[ "${{ inputs.create_release }}" == "true" ]]; then
+            FIRMWARE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/turret-fleet-v${{ steps.version.outputs.version }}/${FIRMWARE_NAME}"
+          else
+            FIRMWARE_URL=""
+          fi
+          cp .pio/build/esp32dev_turret_fleet/firmware.bin "dist/${FIRMWARE_NAME}"
+          shasum -a 256 "dist/${FIRMWARE_NAME}" > dist/sha256.txt
+          python scripts/turret_fleet/make_release_manifest.py \
+            --firmware "dist/${FIRMWARE_NAME}" \
+            --version "${{ steps.version.outputs.version }}" \
+            --build "${{ steps.version.outputs.build }}" \
+            --url "${FIRMWARE_URL}" \
+            --output dist/manifest.json
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turret-fleet-firmware-${{ steps.version.outputs.version }}
+          path: dist/*
+
+      - name: Create GitHub Release for tag
+        if: inputs.create_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="turret-fleet-v${{ steps.version.outputs.version }}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --clobber
+          else
+            gh release create "${TAG}" dist/* \
+              --target "${GITHUB_SHA}" \
+              --title "${TAG}" \
+              --notes "Manual turret fleet firmware build from ${GITHUB_SHA}."
+          fi
