@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FLASH_SCRIPT="$ROOT_DIR/scripts/turret_flash.py"
+PIO_BIN="$ROOT_DIR/.venv-pio/bin/pio"
+TURRETS_JSON="$ROOT_DIR/src/turret/turrets.json"
+LOCAL_SECRETS="$ROOT_DIR/src/turret/local_secrets.h"
+UPLOAD_TARGETS="$ROOT_DIR/src/turret/upload_targets.toml"
+declare -a SECRET_ARGS=()
+
+if [[ ! -x "$PIO_BIN" ]]; then
+  PIO_BIN="pio"
+fi
+
+usage() {
+  cat <<'USAGE'
+BattleBang turret helper
+
+Usage:
+  ./bin/turret ports
+  ./bin/turret show <turret-number|turret_id>
+  ./bin/turret build <turret-number|turret_id>
+  ./bin/turret upload <turret-number|turret_id> [port]
+  ./bin/turret build-all
+  ./bin/turret upload-all
+  ./bin/turret monitor [port]
+  ./bin/turret config
+
+Examples:
+  ./bin/turret ports
+  ./bin/turret show 5
+  ./bin/turret build 5
+  ./bin/turret upload 5 /dev/cu.usbserial-1120
+  ./bin/turret upload 5
+  ./bin/turret monitor /dev/cu.usbserial-1120
+  ./bin/turret build-all
+  ./bin/turret upload-all
+
+Secrets:
+  - Default: src/turret/local_secrets.h
+  - Optional one-shot override:
+      TURRET_WIFI_SSID=kongstudios \
+      TURRET_WIFI_PASSWORD=cypress3428 \
+      TURRET_MQTT_HOST=jetson-go2-02.local \
+      ./bin/turret upload 5
+USAGE
+}
+
+normalize_turret() {
+  local raw="${1:-}"
+  case "$raw" in
+    [1-9])
+      echo "turret_${raw}"
+      ;;
+    turret_*)
+      echo "$raw"
+      ;;
+    *)
+      echo "[bin/turret] invalid turret id: ${raw:-<empty>} (use 5 or turret_5)" >&2
+      exit 2
+      ;;
+  esac
+}
+
+build_secret_args() {
+  SECRET_ARGS=()
+  if [[ -n "${TURRET_WIFI_SSID:-}" ]]; then
+    SECRET_ARGS+=(--wifi-ssid "$TURRET_WIFI_SSID")
+  fi
+  if [[ -n "${TURRET_WIFI_PASSWORD:-}" ]]; then
+    SECRET_ARGS+=(--wifi-password "$TURRET_WIFI_PASSWORD")
+  fi
+  if [[ -n "${TURRET_MQTT_HOST:-}" ]]; then
+    SECRET_ARGS+=(--mqtt-host "$TURRET_MQTT_HOST")
+  fi
+  if [[ -n "${TURRET_MQTT_PORT:-}" ]]; then
+    SECRET_ARGS+=(--mqtt-port "$TURRET_MQTT_PORT")
+  fi
+  if [[ -n "${TURRET_MQTT_USERNAME:-}" ]]; then
+    SECRET_ARGS+=(--mqtt-username "$TURRET_MQTT_USERNAME")
+  fi
+  if [[ -n "${TURRET_MQTT_PASSWORD:-}" ]]; then
+    SECRET_ARGS+=(--mqtt-password "$TURRET_MQTT_PASSWORD")
+  fi
+}
+
+filtered_ports() {
+  "$PIO_BIN" device list --json-output | python3 -c '
+import json
+import sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    data = []
+
+ignore_exact = {
+    "/dev/cu.debug-console",
+    "/dev/cu.Bluetooth-Incoming-Port",
+}
+ignore_contains = ("Bluetooth", "debug-console")
+
+for item in data:
+    port = str(item.get("port", "")).strip()
+    if not port:
+        continue
+    if port in ignore_exact:
+        continue
+    if any(token in port for token in ignore_contains):
+        continue
+    print(port)
+'
+}
+
+auto_detect_port() {
+  local ports=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && ports+=("$line")
+  done < <(filtered_ports)
+  if [[ ${#ports[@]} -eq 1 ]]; then
+    printf '%s\n' "${ports[0]}"
+    return 0
+  fi
+
+  if [[ ${#ports[@]} -eq 0 ]]; then
+    echo "[bin/turret] no USB serial device detected. Run ./bin/turret ports" >&2
+    return 2
+  fi
+
+  echo "[bin/turret] multiple USB serial devices detected. Specify the port explicitly." >&2
+  printf '  - %s\n' "${ports[@]}" >&2
+  return 3
+}
+
+show_turret() {
+  local turret_id="$1"
+  python3 - "$TURRETS_JSON" "$LOCAL_SECRETS" "$turret_id" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+secrets_path = Path(sys.argv[2])
+turret_id = sys.argv[3]
+data = json.loads(config_path.read_text(encoding='utf-8'))
+entry = data.get('turrets', {}).get(turret_id)
+if entry is None:
+    print(f"unknown turret: {turret_id}", file=sys.stderr)
+    raise SystemExit(2)
+
+print(f"turret: {turret_id}")
+print(f"configured: {entry.get('configured', False)}")
+for key in ('x_cm', 'y_cm', 'z_cm', 'default_target_z_cm', 'pitch_offset_deg', 'yaw_offset_deg'):
+    if key in entry:
+        print(f"{key}: {entry[key]}")
+print(f"local_secrets: {'present' if secrets_path.exists() else 'missing'}")
+PY
+}
+
+require_upload_targets() {
+  if [[ ! -f "$UPLOAD_TARGETS" ]]; then
+    echo "[bin/turret] missing $UPLOAD_TARGETS" >&2
+    echo "[bin/turret] copy src/turret/upload_targets.example.toml -> src/turret/upload_targets.toml and fill the USB ports." >&2
+    exit 2
+  fi
+}
+
+run_flash_script() {
+  local cmd=(python3 "$FLASH_SCRIPT" flash)
+  cmd+=("$@")
+  if [[ ${#SECRET_ARGS[@]} -gt 0 ]]; then
+    cmd+=("${SECRET_ARGS[@]}")
+  fi
+  "${cmd[@]}"
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  help|-h|--help)
+    usage
+    ;;
+  ports)
+    ports=()
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && ports+=("$line")
+    done < <(filtered_ports)
+    if [[ ${#ports[@]} -eq 0 ]]; then
+      echo "[bin/turret] no USB serial device detected." >&2
+      exit 2
+    fi
+    printf '%s\n' "${ports[@]}"
+    ;;
+  config)
+    python3 "$FLASH_SCRIPT" show-config
+    ;;
+  show)
+    turret_id="$(normalize_turret "${2:-}")"
+    show_turret "$turret_id"
+    ;;
+  build)
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    build_secret_args
+    run_flash_script --build-only --skip-port-check --target "$turret_id" "$@"
+    ;;
+  upload|flash)
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    port="${1:-}"
+    if [[ -z "$port" || "$port" == --* ]]; then
+      port="$(auto_detect_port)"
+    else
+      shift || true
+    fi
+    build_secret_args
+    run_flash_script --target "$turret_id=$port" "$@"
+    ;;
+  build-all)
+    shift || true
+    build_secret_args
+    require_upload_targets
+    run_flash_script --build-only --skip-port-check --map-file "$UPLOAD_TARGETS" "$@"
+    ;;
+  upload-all|flash-all)
+    shift || true
+    build_secret_args
+    require_upload_targets
+    run_flash_script --map-file "$UPLOAD_TARGETS" "$@"
+    ;;
+  monitor)
+    shift || true
+    port="${1:-}"
+    if [[ -z "$port" || "$port" == --* ]]; then
+      port="$(auto_detect_port)"
+    else
+      shift || true
+    fi
+    exec "$PIO_BIN" device monitor -b 115200 -p "$port" "$@"
+    ;;
+  *)
+    echo "[bin/turret] unknown command: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

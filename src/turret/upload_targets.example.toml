@@ -1,0 +1,11 @@
+# Local USB port mapping for sequential or batch uploads.
+# Copy to src/turret/upload_targets.toml and edit the ports for your Mac.
+# Use `python3 scripts/turret_flash.py list-ports` first.
+
+[turrets]
+turret_1 = "/dev/cu.usbserial-0001"
+turret_2 = "/dev/cu.usbserial-0002"
+turret_3 = "/dev/cu.usbserial-0003"
+turret_4 = "/dev/cu.usbserial-0004"
+turret_5 = "/dev/cu.usbserial-0005"
+turret_6 = "/dev/cu.usbserial-0006"
