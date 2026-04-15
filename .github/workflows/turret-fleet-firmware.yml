@@ -15,8 +15,16 @@ on:
         description: "Optional HTTP base URL reachable by ESP32 devices, e.g. http://10.2.80.105:8080/firmware"
         required: false
         default: ""
+      public_release_repo:
+        description: "Public repository that hosts firmware releases"
+        required: true
+        default: "KongPedia/battlebang-firmware"
+      public_release_target_branch:
+        description: "Target branch in the public release repository used when creating a new release tag"
+        required: true
+        default: "main"
       create_release:
-        description: "Also create/update a GitHub Release for this manual run"
+        description: "Create/update a Release in the public firmware repository"
         required: true
         type: boolean
         default: false
@@ -72,10 +80,11 @@ jobs:
           mkdir -p dist
           FIRMWARE_NAME="battlebang-turret-fleet-${{ steps.version.outputs.version }}.bin"
           BASE_URL="${{ inputs.firmware_base_url }}"
+          PUBLIC_REPO="${{ inputs.public_release_repo }}"
           if [[ -n "${BASE_URL}" ]]; then
             FIRMWARE_URL="${BASE_URL%/}/${FIRMWARE_NAME}"
           elif [[ "${{ inputs.create_release }}" == "true" ]]; then
-            FIRMWARE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/turret-fleet-v${{ steps.version.outputs.version }}/${FIRMWARE_NAME}"
+            FIRMWARE_URL="https://github.com/${PUBLIC_REPO}/releases/download/turret-fleet-v${{ steps.version.outputs.version }}/${FIRMWARE_NAME}"
           else
             FIRMWARE_URL=""
           fi
@@ -97,14 +106,23 @@ jobs:
       - name: Create GitHub Release for tag
         if: inputs.create_release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}
         run: |
           TAG="turret-fleet-v${{ steps.version.outputs.version }}"
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist/* --clobber
+          PUBLIC_REPO="${{ inputs.public_release_repo }}"
+          TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo "Missing repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
+            echo "Create a fine-grained PAT with Contents: Read and write on ${PUBLIC_REPO}." >&2
+            exit 2
+          fi
+
+          if gh release view "${TAG}" -R "${PUBLIC_REPO}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* -R "${PUBLIC_REPO}" --clobber
           else
             gh release create "${TAG}" dist/* \
-              --target "${GITHUB_SHA}" \
+              -R "${PUBLIC_REPO}" \
+              --target "${TARGET_BRANCH}" \
               --title "${TAG}" \
-              --notes "Manual turret fleet firmware build from ${GITHUB_SHA}."
+              --notes "BattleBang turret fleet firmware built from private source commit ${GITHUB_SHA}."
           fi

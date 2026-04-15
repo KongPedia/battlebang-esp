@@ -25,3 +25,12 @@
 #ifndef BB_TURRET_FLEET_GIT_SHA
 #define BB_TURRET_FLEET_GIT_SHA "local"
 #endif
+
+#ifndef BB_TURRET_FLEET_RELEASE_REPO
+#define BB_TURRET_FLEET_RELEASE_REPO "KongPedia/battlebang-firmware"
+#endif
+
+#ifndef BB_TURRET_FLEET_LATEST_MANIFEST_URL
+#define BB_TURRET_FLEET_LATEST_MANIFEST_URL \
+  "https://github.com/KongPedia/battlebang-firmware/releases/latest/download/manifest.json"
+#endif

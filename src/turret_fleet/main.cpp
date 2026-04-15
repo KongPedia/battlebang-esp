@@ -27,7 +27,9 @@ void printHelp() {
   Serial.println("  show-config");
   Serial.println("  clear-config");
   Serial.println("  config {json}");
-  Serial.println("  check-ota <manifest-url>");
+  Serial.println("  check-ota [manifest-url]");
+  Serial.print("  default manifest: ");
+  Serial.println(BB_TURRET_FLEET_LATEST_MANIFEST_URL);
 }
 
 void applyAndPersistConfig(const char* json) {
@@ -115,8 +117,15 @@ void handleSerialLine(String line) {
     applyAndPersistConfig(line.substring(7).c_str());
     return;
   }
+  if (line == "check-ota" || line == "check-latest") {
+    checkOtaManifestUrl(BB_TURRET_FLEET_LATEST_MANIFEST_URL);
+    return;
+  }
   if (line.startsWith("check-ota ")) {
-    checkOtaManifestUrl(line.substring(10));
+    String url = line.substring(10);
+    url.trim();
+    if (url.length() == 0) url = BB_TURRET_FLEET_LATEST_MANIFEST_URL;
+    checkOtaManifestUrl(url);
     return;
   }
 
@@ -166,6 +175,10 @@ void setup() {
   Serial.print(BB_TURRET_FLEET_BUILD);
   Serial.print(" device_id=");
   Serial.println(config.deviceId);
+  Serial.print("release_repo=");
+  Serial.println(BB_TURRET_FLEET_RELEASE_REPO);
+  Serial.print("latest_manifest=");
+  Serial.println(BB_TURRET_FLEET_LATEST_MANIFEST_URL);
   Serial.println(runtimeConfigToJson(config, false));
   printHelp();
 

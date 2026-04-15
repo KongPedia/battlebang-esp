@@ -57,16 +57,24 @@ Useful commands:
 
 ```text
 show-config
-  clear-config
-  check-ota <manifest-url>
-  help
+clear-config
+check-ota [manifest-url]
+check-latest
+help
 ```
 
-For a GitHub Release based OTA smoke test, `check-ota` can point at a release
-asset manifest:
+By default, `check-ota` and `check-latest` point at the public firmware release
+repository:
 
 ```text
-check-ota https://github.com/<owner>/<repo>/releases/download/turret-fleet-v0.1.0-manual/manifest.json
+https://github.com/KongPedia/battlebang-firmware/releases/latest/download/manifest.json
+```
+
+For a specific GitHub Release based OTA smoke test, `check-ota` can point at a
+release asset manifest:
+
+```text
+check-ota https://github.com/KongPedia/battlebang-firmware/releases/download/turret-fleet-v0.1.0-manual/manifest.json
 ```
 
 The manifest's `url` may also point at a GitHub Release `.bin` asset. The current

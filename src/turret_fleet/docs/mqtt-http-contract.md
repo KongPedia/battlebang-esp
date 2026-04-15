@@ -107,14 +107,27 @@ For a minimal test without a local firmware HTTP server, `manifest.json` and the
 firmware `.bin` can both live in a GitHub Release:
 
 ```text
-https://github.com/{owner}/{repo}/releases/download/turret-fleet-v0.1.0/manifest.json
-https://github.com/{owner}/{repo}/releases/download/turret-fleet-v0.1.0/battlebang-turret-fleet-0.1.0.bin
+https://github.com/KongPedia/battlebang-firmware/releases/download/turret-fleet-v0.1.0/manifest.json
+https://github.com/KongPedia/battlebang-firmware/releases/download/turret-fleet-v0.1.0/battlebang-turret-fleet-0.1.0.bin
 ```
 
 The ESP serial command for a manual smoke test is:
 
 ```text
-check-ota https://github.com/{owner}/{repo}/releases/download/turret-fleet-v0.1.0/manifest.json
+check-ota https://github.com/KongPedia/battlebang-firmware/releases/download/turret-fleet-v0.1.0/manifest.json
+```
+
+The firmware also has a default latest-manifest URL:
+
+```text
+https://github.com/KongPedia/battlebang-firmware/releases/latest/download/manifest.json
+```
+
+So these serial commands check the latest public firmware release:
+
+```text
+check-ota
+check-latest
 ```
 
 For controlled fleet rollout, keep MQTT as the trigger path and put the GitHub

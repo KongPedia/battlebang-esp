@@ -23,20 +23,32 @@ Run it in GitHub:
 4. Click **Run workflow**.
 5. Fill:
    - `version`: example `0.1.0-manual`
-   - `build`: numeric build, example `1`
+   - `build`: numeric build, example `2` for the first OTA test because local dev firmware defaults to build `1`
    - `firmware_base_url`: optional local HTTP base URL reachable by ESP32
-   - `create_release`: `false` for artifact-only testing, `true` to publish a release
+   - `public_release_repo`: default `KongPedia/battlebang-firmware`
+   - `public_release_target_branch`: default `main`
+   - `create_release`: `false` for artifact-only testing, `true` to publish a release to the public firmware repo
+
+Before using `create_release=true`, add a private source repo secret:
+
+```text
+PUBLIC_RELEASE_REPO_TOKEN
+```
+
+Use a fine-grained GitHub personal access token scoped only to
+`KongPedia/battlebang-firmware` with **Contents: Read and write** permission.
 
 GitHub push/tag triggers can be added later after the manual artifact test is
 working end-to-end.
 
 ## GitHub Release as the firmware host
 
-If `create_release=true` and `firmware_base_url` is empty, the workflow writes
-the `.bin` URL in `manifest.json` as a GitHub Release asset URL:
+If `create_release=true` and `firmware_base_url` is empty, the workflow publishes
+to `KongPedia/battlebang-firmware` and writes the `.bin` URL in `manifest.json`
+as a public GitHub Release asset URL:
 
 ```text
-https://github.com/{owner}/{repo}/releases/download/turret-fleet-v{version}/battlebang-turret-fleet-{version}.bin
+https://github.com/KongPedia/battlebang-firmware/releases/download/turret-fleet-v{version}/battlebang-turret-fleet-{version}.bin
 ```
 
 That means a separate `:8080` firmware server is not required for the first OTA
@@ -52,7 +64,14 @@ sha256.txt
 Then the ESP can fetch the manifest directly:
 
 ```text
-check-ota https://github.com/{owner}/{repo}/releases/download/turret-fleet-v{version}/manifest.json
+check-ota https://github.com/KongPedia/battlebang-firmware/releases/download/turret-fleet-v{version}/manifest.json
+```
+
+Or use the default latest manifest baked into the `turret_fleet` firmware:
+
+```text
+check-ota
+check-latest
 ```
 
 Or the same `manifest.json` can be sent over MQTT to
@@ -60,8 +79,9 @@ Or the same `manifest.json` can be sent over MQTT to
 
 Important limitations:
 
-- This is easiest for public releases. Private repositories require credentials,
-  which should not be embedded directly into ESP firmware.
+- The source repo can stay private. Only release assets in
+  `KongPedia/battlebang-firmware` are public.
+- Do not put Wi-Fi/MQTT/GitHub secrets into the firmware image.
 - GitHub asset downloads may redirect; the prototype firmware follows redirects.
 - The current prototype uses insecure TLS for convenience. Use CA pinning or
   signed manifests before production.
