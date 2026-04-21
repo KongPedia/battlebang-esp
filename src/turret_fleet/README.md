@@ -58,10 +58,44 @@ Useful commands:
 ```text
 show-config
 clear-config
+net-status
+wifi-status
+mqtt-status
+tcp-probe [host] [port]
 check-ota [manifest-url]
 check-latest
 help
 ```
+
+`net-status` prints the ESP IP, gateway, subnet, DNS, RSSI, MQTT host, and
+MQTT connection state. `tcp-probe` defaults to the configured MQTT host/port and
+is useful for distinguishing broker failures from network reachability failures.
+
+For the full operational guide on changing `x_cm`, `y_cm`, `z_cm`, calibration,
+Wi-Fi, MQTT broker host, and `turret_id`, see:
+
+```text
+src/turret_fleet/docs/runtime-config-operations.md
+```
+
+For the full update guide that separates config updates from firmware OTA
+updates, see:
+
+```text
+src/turret_fleet/docs/update-operations.md
+```
+
+Short version:
+
+- First provisioning or recovery: send `config {...}` over USB Serial.
+- Normal pose/calibration changes: publish config JSON to
+  `battlebang/turrets/{turret_id}/config`.
+- Wi-Fi/MQTT host changes: publish config JSON to
+  `battlebang/devices/{device_id}/config`, wait for `config_applied`, then
+  restart/power-cycle the ESP in the current prototype.
+- Firmware code updates: build/release with GitHub Action, then send the release
+  `manifest.json` to `battlebang/.../ota` or run `check-ota` over Serial.
+- Always increase `config_version`.
 
 By default, `check-ota` and `check-latest` point at the public firmware release
 repository:

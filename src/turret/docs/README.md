@@ -91,3 +91,27 @@ X/Y는 맞는데 전체적으로 위를 보면 우선 `../battlebang-demo/turret
 ```json
 "pitch_offset_deg": -3.0
 ```
+
+## IDLE가 위를 볼 때
+
+pitch 기준은 `0 deg`가 수평이고, 음수 pitch가 아래를 보는 방향입니다. MQTT `target.z`를 낮추거나 음수로 보낼수록 아래를 보는 것과 같은 기준입니다.
+
+IDLE에서 살짝 아래를 보는 기준 pitch를 지정하려면 해당 turret 설정에 idle pitch center를 추가합니다.
+
+```json
+"idle_pitch_deg": -8.0
+```
+
+이 기준 pitch를 중심으로 위아래도 왕복시키려면 `idle_pitch_sweep_deg`를 추가합니다. 예를 들어 아래 설정은 `-30 deg`를 중심으로 `-40 deg ~ -20 deg` 범위를 왕복합니다.
+
+```json
+"idle_pitch_deg": -30.0,
+"idle_pitch_sweep_deg": 10.0
+```
+
+좌우 yaw 왕복 범위도 turret별로 줄일 수 있습니다. 예를 들어 아래 설정은 `0 deg`를 중심으로 `-35 deg ~ +35 deg`만 좌우 왕복합니다.
+
+```json
+"idle_yaw_center_deg": 0.0,
+"idle_yaw_sweep_deg": 35.0
+```

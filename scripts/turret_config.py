@@ -102,6 +102,31 @@ for json_key, macro_name in optional_float_macros.items():
     if json_key in entry:
         defines.append((macro_name, float_macro(entry[json_key])))
 
+# Optional idle yaw center/sweep. Defaults preserve legacy -70..+70 deg.
+if "idle_yaw_center_deg" in entry:
+    defines.append(("TURRET_IDLE_YAW_CENTER_DEG", float_macro(entry["idle_yaw_center_deg"])))
+if "idle_yaw_sweep_deg" in entry:
+    defines.append(("TURRET_IDLE_YAW_SWEEP_DEG", float_macro(entry["idle_yaw_sweep_deg"])))
+if "idle_yaw_sweep_speed_deg_per_sec" in entry:
+    defines.append((
+        "TURRET_IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC",
+        float_macro(entry["idle_yaw_sweep_speed_deg_per_sec"]),
+    ))
+
+# Optional idle pitch center. When present, IDLE uses this pitch as its center.
+# Add idle_pitch_sweep_deg to sweep around it by +/- that many degrees; omit or
+# set 0 to keep the pitch fixed.
+if "idle_pitch_deg" in entry:
+    defines.append(("TURRET_IDLE_FIXED_PITCH", "1"))
+    defines.append(("TURRET_IDLE_PITCH_DEG", float_macro(entry["idle_pitch_deg"])))
+    if "idle_pitch_sweep_deg" in entry:
+        defines.append(("TURRET_IDLE_PITCH_SWEEP_DEG", float_macro(entry["idle_pitch_sweep_deg"])))
+    if "idle_pitch_sweep_speed_deg_per_sec" in entry:
+        defines.append((
+            "TURRET_IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC",
+            float_macro(entry["idle_pitch_sweep_speed_deg_per_sec"]),
+        ))
+
 # Optional build-time injection from shell environment. local_secrets.h still works
 # when these are not set. Example:
 #   TURRET_WIFI_SSID=... TURRET_WIFI_PASSWORD=... TURRET_MQTT_HOST=... pio run -e esp32dev_turret_5
@@ -135,4 +160,24 @@ print(
     f"{PIO_ENV}: {turret_id} @ "
     f"({entry['x_cm']}, {entry['y_cm']}, {entry['z_cm']}) cm, "
     f"default_target_z={entry['default_target_z_cm']} cm"
+    + (
+        f", idle_pitch={entry['idle_pitch_deg']} deg"
+        if "idle_pitch_deg" in entry
+        else ""
+    )
+    + (
+        f", idle_pitch_sweep=+/-{entry['idle_pitch_sweep_deg']} deg"
+        if "idle_pitch_sweep_deg" in entry
+        else ""
+    )
+    + (
+        f", idle_yaw_center={entry['idle_yaw_center_deg']} deg"
+        if "idle_yaw_center_deg" in entry
+        else ""
+    )
+    + (
+        f", idle_yaw_sweep=+/-{entry['idle_yaw_sweep_deg']} deg"
+        if "idle_yaw_sweep_deg" in entry
+        else ""
+    )
 )

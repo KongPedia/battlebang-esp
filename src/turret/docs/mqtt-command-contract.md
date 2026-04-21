@@ -306,7 +306,7 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 | 현재 상태 | `idle` | `dead` | `target` | `fire` |
 |---|---|---|---|---|
 | `HOLD` | `IDLE` 로 전이 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 즉시 발사 가능 |
-| `IDLE` | 유지 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 발사 후 자동 idle 복귀 없음 |
+| `IDLE` | 유지 | `DEAD` 로 전이 | `TARGET` 으로 전이 | IDLE searching 유지하면서 발사 |
 | `TARGET` | `IDLE` 로 전이 | `DEAD` 로 전이 | 새 target으로 갱신 | 현재 각도 기준으로 즉시 발사 |
 | `DEAD` | `IDLE` 로 전이 | 유지 | `TARGET` 으로 전이 | 무시 |
 | 발사 중 | 발사 중단 후 `IDLE` | 발사 중단 후 `DEAD` | 무시 | keepalive 갱신 또는 재시작 예약 |
@@ -323,7 +323,8 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 - 부팅 직후 기본 모드는 `IDLE`이며 즉시 searching을 시작
 - `idle` 명령은 언제든 `IDLE` searching으로 복귀시키는 명령
 - `target` 은 조준만 수행
-- `fire` 가 끝나도 자동으로 `idle` 로 돌아가지 않음
+- `IDLE` 중 `fire` 는 searching을 계속 유지하면서 발사하고, 발사 후에도 `IDLE` 유지
+- `TARGET`/`HOLD` 중 `fire` 는 발사 후 자동으로 `idle` 로 돌아가지 않음
 - `fire` 는 1초 keepalive 기반으로 유지되며, 연속 fire 명령이 오면 계속 발사 유지 가능
 
 ---

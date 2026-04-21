@@ -38,20 +38,74 @@ void enterHoldMode() {
   Serial.println("=== MODE CHANGE: -> HOLD ===");
 }
 
+float getIdleYawMinTargetDeg();
+float getIdleYawMaxTargetDeg();
+
 void setIdleSweepDirectionFromCurrentTarget() {
-  if (yawTargetDeg >= IDLE_YAW_MAX) {
+  if (yawTargetDeg >= getIdleYawMaxTargetDeg()) {
     idleSweepForward = false;
-  } else if (yawTargetDeg <= IDLE_YAW_MIN) {
+  } else if (yawTargetDeg <= getIdleYawMinTargetDeg()) {
     idleSweepForward = true;
   }
 }
 
+float getIdleYawCenterDeg() {
+  return clampf(IDLE_YAW_CENTER_DEG, -140.0f, 140.0f);
+}
+
+float getIdleYawSweepDeg() {
+  return fabs(IDLE_YAW_SWEEP_DEG);
+}
+
+float getIdleYawMinTargetDeg() {
+  return clampf(getIdleYawCenterDeg() - getIdleYawSweepDeg(), -140.0f, 140.0f);
+}
+
+float getIdleYawMaxTargetDeg() {
+  return clampf(getIdleYawCenterDeg() + getIdleYawSweepDeg(), -140.0f, 140.0f);
+}
+
+float getIdlePitchMinTargetDeg();
+float getIdlePitchMaxTargetDeg();
+
 void setIdlePitchDirectionFromCurrentTarget() {
-  if (pitchTargetDeg >= IDLE_PITCH_MAX_DEG) {
+  float pitchMinDeg = getIdlePitchMinTargetDeg();
+  float pitchMaxDeg = getIdlePitchMaxTargetDeg();
+  if (pitchTargetDeg >= pitchMaxDeg) {
     idlePitchUp = false;
-  } else if (pitchTargetDeg <= IDLE_PITCH_MIN_DEG) {
+  } else if (pitchTargetDeg <= pitchMinDeg) {
     idlePitchUp = true;
   }
+}
+
+float getIdleConfiguredPitchCenterDeg() {
+  return clampf(IDLE_CONFIGURED_PITCH_CENTER_DEG, PITCH_CMD_MIN_DEG, PITCH_CMD_MAX_DEG);
+}
+
+float getIdleConfiguredPitchSweepDeg() {
+  return fabs(IDLE_CONFIGURED_PITCH_SWEEP_DEG);
+}
+
+float getIdlePitchMinTargetDeg() {
+  if (IDLE_CONFIGURED_PITCH_ENABLED) {
+    return clampf(getIdleConfiguredPitchCenterDeg() - getIdleConfiguredPitchSweepDeg(),
+                  PITCH_CMD_MIN_DEG,
+                  PITCH_CMD_MAX_DEG);
+  }
+  return clampf(IDLE_PITCH_MIN_DEG, PITCH_CMD_MIN_DEG, PITCH_CMD_MAX_DEG);
+}
+
+float getIdlePitchMaxTargetDeg() {
+  if (IDLE_CONFIGURED_PITCH_ENABLED) {
+    return clampf(getIdleConfiguredPitchCenterDeg() + getIdleConfiguredPitchSweepDeg(),
+                  PITCH_CMD_MIN_DEG,
+                  PITCH_CMD_MAX_DEG);
+  }
+  return clampf(IDLE_PITCH_MAX_DEG, PITCH_CMD_MIN_DEG, PITCH_CMD_MAX_DEG);
+}
+
+bool isIdlePitchSweepEnabled() {
+  return (getIdlePitchMaxTargetDeg() - getIdlePitchMinTargetDeg()) > 0.001f;
 }
 
 void enterIdleMode() {
@@ -59,10 +113,15 @@ void enterIdleMode() {
   ensureMotionServosAttached("idle");
 #endif
   currentMode = MODE_IDLE;
-  yawTargetDeg = clampf(yawCurrentDeg, IDLE_YAW_MIN, IDLE_YAW_MAX);
-  pitchTargetDeg = clampf(pitchCurrentDeg, IDLE_PITCH_MIN_DEG, IDLE_PITCH_MAX_DEG);
-  setIdleSweepDirectionFromCurrentTarget();
+  yawTargetDeg = clampf(yawCurrentDeg, getIdleYawMinTargetDeg(), getIdleYawMaxTargetDeg());
+  if (IDLE_CONFIGURED_PITCH_ENABLED) {
+    pitchTargetDeg = getIdleConfiguredPitchCenterDeg();
+    idlePitchUp = true;
+  } else {
+    pitchTargetDeg = clampf(pitchCurrentDeg, getIdlePitchMinTargetDeg(), getIdlePitchMaxTargetDeg());
+  }
   setIdlePitchDirectionFromCurrentTarget();
+  setIdleSweepDirectionFromCurrentTarget();
   clearPendingFireFlags();
   Serial.println("=== MODE CHANGE: -> IDLE ===");
 }
@@ -105,32 +164,42 @@ void updateIdleSweep() {
   if (dt > 0.2f)  dt = 0.2f;
 
   float yawDelta = IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC * dt;
+  float yawMinDeg = getIdleYawMinTargetDeg();
+  float yawMaxDeg = getIdleYawMaxTargetDeg();
   if (idleSweepForward) {
     yawTargetDeg += yawDelta;
-    if (yawTargetDeg >= IDLE_YAW_MAX) {
-      yawTargetDeg = IDLE_YAW_MAX;
+    if (yawTargetDeg >= yawMaxDeg) {
+      yawTargetDeg = yawMaxDeg;
       idleSweepForward = false;
     }
   } else {
     yawTargetDeg -= yawDelta;
-    if (yawTargetDeg <= IDLE_YAW_MIN) {
-      yawTargetDeg = IDLE_YAW_MIN;
+    if (yawTargetDeg <= yawMinDeg) {
+      yawTargetDeg = yawMinDeg;
       idleSweepForward = true;
     }
   }
 
-  float pitchDelta = IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC * dt;
-  if (idlePitchUp) {
-    pitchTargetDeg += pitchDelta;
-    if (pitchTargetDeg >= IDLE_PITCH_MAX_DEG) {
-      pitchTargetDeg = IDLE_PITCH_MAX_DEG;
-      idlePitchUp = false;
-    }
+  if (!isIdlePitchSweepEnabled()) {
+    pitchTargetDeg = IDLE_CONFIGURED_PITCH_ENABLED
+                       ? getIdleConfiguredPitchCenterDeg()
+                       : getIdlePitchMinTargetDeg();
   } else {
-    pitchTargetDeg -= pitchDelta;
-    if (pitchTargetDeg <= IDLE_PITCH_MIN_DEG) {
-      pitchTargetDeg = IDLE_PITCH_MIN_DEG;
-      idlePitchUp = true;
+    float pitchDelta = IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC * dt;
+    float pitchMinDeg = getIdlePitchMinTargetDeg();
+    float pitchMaxDeg = getIdlePitchMaxTargetDeg();
+    if (idlePitchUp) {
+      pitchTargetDeg += pitchDelta;
+      if (pitchTargetDeg >= pitchMaxDeg) {
+        pitchTargetDeg = pitchMaxDeg;
+        idlePitchUp = false;
+      }
+    } else {
+      pitchTargetDeg -= pitchDelta;
+      if (pitchTargetDeg <= pitchMinDeg) {
+        pitchTargetDeg = pitchMinDeg;
+        idlePitchUp = true;
+      }
     }
   }
 
@@ -148,7 +217,7 @@ void startFireSequence() {
 #if TURRET_LAZY_RELAY_OUTPUTS
   ensureRelayOutputsAttached("fire");
 #endif
-  postFireMode = (currentMode == MODE_IDLE) ? MODE_HOLD : currentMode;
+  postFireMode = currentMode;
   Serial.println("[FIRE] Start sequence");
   runEscNow("fire-command");
   fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;

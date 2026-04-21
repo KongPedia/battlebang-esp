@@ -121,12 +121,10 @@ void loop() {
     updateCurrentAngles();
   }
 
-  if (fireState == FIRE_IDLE) {
-    if (currentMode == MODE_IDLE) {
-      updateIdleSweep();
-    } else if (currentMode == MODE_DEAD) {
-      updateDeadModeTarget();
-    }
+  if (currentMode == MODE_IDLE) {
+    updateIdleSweep();
+  } else if (fireState == FIRE_IDLE && currentMode == MODE_DEAD) {
+    updateDeadModeTarget();
   }
 
   if (areMotionServosAttached()) {

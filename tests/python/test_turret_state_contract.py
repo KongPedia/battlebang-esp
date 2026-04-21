@@ -30,7 +30,7 @@ class TurretStateSpec:
     - idle/dead/target only change on explicit command
     - target never auto-fires
     - fire is command-driven and extends a keepalive window
-    - after fire, the turret does not auto-return to IDLE
+    - IDLE keeps searching while firing and remains IDLE after fire
     """
 
     mode: Mode = Mode.HOLD
@@ -83,7 +83,7 @@ class TurretStateSpec:
         return "entered_target"
 
     def _begin_fire_sequence(self) -> None:
-        self.post_fire_mode = Mode.HOLD if self.mode == Mode.IDLE else self.mode
+        self.post_fire_mode = self.mode
         self.fire_state = FireState.SPINNING
         self.fire_keepalive_until_ms = self.now_ms + FIRE_KEEPALIVE_MS
         self.fire_restart_requested = False
@@ -193,14 +193,14 @@ def test_fire_does_not_auto_return_to_idle_after_target_mode() -> None:
     assert turret.mode == Mode.TARGET
 
 
-def test_fire_from_idle_returns_to_hold_not_idle_search() -> None:
+def test_fire_from_idle_keeps_idle_search_after_fire() -> None:
     turret = TurretStateSpec(mode=Mode.IDLE)
     turret.command_fire(aim_reached=True)
 
     turret.on_fire_keepalive_expired()
     turret.on_fire_shutdown_complete()
 
-    assert turret.mode == Mode.HOLD
+    assert turret.mode == Mode.IDLE
 
 
 def test_fire_in_dead_mode_is_blocked() -> None:

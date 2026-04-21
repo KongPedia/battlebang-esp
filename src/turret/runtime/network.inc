@@ -260,6 +260,38 @@ void logBuildConfig() {
   Serial.print(TURRET_YAW_OFFSET_DEG, 2);
   Serial.print(", ");
   Serial.println(TURRET_PITCH_OFFSET_DEG, 2);
+  Serial.print("Idle yaw           : center ");
+  Serial.print(getIdleYawCenterDeg(), 2);
+  Serial.print(" deg, sweep +/-");
+  Serial.print(getIdleYawSweepDeg(), 2);
+  Serial.print(" deg (");
+  Serial.print(getIdleYawMinTargetDeg(), 2);
+  Serial.print("..");
+  Serial.print(getIdleYawMaxTargetDeg(), 2);
+  Serial.println(" deg)");
+  Serial.print("Idle pitch         : ");
+  if (IDLE_CONFIGURED_PITCH_ENABLED) {
+    Serial.print("center ");
+    Serial.print(getIdleConfiguredPitchCenterDeg(), 2);
+    Serial.print(" deg");
+    if (isIdlePitchSweepEnabled()) {
+      Serial.print(", sweep +/-");
+      Serial.print(getIdleConfiguredPitchSweepDeg(), 2);
+      Serial.print(" deg (");
+      Serial.print(getIdlePitchMinTargetDeg(), 2);
+      Serial.print("..");
+      Serial.print(getIdlePitchMaxTargetDeg(), 2);
+      Serial.println(" deg)");
+    } else {
+      Serial.println(", fixed");
+    }
+  } else {
+    Serial.print("sweep ");
+    Serial.print(getIdlePitchMinTargetDeg(), 2);
+    Serial.print("..");
+    Serial.print(getIdlePitchMaxTargetDeg(), 2);
+    Serial.println(" deg");
+  }
   Serial.print("MQTT host/port     : ");
   Serial.print(BUILD_CONFIG.mqttHost);
   Serial.print(':');

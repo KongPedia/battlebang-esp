@@ -1,0 +1,13 @@
+{
+  "type": "config",
+  "config_version": 4,
+  "wifi": {
+    "ssid": "NEW_WIFI_SSID",
+    "password": "NEW_WIFI_PASSWORD"
+  },
+  "mqtt": {
+    "host": "NEW_BROKER_IP",
+    "port": 1883,
+    "root": "battlebang"
+  }
+}

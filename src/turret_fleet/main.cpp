@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFiClient.h>
 
 #include "app/firmware_info.h"
 #include "app/identity.h"
@@ -27,6 +28,10 @@ void printHelp() {
   Serial.println("  show-config");
   Serial.println("  clear-config");
   Serial.println("  config {json}");
+  Serial.println("  net-status");
+  Serial.println("  wifi-status");
+  Serial.println("  mqtt-status");
+  Serial.println("  tcp-probe [host] [port]");
   Serial.println("  check-ota [manifest-url]");
   Serial.print("  default manifest: ");
   Serial.println(BB_TURRET_FLEET_LATEST_MANIFEST_URL);
@@ -91,6 +96,58 @@ void checkOtaManifestUrl(const String& url) {
   }
 }
 
+void runTcpProbe(String args) {
+  if (!wifi.connected()) {
+    Serial.println("[fleet][tcp] Wi-Fi is not connected; cannot probe TCP");
+    wifi.printStatus(config, "tcp-probe");
+    return;
+  }
+
+  args.trim();
+  String host = config.mqttHost;
+  uint16_t port = config.mqttPort;
+
+  if (args.length() > 0) {
+    const int firstSpace = args.indexOf(' ');
+    if (firstSpace < 0) {
+      host = args;
+    } else {
+      host = args.substring(0, firstSpace);
+      String portStr = args.substring(firstSpace + 1);
+      portStr.trim();
+      const long parsedPort = portStr.toInt();
+      if (parsedPort > 0 && parsedPort <= 65535) {
+        port = static_cast<uint16_t>(parsedPort);
+      }
+    }
+  }
+
+  if (host.length() == 0) {
+    Serial.println("[fleet][tcp] missing host; pass tcp-probe HOST PORT or configure mqtt.host first");
+    return;
+  }
+
+  WiFiClient client;
+  client.setTimeout(5);
+  const unsigned long startedMs = millis();
+  Serial.print("[fleet][tcp] probing ");
+  Serial.print(host);
+  Serial.print(':');
+  Serial.print(port);
+  Serial.print(" from_ip=");
+  Serial.print(wifi.ip());
+  Serial.print(" gateway=");
+  Serial.println(wifi.gateway());
+
+  const bool ok = client.connect(host.c_str(), port);
+  const unsigned long elapsedMs = millis() - startedMs;
+  Serial.print("[fleet][tcp] result=");
+  Serial.print(ok ? "ok" : "fail");
+  Serial.print(" elapsed_ms=");
+  Serial.println(elapsedMs);
+  if (ok) client.stop();
+}
+
 void handleSerialLine(String line) {
   line.trim();
   if (line.length() == 0) return;
@@ -115,6 +172,27 @@ void handleSerialLine(String line) {
   }
   if (line.startsWith("config ")) {
     applyAndPersistConfig(line.substring(7).c_str());
+    return;
+  }
+  if (line == "net-status") {
+    wifi.printStatus(config, "serial");
+    mqtt.printStatus("serial");
+    return;
+  }
+  if (line == "wifi-status") {
+    wifi.printStatus(config, "serial");
+    return;
+  }
+  if (line == "mqtt-status") {
+    mqtt.printStatus("serial");
+    return;
+  }
+  if (line == "tcp-probe") {
+    runTcpProbe("");
+    return;
+  }
+  if (line.startsWith("tcp-probe ")) {
+    runTcpProbe(line.substring(10));
     return;
   }
   if (line == "check-ota" || line == "check-latest") {

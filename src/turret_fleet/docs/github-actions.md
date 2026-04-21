@@ -77,6 +77,9 @@ check-latest
 Or the same `manifest.json` can be sent over MQTT to
 `battlebang/turrets/all/ota`.
 
+For the full operational sequence after a release is created, including Serial
+`check-ota` and MQTT `/ota` publish options, see `update-operations.md`.
+
 Important limitations:
 
 - The source repo can stay private. Only release assets in

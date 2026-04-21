@@ -32,6 +32,7 @@ void MqttBus::reconfigure() {
   subscriptionsDirty_ = true;
   if (client_.connected()) client_.disconnect();
   lastConnectAttemptMs_ = 0;
+  lastConnectState_ = 0;
 }
 
 void MqttBus::loop() {
@@ -84,14 +85,65 @@ bool MqttBus::connectIfNeeded() {
   }
 
   if (!ok) {
+    lastConnectState_ = client_.state();
+    lastConnectFailMs_ = millis();
     Serial.print("[fleet][mqtt] connect failed state=");
-    Serial.println(client_.state());
+    Serial.print(lastConnectState_);
+    Serial.print(" host=");
+    Serial.print(config_->mqttHost);
+    Serial.print(':');
+    Serial.print(config_->mqttPort);
+    Serial.print(" wifi_ip=");
+    Serial.print(wifi_->ip());
+    Serial.print(" gateway=");
+    Serial.println(wifi_->gateway());
     return false;
   }
 
+  lastConnectState_ = client_.state();
+  lastConnectSuccessMs_ = millis();
   subscribeTopics();
   publishStatus("connected");
   return true;
+}
+
+bool MqttBus::connected() {
+  return client_.connected();
+}
+
+int MqttBus::state() {
+  return client_.state();
+}
+
+String MqttBus::statusSummary() {
+  String out;
+  out.reserve(256);
+  out += "connected=";
+  out += (connected() ? "yes" : "no");
+  out += " state=";
+  out += String(state());
+  out += " last_connect_state=";
+  out += String(lastConnectState_);
+  out += " host=";
+  out += (config_ == nullptr || config_->mqttHost.length() == 0 ? String("<missing>") : config_->mqttHost);
+  out += ':';
+  out += (config_ == nullptr ? String(0) : String(config_->mqttPort));
+  out += " root=";
+  out += (config_ == nullptr ? String("<missing>") : config_->mqttRoot);
+  out += " subscriptions_dirty=";
+  out += (subscriptionsDirty_ ? "yes" : "no");
+  out += " last_success_ms=";
+  out += String(lastConnectSuccessMs_);
+  out += " last_fail_ms=";
+  out += String(lastConnectFailMs_);
+  return out;
+}
+
+void MqttBus::printStatus(const char* reason) {
+  Serial.print("[fleet][mqtt] ");
+  Serial.print(reason);
+  Serial.print(' ');
+  Serial.println(statusSummary());
 }
 
 void MqttBus::subscribeTopics() {

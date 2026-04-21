@@ -17,6 +17,11 @@ battlebang/devices/{device_id}/config
 battlebang/turrets/{turret_id}/config
 ```
 
+Use the device topic for physical-device settings such as Wi-Fi and broker host.
+Use the turret topic for logical placement settings such as pose and calibration.
+For step-by-step config operations, see `runtime-config-operations.md`. For the
+full config-vs-firmware update sequence, see `update-operations.md`.
+
 Payload:
 
 ```json

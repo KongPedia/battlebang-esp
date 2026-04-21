@@ -81,12 +81,22 @@ const float PITCH_CMD_MIN_DEG = ((PITCH_LOW_CUT  - 2050.0f) * 180.0f) / (3110.0f
 const float PITCH_CMD_MAX_DEG = ((PITCH_HIGH_CUT - 2050.0f) * 180.0f) / (3110.0f - 2050.0f);
 
 // ===== Idle behavior =====
-const float IDLE_YAW_MIN = -70.0f;
-const float IDLE_YAW_MAX =  70.0f;
-const float IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC = 25.0f;
+const float IDLE_YAW_CENTER_DEG = TURRET_IDLE_YAW_CENTER_DEG;
+const float IDLE_YAW_SWEEP_DEG = TURRET_IDLE_YAW_SWEEP_DEG;
+const float IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC = TURRET_IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC;
+// Pitch convention: 0 deg is the horizontal ADC midpoint, and negative pitch
+// points downward. This matches MQTT target commands where a lower/negative z
+// target produces a downward pitch command.
+// TURRET_IDLE_FIXED_PITCH is a historical macro name. When enabled, the
+// configured pitch is the center of the idle pitch behavior. If
+// TURRET_IDLE_PITCH_SWEEP_DEG is 0, it is fixed; if positive, it sweeps around
+// the center by +/- that many degrees.
+const bool IDLE_CONFIGURED_PITCH_ENABLED = (TURRET_IDLE_FIXED_PITCH != 0);
+const float IDLE_CONFIGURED_PITCH_CENTER_DEG = TURRET_IDLE_PITCH_DEG;
+const float IDLE_CONFIGURED_PITCH_SWEEP_DEG = TURRET_IDLE_PITCH_SWEEP_DEG;
 const float IDLE_PITCH_MIN_DEG = -10.0f;
 const float IDLE_PITCH_MAX_DEG = 0.0f;
-const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = 12.0f;
+const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = TURRET_IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC;
 
 // ===== MQTT =====
 const size_t MQTT_PAYLOAD_BUFFER_SIZE = 512;

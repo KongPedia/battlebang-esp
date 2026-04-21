@@ -18,6 +18,10 @@ class MqttBus {
   void reconfigure();
   void loop();
   void publishStatus(const char* reason);
+  bool connected();
+  int state();
+  String statusSummary();
+  void printStatus(const char* reason);
 
  private:
   RuntimeConfig* config_ = nullptr;
@@ -28,6 +32,9 @@ class MqttBus {
   PubSubClient client_{wifiClient_};
   unsigned long lastConnectAttemptMs_ = 0;
   unsigned long lastStatusMs_ = 0;
+  unsigned long lastConnectSuccessMs_ = 0;
+  unsigned long lastConnectFailMs_ = 0;
+  int lastConnectState_ = 0;
   bool subscriptionsDirty_ = true;
 
   bool connectIfNeeded();
