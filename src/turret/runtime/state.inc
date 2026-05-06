@@ -19,6 +19,7 @@ const int ESC_PIN       = 25;
 const bool RELAY_ACTIVE_LOW = true;
 const unsigned long RELAY_STEP_DELAY_MS = 250;
 const unsigned long FIRE_COMMAND_HOLD_MS = 1000;
+const unsigned long FIRE_COMMAND_MAX_HOLD_MS = 60000;
 
 // ===== Serial / network timing =====
 const unsigned long SERIAL_PRINT_INTERVAL_MS = TURRET_SERIAL_PRINT_INTERVAL_MS;

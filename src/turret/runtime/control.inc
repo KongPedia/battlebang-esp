@@ -151,7 +151,9 @@ void startFireSequence() {
   postFireMode = (currentMode == MODE_IDLE) ? MODE_HOLD : currentMode;
   Serial.println("[FIRE] Start sequence");
   runEscNow("fire-command");
-  fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;
+  if (fireKeepAliveUntilMs == 0 || fireKeepAliveUntilMs <= millis()) {
+    fireKeepAliveUntilMs = millis() + FIRE_COMMAND_HOLD_MS;
+  }
   relayWrite(RELAY_CH2_PIN, true);
   fireState = FIRE_CH2_ON_WAIT;
   fireStateTs = millis();
@@ -303,7 +305,20 @@ void applyTargetCommand(float xTargetCm, float yTargetCm, float zTargetCm, const
   Serial.println("===================================");
 }
 
-void commandFire(const char* source) {
+unsigned long normalizeFireHoldMs(unsigned long requestedHoldMs) {
+  if (requestedHoldMs == 0) {
+    return FIRE_COMMAND_HOLD_MS;
+  }
+  if (requestedHoldMs < FIRE_COMMAND_HOLD_MS) {
+    return FIRE_COMMAND_HOLD_MS;
+  }
+  if (requestedHoldMs > FIRE_COMMAND_MAX_HOLD_MS) {
+    return FIRE_COMMAND_MAX_HOLD_MS;
+  }
+  return requestedHoldMs;
+}
+
+void commandFire(const char* source, unsigned long requestedHoldMs = FIRE_COMMAND_HOLD_MS) {
   if (currentMode == MODE_DEAD) {
     Serial.print("[WARN] fire ignored in DEAD mode from ");
     Serial.println(source);
@@ -311,9 +326,10 @@ void commandFire(const char* source) {
   }
 
   unsigned long now = millis();
+  unsigned long holdMs = normalizeFireHoldMs(requestedHoldMs);
 
   if (fireState != FIRE_IDLE) {
-    fireKeepAliveUntilMs = now + FIRE_COMMAND_HOLD_MS;
+    fireKeepAliveUntilMs = now + holdMs;
 
     if (fireState == FIRE_BLDC_OFF_WAIT ||
         fireState == FIRE_CH3_OFF_WAIT ||
@@ -332,9 +348,11 @@ void commandFire(const char* source) {
   manualFireQueued = false;
   pendingFireWhenAimReached = false;
   fireRestartRequested = false;
-  fireKeepAliveUntilMs = now + FIRE_COMMAND_HOLD_MS;
+  fireKeepAliveUntilMs = now + holdMs;
   Serial.print("[FIRE] immediate trigger from ");
   Serial.println(source);
+  Serial.print("[FIRE] hold_ms=");
+  Serial.println(holdMs);
   startFireSequence();
 }
 

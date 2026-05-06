@@ -144,16 +144,20 @@ TURRET_MQTT_FIELD_TARGET_Z  = "z"
 - 바로 발사 가능하면 즉시 발사
 - 현재 `target` 모드이고 아직 조준이 안 맞았어도 현재 각도 기준으로 즉시 발사
 - DEAD 모드면 무시
-- 이미 발사 중이면 **새 fire 명령을 keepalive로 처리**
-- keepalive 시간은 현재 **1초**
-- 1초 안에 fire 명령이 다시 들어오면 발사 유지 시간이 다시 1초로 갱신됨
+- `engagement_duration_ms`, `duration_ms`, `fire_duration_ms` 중 하나가 있으면 해당 시간만큼 firing hold window를 유지
+- duration field가 없으면 backward-compatible 기본 hold window는 **1초**
+- duration은 안전 범위로 clamp됨: 최소 1초, 최대 60초
+- 이미 발사 중이면 새 fire 명령을 hold-window refresh로 처리
 
 예시:
 
 ```json
 {
   "command": "fire",
-  "turret_id": "turret_1"
+  "turret_id": "turret_1",
+  "engagement_duration_ms": 5590,
+  "fire_interval_ms": 500,
+  "engagement_id": "nexus-warning-keyboard"
 }
 ```
 
@@ -309,7 +313,7 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 | `IDLE` | 유지 | `DEAD` 로 전이 | `TARGET` 으로 전이 | 발사 후 자동 idle 복귀 없음 |
 | `TARGET` | `IDLE` 로 전이 | `DEAD` 로 전이 | 새 target으로 갱신 | 현재 각도 기준으로 즉시 발사 |
 | `DEAD` | `IDLE` 로 전이 | 유지 | `TARGET` 으로 전이 | 무시 |
-| 발사 중 | 발사 중단 후 `IDLE` | 발사 중단 후 `DEAD` | 무시 | keepalive 갱신 또는 재시작 예약 |
+| 발사 중 | 발사 중단 후 `IDLE` | 발사 중단 후 `DEAD` | 무시 | duration metadata로 hold-window 갱신 또는 재시작 예약 |
 
 즉 질문한 핵심인 아래 두 가지는 **현재 코드에서 이미 가능**합니다.
 
@@ -324,7 +328,7 @@ TURRET_MQTT_COORDS_IN_METERS = 0
 - `idle` 명령은 언제든 `IDLE` searching으로 복귀시키는 명령
 - `target` 은 조준만 수행
 - `fire` 가 끝나도 자동으로 `idle` 로 돌아가지 않음
-- `fire` 는 1초 keepalive 기반으로 유지되며, 연속 fire 명령이 오면 계속 발사 유지 가능
+- `fire` 는 duration metadata가 있으면 그 시간만큼 유지된다. duration field가 없는 legacy command만 1초 hold-window를 사용한다. Command Center BTB-609 demo는 같은 `fire`를 반복 publish하지 않고 duration-bearing `fire` 1회와 final `idle` 1회를 보낸다.
 
 ---
 

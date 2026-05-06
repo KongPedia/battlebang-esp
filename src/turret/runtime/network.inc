@@ -103,6 +103,18 @@ void ensureWiFiConnected() {
   startWiFiConnection();
 }
 
+unsigned long mqttFireHoldMsFromPayload(JsonDocument& doc) {
+  unsigned long durationMs = 0;
+  if (doc["engagement_duration_ms"].is<unsigned long>()) {
+    durationMs = doc["engagement_duration_ms"].as<unsigned long>();
+  } else if (doc["duration_ms"].is<unsigned long>()) {
+    durationMs = doc["duration_ms"].as<unsigned long>();
+  } else if (doc["fire_duration_ms"].is<unsigned long>()) {
+    durationMs = doc["fire_duration_ms"].as<unsigned long>();
+  }
+  return normalizeFireHoldMs(durationMs);
+}
+
 void mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
   char payloadBuf[MQTT_PAYLOAD_BUFFER_SIZE];
   if (length >= sizeof(payloadBuf)) {
@@ -147,7 +159,15 @@ void mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
   }
 
   if (strcmp(command, "fire") == 0) {
-    commandFire("MQTT");
+    unsigned long holdMs = mqttFireHoldMsFromPayload(doc);
+    Serial.print("[MQTT] fire hold_ms=");
+    Serial.print(holdMs);
+    if (doc["fire_interval_ms"].is<unsigned long>()) {
+      Serial.print(" interval_ms=");
+      Serial.print(doc["fire_interval_ms"].as<unsigned long>());
+    }
+    Serial.println();
+    commandFire("MQTT", holdMs);
     return;
   }
 
