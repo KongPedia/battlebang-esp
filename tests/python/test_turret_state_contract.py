@@ -18,6 +18,7 @@ class FireState(Enum):
 
 
 FIRE_KEEPALIVE_MS = 1000
+FIRE_MAX_HOLD_MS = 60000
 
 
 @dataclass
@@ -82,28 +83,36 @@ class TurretStateSpec:
         self.fire_triggered_for_current_target = False
         return "entered_target"
 
-    def _begin_fire_sequence(self) -> None:
+    @staticmethod
+    def normalize_fire_hold_ms(requested_hold_ms: int | None = None) -> int:
+        if requested_hold_ms is None or requested_hold_ms <= 0:
+            return FIRE_KEEPALIVE_MS
+        return min(FIRE_MAX_HOLD_MS, max(FIRE_KEEPALIVE_MS, requested_hold_ms))
+
+    def _begin_fire_sequence(self, *, hold_ms: int = FIRE_KEEPALIVE_MS) -> None:
         self.post_fire_mode = Mode.HOLD if self.mode == Mode.IDLE else self.mode
         self.fire_state = FireState.SPINNING
-        self.fire_keepalive_until_ms = self.now_ms + FIRE_KEEPALIVE_MS
+        self.fire_keepalive_until_ms = self.now_ms + self.normalize_fire_hold_ms(hold_ms)
         self.fire_restart_requested = False
 
-    def command_fire(self, *, aim_reached: bool = True) -> str:
+    def command_fire(self, *, aim_reached: bool = True, hold_ms: int | None = None) -> str:
         if self.mode == Mode.DEAD:
             return "ignored_in_dead_mode"
 
+        normalized_hold_ms = self.normalize_fire_hold_ms(hold_ms)
+
         if self.fire_state == FireState.SPINNING:
-            self.fire_keepalive_until_ms = self.now_ms + FIRE_KEEPALIVE_MS
+            self.fire_keepalive_until_ms = self.now_ms + normalized_hold_ms
             return "keepalive_refreshed"
 
         if self.fire_state == FireState.SHUTTING_DOWN:
-            self.fire_keepalive_until_ms = self.now_ms + FIRE_KEEPALIVE_MS
+            self.fire_keepalive_until_ms = self.now_ms + normalized_hold_ms
             self.fire_restart_requested = True
             return "restart_queued"
 
         self.manual_fire_queued = False
         self.fire_triggered_for_current_target = True
-        self._begin_fire_sequence()
+        self._begin_fire_sequence(hold_ms=normalized_hold_ms)
         return "started_immediately"
 
     def on_fire_keepalive_expired(self) -> str:
@@ -180,6 +189,26 @@ def test_fire_keepalive_refreshes_while_firing() -> None:
     assert result == "keepalive_refreshed"
     assert turret.fire_keepalive_until_ms == turret.now_ms + FIRE_KEEPALIVE_MS
     assert turret.fire_keepalive_until_ms > first_deadline
+
+
+def test_fire_accepts_duration_hold_from_mqtt_payload() -> None:
+    turret = TurretStateSpec(mode=Mode.TARGET)
+
+    result = turret.command_fire(hold_ms=5590)
+
+    assert result == "started_immediately"
+    assert turret.fire_keepalive_until_ms == turret.now_ms + 5590
+
+
+def test_fire_duration_is_bounded_to_safe_range() -> None:
+    turret = TurretStateSpec(mode=Mode.TARGET)
+
+    turret.command_fire(hold_ms=100)
+    assert turret.fire_keepalive_until_ms == turret.now_ms + FIRE_KEEPALIVE_MS
+
+    turret = TurretStateSpec(mode=Mode.TARGET)
+    turret.command_fire(hold_ms=120000)
+    assert turret.fire_keepalive_until_ms == turret.now_ms + FIRE_MAX_HOLD_MS
 
 
 def test_fire_does_not_auto_return_to_idle_after_target_mode() -> None:
