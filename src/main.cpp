@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <FastLED.h>
-#include <string.h>
 #include "BluetoothSerial.h"
 
 // ================== Bluetooth ==================
@@ -11,6 +10,22 @@ static const char* BT_NAME = "ESP32_HP_SERVO";
 static const int UART_RX_PIN = 16;
 static const int UART_TX_PIN = 17;
 static const uint32_t UART_BAUD = 115200;
+
+// ESP -> Jetson: newline-delimited numeric HP only.
+// Jetson -> ESP commands.
+constexpr char CMD_JETSON_FIRE = '1';
+constexpr char CMD_JETSON_RESET_HP = '2';
+
+// USB/BT Serial Monitor commands.
+constexpr char CMD_DAMAGE_T1 = 'q';
+constexpr char CMD_DAMAGE_T2 = 'w';
+constexpr char CMD_LOCAL_FIRE = 'f';
+
+// HP/game tuning.
+constexpr int HP_MAX = 3000;
+constexpr int HP_PER_LAP = 1000;
+constexpr int HP_DAMAGE_PER_HIT = 200;
+bool isDead = false;
 
 // ================== LED ==================
 #define LED_PIN     4
@@ -31,7 +46,7 @@ constexpr int T2_AO = 35;
 
 // ================== TEST ==================
 constexpr int BOOT_BTN = 0;
-constexpr uint16_t FAKE_PEAK = 3000;
+constexpr int BOOT_BUTTON_DAMAGE = HP_DAMAGE_PER_HIT;
 
 // ================== RELAY ==================
 const int RELAY1_PIN = 22;
@@ -48,6 +63,7 @@ static void relayOff() {
 constexpr int SERVO_PIN = 18;
 constexpr int SERVO_PWM_FREQ = 50;
 constexpr int SERVO_PWM_RES  = 16;
+constexpr int SERVO_PWM_CHANNEL = 0;
 
 static uint32_t usToDuty(int us) {
   us = constrain(us, 500, 2400);
@@ -57,8 +73,23 @@ static int angleToUs(int angle) {
   angle = constrain(angle, 0, 180);
   return map(angle, 0, 180, 500, 2400);
 }
+static void servoAttachPwm() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(SERVO_PIN, SERVO_PWM_FREQ, SERVO_PWM_RES);
+#else
+  ledcSetup(SERVO_PWM_CHANNEL, SERVO_PWM_FREQ, SERVO_PWM_RES);
+  ledcAttachPin(SERVO_PIN, SERVO_PWM_CHANNEL);
+#endif
+}
+static void servoWriteDuty(uint32_t duty) {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcWrite(SERVO_PIN, duty);
+#else
+  ledcWrite(SERVO_PWM_CHANNEL, duty);
+#endif
+}
 static void servoWriteAngle(int angle) {
-  ledcWrite(SERVO_PIN, usToDuty(angleToUs(angle)));
+  servoWriteDuty(usToDuty(angleToUs(angle)));
 }
 
 constexpr int FIRE_POS_A = 55;
@@ -111,6 +142,7 @@ static bool isFiring() {
 static void startFireSequence() {
   uint32_t now = millis();
 
+  if (isDead) return;
   if (isFiring()) return;
   if (now - lastFireStartMs < FIRE_COOLDOWN_MS) return;
 
@@ -164,8 +196,6 @@ static void updateFireSequence() {
 }
 
 // ================== HP ==================
-constexpr int HP_MAX = 3000;
-constexpr int HP_PER_LAP = 1000;
 int hp = HP_MAX;
 
 bool blinkMask[NUM_LEDS] = {false};
@@ -173,7 +203,6 @@ bool blinkOn = false;
 uint32_t lastBlinkMs = 0;
 constexpr uint32_t BLINK_MS = 250;
 
-bool isDead = false;
 uint32_t lastDeadBlinkMs = 0;
 constexpr uint32_t DEAD_BLINK_MS = 300;
 bool deadOn = false;
@@ -186,8 +215,8 @@ constexpr uint32_t SAMPLE_INTERVAL_US = 1000;
 constexpr int      CAPTURE_SAMPLES    = 200;
 constexpr uint16_t HIT_THRESHOLD      = 4000;
 
-constexpr int DMG_T1 = 300;
-constexpr int DMG_T2 = 300;
+constexpr int DMG_T1 = HP_DAMAGE_PER_HIT;
+constexpr int DMG_T2 = HP_DAMAGE_PER_HIT;
 
 volatile bool t1Flag = false;
 volatile bool t2Flag = false;
@@ -346,8 +375,11 @@ static void applyDamage(int dmg) {
     for (int i = newLit; i < NUM_LEDS; i++) blinkMask[i] = true;
   }
 
-  sendHpToJetson();
-  if (hp == 0) setDeadMode();
+  if (hp == 0) {
+    setDeadMode();
+  } else {
+    sendHpToJetson();
+  }
 
   ledsDirty = true;
 }
@@ -361,34 +393,50 @@ static void handleTargetHit(int targetId, uint16_t peak) {
 }
 
 // ================== Input ==================
-static void handleImmediateChar(char c, bool allowReset) {
+static char normalizeCommandChar(char c) {
   if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  return c;
+}
 
-  if (c == 'q') { applyDamage(300); return; }
-  if (c == 'w') { applyDamage(300);  return; }
-  if (allowReset && c == 'r') { resetAll(); return; }
-  if (c == 'f') { startFireSequence(); return; }
+static bool isIgnoredCommandChar(char c) {
+  return c == '\r' || c == '\n' || c == ' ' || c == '\t';
+}
+
+static void handleImmediateChar(char c) {
+  c = normalizeCommandChar(c);
+
+  if (c == CMD_DAMAGE_T1) { applyDamage(DMG_T1); return; }
+  if (c == CMD_DAMAGE_T2) { applyDamage(DMG_T2); return; }
+  if (c == CMD_LOCAL_FIRE) { startFireSequence(); return; }
+}
+
+static void handleJetsonChar(char c) {
+  c = normalizeCommandChar(c);
+
+  if (c == CMD_JETSON_FIRE) { startFireSequence(); return; }
+  if (c == CMD_JETSON_RESET_HP) { resetAll(); return; }
 }
 
 static void pollCommands() {
-  // Jetson: fire only
+  // Jetson: fire + HP reset/recovery
   while (Serial2.available() > 0) {
     char c = (char)Serial2.read();
-    if (c == '1') startFireSequence();
+    if (isIgnoredCommandChar(c)) continue;
+    handleJetsonChar(c);
   }
 
   // USB: immediate
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
-    if (c == '\r' || c == '\n' || c == ' ' || c == '\t') continue;
-    handleImmediateChar(c, true);
+    if (isIgnoredCommandChar(c)) continue;
+    handleImmediateChar(c);
   }
 
   // Bluetooth: immediate
   while (SerialBT.available() > 0) {
     char c = (char)SerialBT.read();
-    if (c == '\r' || c == '\n' || c == ' ' || c == '\t') continue;
-    handleImmediateChar(c, true);
+    if (isIgnoredCommandChar(c)) continue;
+    handleImmediateChar(c);
   }
 }
 
@@ -397,6 +445,45 @@ static void systemTickLite() {
   updateFireSequence();
   renderLedsToBuffer();
   ledShowTick();
+}
+
+static uint16_t samplePiezoPeak(int analogPin) {
+  uint16_t peak = 0;
+  if (POST_DELAY_MS) delay(POST_DELAY_MS);
+
+  uint32_t tStartUs = micros();
+  for (int i = 0; i < CAPTURE_SAMPLES; i++) {
+    uint32_t targetUs = tStartUs + (uint32_t)i * SAMPLE_INTERVAL_US;
+    while ((int32_t)(micros() - targetUs) < 0) {
+      systemTickLite();
+      yield();
+    }
+    uint16_t v = analogRead(analogPin);
+    if (v > peak) peak = v;
+    systemTickLite();
+  }
+  return peak;
+}
+
+static void handlePendingTargetFlag(
+  volatile bool& flag,
+  uint32_t& lastEventMs,
+  uint32_t now,
+  int targetId,
+  int analogPin
+) {
+  if (!flag) return;
+
+  noInterrupts();
+  bool pending = flag;
+  flag = false;
+  interrupts();
+
+  if (!pending) return;
+  if (now - lastEventMs < COOLDOWN_MS) return;
+  lastEventMs = now;
+
+  handleTargetHit(targetId, samplePiezoPeak(analogPin));
 }
 
 // ================== HP heartbeat ==================
@@ -420,7 +507,7 @@ void setup() {
   pinMode(RELAY2_PIN, OUTPUT);
   relayOff();
 
-  ledcAttach(SERVO_PIN, SERVO_PWM_FREQ, SERVO_PWM_RES);
+  servoAttachPwm();
   servoCur = 125;
   servoTarget = 125;
   servoWriteAngle(servoCur);
@@ -434,6 +521,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(T1_DO), isrT1, RISING);
   attachInterrupt(digitalPinToInterrupt(T2_DO), isrT2, RISING);
 
+  // ESP32 EN/RESET button restarts firmware; reset HP explicitly on boot.
+  hp = HP_MAX;
+  isDead = false;
   clearBlinkMask();
   ledsDirty = true;
   renderLedsToBuffer();
@@ -444,8 +534,9 @@ void setup() {
   Serial.printf("[PIN] UART2 RX=%d TX=%d | LED=%d | T1_DO=%d T1_AO=%d | T2_DO=%d T2_AO=%d | SERVO=%d | RELAY1=%d RELAY2=%d\n",
                 UART_RX_PIN, UART_TX_PIN, LED_PIN, T1_DO, T1_AO, T2_DO, T2_AO, SERVO_PIN, RELAY1_PIN, RELAY2_PIN);
 
-  Serial.println("USB/BT CMD: q(-100), w(-50), r(reset), f(fire)");
-  Serial.println("Jetson BYTE: '1'=fire only");
+  Serial.printf("USB/BT CMD: %c(-%d), %c(-%d), %c(fire)\n",
+                CMD_DAMAGE_T1, DMG_T1, CMD_DAMAGE_T2, DMG_T2, CMD_LOCAL_FIRE);
+  Serial.printf("Jetson BYTE: '%c'=fire, '%c'=reset HP/recovery\n", CMD_JETSON_FIRE, CMD_JETSON_RESET_HP);
   Serial.print("Bluetooth name: ");
   Serial.println(BT_NAME);
 }
@@ -453,12 +544,12 @@ void setup() {
 void loop() {
   uint32_t now = millis();
 
-  // TEST: BOOT 버튼으로 가짜 타격
+  // TEST: BOOT button applies the same damage as one piezo hit.
   static bool bootPrev = true;
   bool bootNow = digitalRead(BOOT_BTN);
   if (bootPrev && !bootNow) {
-    Serial.println("[TEST] BOOT -> fake T1 hit");
-    handleTargetHit(1, FAKE_PEAK);
+    Serial.printf("[TEST] BOOT -> -%d HP\n", BOOT_BUTTON_DAMAGE);
+    applyDamage(BOOT_BUTTON_DAMAGE);
   }
   bootPrev = bootNow;
 
@@ -476,51 +567,8 @@ void loop() {
   static uint32_t t1LastEventMs = 0;
   static uint32_t t2LastEventMs = 0;
 
-  if (t1Flag) {
-    noInterrupts(); t1Flag = false; interrupts();
-    if (now - t1LastEventMs >= COOLDOWN_MS) {
-      t1LastEventMs = now;
-
-      uint16_t peak = 0;
-      if (POST_DELAY_MS) delay(POST_DELAY_MS);
-
-      uint32_t tStartUs = micros();
-      for (int i = 0; i < CAPTURE_SAMPLES; i++) {
-        uint32_t targetUs = tStartUs + (uint32_t)i * SAMPLE_INTERVAL_US;
-        while ((int32_t)(micros() - targetUs) < 0) {
-          systemTickLite();
-          yield();
-        }
-        uint16_t v = analogRead(T1_AO);
-        if (v > peak) peak = v;
-        systemTickLite();
-      }
-      handleTargetHit(1, peak);
-    }
-  }
-
-  if (t2Flag) {
-    noInterrupts(); t2Flag = false; interrupts();
-    if (now - t2LastEventMs >= COOLDOWN_MS) {
-      t2LastEventMs = now;
-
-      uint16_t peak = 0;
-      if (POST_DELAY_MS) delay(POST_DELAY_MS);
-
-      uint32_t tStartUs = micros();
-      for (int i = 0; i < CAPTURE_SAMPLES; i++) {
-        uint32_t targetUs = tStartUs + (uint32_t)i * SAMPLE_INTERVAL_US;
-        while ((int32_t)(micros() - targetUs) < 0) {
-          systemTickLite();
-          yield();
-        }
-        uint16_t v = analogRead(T2_AO);
-        if (v > peak) peak = v;
-        systemTickLite();
-      }
-      handleTargetHit(2, peak);
-    }
-  }
+  handlePendingTargetFlag(t1Flag, t1LastEventMs, now, 1, T1_AO);
+  handlePendingTargetFlag(t2Flag, t2LastEventMs, now, 2, T2_AO);
 
   delay(1);
 }
