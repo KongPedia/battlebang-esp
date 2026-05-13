@@ -136,6 +136,7 @@ void loop() {
                YAW_DEADBAND,
                YAW_MIN_DRIVE,
                YAW_I_LIMIT,
+               YAW_INVERT_MOTOR,
                yawPrevErrorPseudo,
                yawIntegralPseudo);
 
@@ -145,6 +146,7 @@ void loop() {
                PITCH_DEADBAND,
                PITCH_MIN_DRIVE,
                PITCH_I_LIMIT,
+               PITCH_INVERT_MOTOR,
                pitchPrevErrorPseudo,
                pitchIntegralPseudo);
   }

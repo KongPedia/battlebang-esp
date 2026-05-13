@@ -31,8 +31,8 @@ void clearPendingFireFlags() {
 
 void enterHoldMode() {
   currentMode = MODE_HOLD;
-  yawTargetDeg = yawCurrentDeg;
-  pitchTargetDeg = pitchCurrentDeg;
+  yawTargetDeg = clampYawCommand(yawCurrentDeg);
+  pitchTargetDeg = clampPitchCommand(pitchCurrentDeg);
   resetPidState();
   clearPendingFireFlags();
   Serial.println("=== MODE CHANGE: -> HOLD ===");
@@ -59,8 +59,9 @@ void enterIdleMode() {
   ensureMotionServosAttached("idle");
 #endif
   currentMode = MODE_IDLE;
-  yawTargetDeg = clampf(yawCurrentDeg, IDLE_YAW_MIN, IDLE_YAW_MAX);
-  pitchTargetDeg = clampf(pitchCurrentDeg, IDLE_PITCH_MIN_DEG, IDLE_PITCH_MAX_DEG);
+  yawTargetDeg = clampYawIdleTarget(yawCurrentDeg);
+  pitchTargetDeg = clampPitchIdleTarget(pitchCurrentDeg);
+  resetPidState();
   setIdleSweepDirectionFromCurrentTarget();
   setIdlePitchDirectionFromCurrentTarget();
   clearPendingFireFlags();
@@ -72,9 +73,10 @@ void enterDeadMode() {
   ensureMotionServosAttached("dead");
 #endif
   currentMode = MODE_DEAD;
-  deadYawHoldDeg = yawCurrentDeg;
+  deadYawHoldDeg = clampYawCommand(yawCurrentDeg);
   yawTargetDeg = deadYawHoldDeg;
-  pitchTargetDeg = PITCH_CMD_MAX_DEG;
+  pitchTargetDeg = clampPitchCommand(PITCH_DEAD_DEG);
+  resetPidState();
   clearPendingFireFlags();
   Serial.println("=== MODE CHANGE: -> DEAD ===");
 }
@@ -108,13 +110,13 @@ void updateIdleSweep() {
   if (idleSweepForward) {
     yawTargetDeg += yawDelta;
     if (yawTargetDeg >= IDLE_YAW_MAX) {
-      yawTargetDeg = IDLE_YAW_MAX;
+      yawTargetDeg = clampYawIdleTarget(IDLE_YAW_MAX);
       idleSweepForward = false;
     }
   } else {
     yawTargetDeg -= yawDelta;
     if (yawTargetDeg <= IDLE_YAW_MIN) {
-      yawTargetDeg = IDLE_YAW_MIN;
+      yawTargetDeg = clampYawIdleTarget(IDLE_YAW_MIN);
       idleSweepForward = true;
     }
   }
@@ -123,23 +125,24 @@ void updateIdleSweep() {
   if (idlePitchUp) {
     pitchTargetDeg += pitchDelta;
     if (pitchTargetDeg >= IDLE_PITCH_MAX_DEG) {
-      pitchTargetDeg = IDLE_PITCH_MAX_DEG;
+      pitchTargetDeg = clampPitchIdleTarget(IDLE_PITCH_MAX_DEG);
       idlePitchUp = false;
     }
   } else {
     pitchTargetDeg -= pitchDelta;
     if (pitchTargetDeg <= IDLE_PITCH_MIN_DEG) {
-      pitchTargetDeg = IDLE_PITCH_MIN_DEG;
+      pitchTargetDeg = clampPitchIdleTarget(IDLE_PITCH_MIN_DEG);
       idlePitchUp = true;
     }
   }
 
-  pitchTargetDeg = clampf(pitchTargetDeg, PITCH_CMD_MIN_DEG, PITCH_CMD_MAX_DEG);
+  yawTargetDeg = clampYawIdleTarget(yawTargetDeg);
+  pitchTargetDeg = clampPitchIdleTarget(pitchTargetDeg);
 }
 
 void updateDeadModeTarget() {
-  yawTargetDeg = deadYawHoldDeg;
-  pitchTargetDeg = PITCH_CMD_MAX_DEG;
+  yawTargetDeg = clampYawCommand(deadYawHoldDeg);
+  pitchTargetDeg = clampPitchCommand(PITCH_DEAD_DEG);
 }
 
 void startFireSequence() {
@@ -260,8 +263,8 @@ void applyTargetCommand(float xTargetCm, float yTargetCm, float zTargetCm, const
   yawDeg += TURRET_YAW_OFFSET_DEG;
   pitchDeg += TURRET_PITCH_OFFSET_DEG;
 
-  yawDeg = clampf(yawDeg, -140.0f, 140.0f);
-  pitchDeg = clampf(pitchDeg, PITCH_CMD_MIN_DEG, PITCH_CMD_MAX_DEG);
+  yawDeg = clampYawCommand(yawDeg);
+  pitchDeg = clampPitchCommand(pitchDeg);
 
   yawTargetDeg   = yawDeg;
   pitchTargetDeg = pitchDeg;
