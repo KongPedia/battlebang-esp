@@ -55,3 +55,12 @@
 .env
 .env.local
 *.local
+src/turret/local_secrets.h
+
+.omx/
+.venv-pio/
+.venv-mqtttest/
+.venv-turret-tests/
+
+__pycache__/
+src/turret/upload_targets.toml

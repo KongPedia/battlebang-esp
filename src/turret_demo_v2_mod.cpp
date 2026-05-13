@@ -22,10 +22,26 @@
 
 // ****************************************
 // ===== 터렛 / 타겟 높이 =====    터렛마다 수동 입력
-float x_turret = -300.0f;
-float y_turret = 470.0f;
-float z_turret = 134.5f;
-float z_target = 70.0f;
+#ifndef DEMO_V2_TURRET_X_CM
+#define DEMO_V2_TURRET_X_CM -300.0f
+#endif
+
+#ifndef DEMO_V2_TURRET_Y_CM
+#define DEMO_V2_TURRET_Y_CM 470.0f
+#endif
+
+#ifndef DEMO_V2_TURRET_Z_CM
+#define DEMO_V2_TURRET_Z_CM 134.5f
+#endif
+
+#ifndef DEMO_V2_TARGET_Z_CM
+#define DEMO_V2_TARGET_Z_CM 70.0f
+#endif
+
+float x_turret = DEMO_V2_TURRET_X_CM;
+float y_turret = DEMO_V2_TURRET_Y_CM;
+float z_turret = DEMO_V2_TURRET_Z_CM;
+float z_target = DEMO_V2_TARGET_Z_CM;
 // ****************************************
 
 

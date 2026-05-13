@@ -1,0 +1,25 @@
+{
+  "type": "config",
+  "schema": 1,
+  "config_version": 1,
+  "turret_id": "turret_5",
+  "pose": {
+    "x_cm": -170.0,
+    "y_cm": 190.0,
+    "z_cm": 134.5,
+    "default_target_z_cm": 70.0
+  },
+  "calibration": {
+    "yaw_offset_deg": 0.0,
+    "pitch_offset_deg": 0.0
+  },
+  "wifi": {
+    "ssid": "YOUR_WIFI_SSID",
+    "password": "YOUR_WIFI_PASSWORD"
+  },
+  "mqtt": {
+    "host": "10.2.80.105",
+    "port": 1883,
+    "root": "battlebang"
+  }
+}
