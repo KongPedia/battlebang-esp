@@ -59,6 +59,70 @@ def float_macro(value: object) -> str:
     return f"{text}f"
 
 
+def deep_merge(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def bool_macro(value: object) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return "1" if value != 0 else "0"
+    text = str(value).strip().lower()
+    return "1" if text in {"1", "true", "yes", "y", "on"} else "0"
+
+
+def append_motion_defines(defines: list[tuple[str, str]], config: dict, entry: dict) -> None:
+    motion = deep_merge(config.get("motion_defaults", {}), entry.get("motion", {}))
+
+    axis_macro_prefix = {
+        "yaw": "TURRET_YAW",
+        "pitch": "TURRET_PITCH",
+    }
+    int_fields = {
+        "adc_low_cut": "ADC_LOW_CUT",
+        "adc_high_cut": "ADC_HIGH_CUT",
+    }
+    float_fields = {
+        "cmd_min_deg": "CMD_MIN_DEG",
+        "cmd_max_deg": "CMD_MAX_DEG",
+        "idle_min_deg": "IDLE_MIN_DEG",
+        "idle_max_deg": "IDLE_MAX_DEG",
+        "idle_speed_deg_per_sec": "IDLE_SPEED_DEG_PER_SEC",
+        "min_drive_us": "MIN_DRIVE_US",
+    }
+    bool_fields = {
+        "invert_motor": "INVERT_MOTOR",
+    }
+
+    for axis, prefix in axis_macro_prefix.items():
+        axis_config = motion.get(axis, {})
+        if not isinstance(axis_config, dict):
+            continue
+
+        for json_key, macro_suffix in int_fields.items():
+            if json_key in axis_config:
+                defines.append((f"{prefix}_{macro_suffix}", str(int(axis_config[json_key]))))
+
+        for json_key, macro_suffix in float_fields.items():
+            if json_key in axis_config:
+                defines.append((f"{prefix}_{macro_suffix}", float_macro(axis_config[json_key])))
+
+        for json_key, macro_suffix in bool_fields.items():
+            if json_key in axis_config:
+                defines.append((f"{prefix}_{macro_suffix}", bool_macro(axis_config[json_key])))
+
+    pitch_config = motion.get("pitch", {})
+    if isinstance(pitch_config, dict) and "dead_deg" in pitch_config:
+        defines.append(("TURRET_PITCH_DEAD_DEG", float_macro(pitch_config["dead_deg"])))
+
+
 if not CONFIG_PATH.exists():
     print(f"[turret_config] missing config: {CONFIG_PATH}")
     Exit(1)
@@ -102,6 +166,8 @@ for json_key, macro_name in optional_float_macros.items():
     if json_key in entry:
         defines.append((macro_name, float_macro(entry[json_key])))
 
+append_motion_defines(defines, config, entry)
+
 # Optional build-time injection from shell environment. local_secrets.h still works
 # when these are not set. Example:
 #   TURRET_WIFI_SSID=... TURRET_WIFI_PASSWORD=... TURRET_MQTT_HOST=... pio run -e esp32dev_turret_5
@@ -136,3 +202,15 @@ print(
     f"({entry['x_cm']}, {entry['y_cm']}, {entry['z_cm']}) cm, "
     f"default_target_z={entry['default_target_z_cm']} cm"
 )
+
+motion_for_log = deep_merge(config.get("motion_defaults", {}), entry.get("motion", {}))
+pitch_for_log = motion_for_log.get("pitch", {}) if isinstance(motion_for_log, dict) else {}
+if isinstance(pitch_for_log, dict) and pitch_for_log:
+    print(
+        "[turret_config] "
+        f"pitch motion: cmd=[{pitch_for_log.get('cmd_min_deg', 'default')}, "
+        f"{pitch_for_log.get('cmd_max_deg', 'default')}] deg, "
+        f"idle=[{pitch_for_log.get('idle_min_deg', 'default')}, "
+        f"{pitch_for_log.get('idle_max_deg', 'default')}] deg, "
+        f"dead={pitch_for_log.get('dead_deg', 'default')} deg"
+    )

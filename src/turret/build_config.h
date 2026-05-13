@@ -83,6 +83,82 @@
 #define TURRET_PITCH_OFFSET_DEG 0.0f
 #endif
 
+#ifndef TURRET_YAW_ADC_LOW_CUT
+#define TURRET_YAW_ADC_LOW_CUT 300
+#endif
+
+#ifndef TURRET_YAW_ADC_HIGH_CUT
+#define TURRET_YAW_ADC_HIGH_CUT 3700
+#endif
+
+#ifndef TURRET_YAW_CMD_MIN_DEG
+#define TURRET_YAW_CMD_MIN_DEG -140.0f
+#endif
+
+#ifndef TURRET_YAW_CMD_MAX_DEG
+#define TURRET_YAW_CMD_MAX_DEG 140.0f
+#endif
+
+#ifndef TURRET_YAW_IDLE_MIN_DEG
+#define TURRET_YAW_IDLE_MIN_DEG -70.0f
+#endif
+
+#ifndef TURRET_YAW_IDLE_MAX_DEG
+#define TURRET_YAW_IDLE_MAX_DEG 70.0f
+#endif
+
+#ifndef TURRET_YAW_IDLE_SPEED_DEG_PER_SEC
+#define TURRET_YAW_IDLE_SPEED_DEG_PER_SEC 25.0f
+#endif
+
+#ifndef TURRET_YAW_INVERT_MOTOR
+#define TURRET_YAW_INVERT_MOTOR 0
+#endif
+
+#ifndef TURRET_YAW_MIN_DRIVE_US
+#define TURRET_YAW_MIN_DRIVE_US 85.0f
+#endif
+
+#ifndef TURRET_PITCH_ADC_LOW_CUT
+#define TURRET_PITCH_ADC_LOW_CUT 1700
+#endif
+
+#ifndef TURRET_PITCH_ADC_HIGH_CUT
+#define TURRET_PITCH_ADC_HIGH_CUT 2400
+#endif
+
+#ifndef TURRET_PITCH_CMD_MIN_DEG
+#define TURRET_PITCH_CMD_MIN_DEG (((TURRET_PITCH_ADC_LOW_CUT - 2050.0f) * 180.0f) / (3110.0f - 2050.0f))
+#endif
+
+#ifndef TURRET_PITCH_CMD_MAX_DEG
+#define TURRET_PITCH_CMD_MAX_DEG (((TURRET_PITCH_ADC_HIGH_CUT - 2050.0f) * 180.0f) / (3110.0f - 2050.0f))
+#endif
+
+#ifndef TURRET_PITCH_IDLE_MIN_DEG
+#define TURRET_PITCH_IDLE_MIN_DEG -10.0f
+#endif
+
+#ifndef TURRET_PITCH_IDLE_MAX_DEG
+#define TURRET_PITCH_IDLE_MAX_DEG 0.0f
+#endif
+
+#ifndef TURRET_PITCH_IDLE_SPEED_DEG_PER_SEC
+#define TURRET_PITCH_IDLE_SPEED_DEG_PER_SEC 12.0f
+#endif
+
+#ifndef TURRET_PITCH_DEAD_DEG
+#define TURRET_PITCH_DEAD_DEG TURRET_PITCH_CMD_MAX_DEG
+#endif
+
+#ifndef TURRET_PITCH_INVERT_MOTOR
+#define TURRET_PITCH_INVERT_MOTOR 0
+#endif
+
+#ifndef TURRET_PITCH_MIN_DRIVE_US
+#define TURRET_PITCH_MIN_DRIVE_US 75.0f
+#endif
+
 #ifndef TURRET_WIFI_SSID
 #define TURRET_WIFI_SSID "YOUR_WIFI_SSID"
 #endif
@@ -211,12 +287,27 @@
 #define TURRET_SERIAL_PRINT_INTERVAL_MS 1000
 #endif
 
+struct TurretAxisMotionConfig {
+  int adcLowCut;
+  int adcHighCut;
+  float cmdMinDeg;
+  float cmdMaxDeg;
+  float idleMinDeg;
+  float idleMaxDeg;
+  float idleSpeedDegPerSec;
+  bool invertMotor;
+  float minDriveUs;
+};
+
 struct TurretBuildConfig {
   const char* turretId;
   float xTurretCm;
   float yTurretCm;
   float zTurretCm;
   float defaultTargetZCm;
+  TurretAxisMotionConfig yawMotion;
+  TurretAxisMotionConfig pitchMotion;
+  float pitchDeadDeg;
   const char* wifiSsid;
   const char* wifiPassword;
   const char* mqttHost;
@@ -242,6 +333,29 @@ static inline TurretBuildConfig makeTurretBuildConfig() {
     TURRET_Y_CM,
     TURRET_Z_CM,
     TURRET_DEFAULT_TARGET_Z_CM,
+    {
+      TURRET_YAW_ADC_LOW_CUT,
+      TURRET_YAW_ADC_HIGH_CUT,
+      TURRET_YAW_CMD_MIN_DEG,
+      TURRET_YAW_CMD_MAX_DEG,
+      TURRET_YAW_IDLE_MIN_DEG,
+      TURRET_YAW_IDLE_MAX_DEG,
+      TURRET_YAW_IDLE_SPEED_DEG_PER_SEC,
+      TURRET_YAW_INVERT_MOTOR != 0,
+      TURRET_YAW_MIN_DRIVE_US,
+    },
+    {
+      TURRET_PITCH_ADC_LOW_CUT,
+      TURRET_PITCH_ADC_HIGH_CUT,
+      TURRET_PITCH_CMD_MIN_DEG,
+      TURRET_PITCH_CMD_MAX_DEG,
+      TURRET_PITCH_IDLE_MIN_DEG,
+      TURRET_PITCH_IDLE_MAX_DEG,
+      TURRET_PITCH_IDLE_SPEED_DEG_PER_SEC,
+      TURRET_PITCH_INVERT_MOTOR != 0,
+      TURRET_PITCH_MIN_DRIVE_US,
+    },
+    TURRET_PITCH_DEAD_DEG,
     TURRET_WIFI_SSID,
     TURRET_WIFI_PASSWORD,
     TURRET_MQTT_HOST,
