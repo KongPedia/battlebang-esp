@@ -149,11 +149,28 @@ if entry is None:
     print(f"unknown turret: {turret_id}", file=sys.stderr)
     raise SystemExit(2)
 
+def deep_merge(base, override):
+    merged = dict(base or {})
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
 print(f"turret: {turret_id}")
 print(f"configured: {entry.get('configured', False)}")
 for key in ('x_cm', 'y_cm', 'z_cm', 'default_target_z_cm', 'pitch_offset_deg', 'yaw_offset_deg'):
     if key in entry:
         print(f"{key}: {entry[key]}")
+motion = deep_merge(data.get('motion_defaults', {}), entry.get('motion', {}))
+for axis in ('yaw', 'pitch'):
+    axis_motion = motion.get(axis, {}) if isinstance(motion, dict) else {}
+    if not isinstance(axis_motion, dict) or not axis_motion:
+        continue
+    keys = ('cmd_min_deg', 'cmd_max_deg', 'idle_min_deg', 'idle_max_deg', 'idle_speed_deg_per_sec', 'dead_deg', 'invert_motor')
+    summary = ', '.join(f"{key}={axis_motion[key]}" for key in keys if key in axis_motion)
+    print(f"{axis}_motion: {summary}")
 print(f"local_secrets: {'present' if secrets_path.exists() else 'missing'}")
 PY
 }
