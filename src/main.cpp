@@ -213,7 +213,13 @@ constexpr uint32_t COOLDOWN_MS     = 300;
 constexpr uint32_t POST_DELAY_MS      = 0;
 constexpr uint32_t SAMPLE_INTERVAL_US = 1000;
 constexpr int      CAPTURE_SAMPLES    = 200;
-constexpr uint16_t HIT_THRESHOLD      = 4000;
+// Use the analog output (AO) for hit detection. The digital output (DO) from the
+// piezo module still works as a secondary trigger, but weak hits through the PLA
+// shell can raise AO without crossing the module's DO comparator threshold.
+constexpr uint16_t HIT_THRESHOLD      = 1500;
+constexpr uint16_t HIT_REARM_THRESHOLD = 500;
+constexpr bool     PIEZO_DEBUG       = true;
+constexpr uint32_t PIEZO_RAW_DEBUG_MS = 500;
 
 constexpr int DMG_T1 = HP_DAMAGE_PER_HIT;
 constexpr int DMG_T2 = HP_DAMAGE_PER_HIT;
@@ -385,11 +391,19 @@ static void applyDamage(int dmg) {
 }
 
 static void handleTargetHit(int targetId, uint16_t peak) {
-  if (hp == 0) return;
-  if (peak <= HIT_THRESHOLD) return;
+  if (hp == 0) {
+    if (PIEZO_DEBUG) Serial.printf("[PIEZO] T%d ignored dead peak=%u threshold=%u\n", targetId, peak, HIT_THRESHOLD);
+    return;
+  }
+  if (peak <= HIT_THRESHOLD) {
+    if (PIEZO_DEBUG) Serial.printf("[PIEZO] T%d below threshold peak=%u threshold=%u\n", targetId, peak, HIT_THRESHOLD);
+    return;
+  }
 
   int dmg = (targetId == 1) ? DMG_T1 : DMG_T2;
+  int oldHp = hp;
   applyDamage(dmg);
+  if (PIEZO_DEBUG) Serial.printf("[HIT] T%d peak=%u threshold=%u dmg=%d hp=%d->%d\n", targetId, peak, HIT_THRESHOLD, dmg, oldHp, hp);
 }
 
 // ================== Input ==================
@@ -480,10 +494,49 @@ static void handlePendingTargetFlag(
   interrupts();
 
   if (!pending) return;
-  if (now - lastEventMs < COOLDOWN_MS) return;
+  if (now - lastEventMs < COOLDOWN_MS) {
+    if (PIEZO_DEBUG) Serial.printf("[PIEZO] T%d DO event ignored cooldown dt=%lu ms\n", targetId, (unsigned long)(now - lastEventMs));
+    return;
+  }
   lastEventMs = now;
 
-  handleTargetHit(targetId, samplePiezoPeak(analogPin));
+  uint16_t peak = samplePiezoPeak(analogPin);
+  if (PIEZO_DEBUG) Serial.printf("[PIEZO] T%d DO event peak=%u threshold=%u\n", targetId, peak, HIT_THRESHOLD);
+  handleTargetHit(targetId, peak);
+}
+
+static void pollAnalogTargetHit(
+  uint32_t& lastEventMs,
+  bool& armed,
+  uint32_t now,
+  int targetId,
+  int analogPin
+) {
+  uint16_t raw = analogRead(analogPin);
+
+  if (!armed) {
+    if (raw <= HIT_REARM_THRESHOLD) armed = true;
+    return;
+  }
+
+  if (raw <= HIT_THRESHOLD) return;
+
+  armed = false;
+  if (now - lastEventMs < COOLDOWN_MS) {
+    if (PIEZO_DEBUG) {
+      Serial.printf("[PIEZO] T%d AO trigger ignored cooldown raw=%u dt=%lu ms\n",
+                    targetId, raw, (unsigned long)(now - lastEventMs));
+    }
+    return;
+  }
+  lastEventMs = now;
+
+  uint16_t peak = max(raw, samplePiezoPeak(analogPin));
+  if (PIEZO_DEBUG) {
+    Serial.printf("[PIEZO] T%d AO trigger raw=%u peak=%u threshold=%u rearm=%u\n",
+                  targetId, raw, peak, HIT_THRESHOLD, HIT_REARM_THRESHOLD);
+  }
+  handleTargetHit(targetId, peak);
 }
 
 // ================== HP heartbeat ==================
@@ -533,6 +586,8 @@ void setup() {
 
   Serial.printf("[PIN] UART2 RX=%d TX=%d | LED=%d | T1_DO=%d T1_AO=%d | T2_DO=%d T2_AO=%d | SERVO=%d | RELAY1=%d RELAY2=%d\n",
                 UART_RX_PIN, UART_TX_PIN, LED_PIN, T1_DO, T1_AO, T2_DO, T2_AO, SERVO_PIN, RELAY1_PIN, RELAY2_PIN);
+  Serial.printf("[PIEZO] AO threshold=%u rearm=%u debug=%s raw_period_ms=%lu\n",
+                HIT_THRESHOLD, HIT_REARM_THRESHOLD, PIEZO_DEBUG ? "on" : "off", (unsigned long)PIEZO_RAW_DEBUG_MS);
 
   Serial.printf("USB/BT CMD: %c(-%d), %c(-%d), %c(fire)\n",
                 CMD_DAMAGE_T1, DMG_T1, CMD_DAMAGE_T2, DMG_T2, CMD_LOCAL_FIRE);
@@ -566,9 +621,22 @@ void loop() {
 
   static uint32_t t1LastEventMs = 0;
   static uint32_t t2LastEventMs = 0;
+  static bool t1AnalogArmed = true;
+  static bool t2AnalogArmed = true;
+
+  pollAnalogTargetHit(t1LastEventMs, t1AnalogArmed, now, 1, T1_AO);
+  pollAnalogTargetHit(t2LastEventMs, t2AnalogArmed, now, 2, T2_AO);
 
   handlePendingTargetFlag(t1Flag, t1LastEventMs, now, 1, T1_AO);
   handlePendingTargetFlag(t2Flag, t2LastEventMs, now, 2, T2_AO);
+
+  static uint32_t lastPiezoDebugMs = 0;
+  if (PIEZO_DEBUG && now - lastPiezoDebugMs >= PIEZO_RAW_DEBUG_MS) {
+    lastPiezoDebugMs = now;
+    Serial.printf("[PIEZO RAW] T1 do=%d ao=%u | T2 do=%d ao=%u | hp=%d\n",
+                  digitalRead(T1_DO), (unsigned)analogRead(T1_AO),
+                  digitalRead(T2_DO), (unsigned)analogRead(T2_AO), hp);
+  }
 
   delay(1);
 }
