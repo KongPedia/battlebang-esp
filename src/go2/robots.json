@@ -15,7 +15,7 @@
     "t1_ao_pin": 34,
     "t2_do_pin": 26,
     "t2_ao_pin": 35,
-    "mqtt_topic_prefix": "battlebang/esp"
+    "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
     "go2_01": {

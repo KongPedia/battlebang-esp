@@ -57,9 +57,9 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 예:
 
 ```cpp
-#define ESP_WIFI_SSID "kongstudios"
+#define ESP_WIFI_SSID "abcdefg"
 #define ESP_WIFI_PASSWORD "********"
-#define ESP_MQTT_HOST "10.2.80.80"
+#define ESP_MQTT_HOST "192.168.123.1"
 #define ESP_MQTT_PORT 1883
 #define ESP_MQTT_TOPIC_PREFIX "battlebang/esp"
 ```
@@ -75,7 +75,7 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 
 ## 3. ESP 연결 후 USB 포트 확인
 
-ESP32를 Mac/PC에 USB로 연결한 뒤 아래 명령을 실행합니다.
+ESP32를 PC에 USB로 연결한 뒤 아래 명령을 실행합니다.
 
 ```bash
 python3 scripts/go2_flash.py list-ports

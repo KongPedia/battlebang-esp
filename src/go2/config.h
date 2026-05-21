@@ -155,7 +155,7 @@
 #endif
 
 #ifndef BATTLEBANG_MQTT_TOPIC_PREFIX
-#define BATTLEBANG_MQTT_TOPIC_PREFIX "battlebang/esp"
+#define BATTLEBANG_MQTT_TOPIC_PREFIX "battlebang/hit"
 #endif
 
 #ifndef BATTLEBANG_HP_MAX
