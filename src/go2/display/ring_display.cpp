@@ -151,7 +151,7 @@ void RingDisplay::renderRemote(uint32_t now) {
   } else if (remoteMode_ == "stale") {
     fillColor = CRGB::Orange;
   } else if (remoteMode_ == "idle") {
-    fillColor = CRGB(0, 40, 0);
+    fillColor = CRGB::Green;
   }
 
   for (int i = 0; i < NUM_LEDS; i++) leds_[i] = (i < lit) ? fillColor : CRGB::Black;

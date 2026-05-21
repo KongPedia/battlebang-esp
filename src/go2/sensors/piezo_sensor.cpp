@@ -19,8 +19,8 @@ struct SensorGateState {
 SensorGateState t1Gate;
 SensorGateState t2Gate;
 
-uint16_t samplePiezoPeak(int analogPin, SystemTickFn systemTick) {
-  uint16_t peak = 0;
+uint16_t samplePiezoPeak(int analogPin, SystemTickFn systemTick, uint16_t initialPeak = 0) {
+  uint16_t peak = initialPeak;
   if (POST_DELAY_MS) delay(POST_DELAY_MS);
 
   uint32_t startUs = micros();
@@ -57,7 +57,12 @@ void rearmWhenQuiet(volatile bool& flag, SensorGateState& gate, uint32_t now, in
   if (now - gate.lastRearmCheckMs < HIT_REARM_CHECK_MS) return;
   gate.lastRearmCheckMs = now;
 
-  bool quiet = digitalRead(digitalPin) == LOW && analogRead(analogPin) < HIT_REARM_THRESHOLD;
+  // Treat the analog piezo input as the source of truth for re-arming. The
+  // digital comparator output can be absent, disconnected, or calibrated
+  // differently per sensor board. If we require DO=LOW here, a bad/stuck DO
+  // path can make both MQTT hit publishing and local fallback look dead.
+  (void)digitalPin;
+  bool quiet = analogRead(analogPin) < HIT_REARM_THRESHOLD;
   if (!quiet) {
     gate.quietStartedMs = 0;
     clearFlag(flag);
@@ -81,11 +86,14 @@ void handleSensor(volatile bool& flag, SensorGateState& gate, uint32_t now, int 
                   int analogPin, SystemTickFn systemTick, HitCallback onHit) {
   rearmWhenQuiet(flag, gate, now, digitalPin, analogPin);
 
-  if (!popFlag(flag)) return;
+  bool digitalTriggered = popFlag(flag);
+  uint16_t triggerPeak = analogRead(analogPin);
+  bool analogTriggered = triggerPeak > HIT_THRESHOLD;
+  if (!digitalTriggered && !analogTriggered) return;
   if (!gate.armed) return;
   if (now - gate.lastEventMs < HIT_COOLDOWN_MS) return;
 
-  uint16_t peak = samplePiezoPeak(analogPin, systemTick);
+  uint16_t peak = samplePiezoPeak(analogPin, systemTick, triggerPeak);
   if (peak <= HIT_THRESHOLD) return;
 
   gate.lastEventMs = now;
