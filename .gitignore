@@ -55,7 +55,11 @@
 .env
 .env.local
 *.local
+src/local_secrets.h
+src/go2/local_secrets.h
+src/go2/upload_targets.toml
 src/turret/local_secrets.h
+src/turret/upload_targets.toml
 src/nIxo/local_secrets.h
 
 .omx/
@@ -64,4 +68,3 @@ src/nIxo/local_secrets.h
 .venv-turret-tests/
 
 __pycache__/
-src/turret/upload_targets.toml

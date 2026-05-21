@@ -28,7 +28,7 @@
 - 참고 비교: `src/turret_demo.cpp`
 - 현재 운영 가정: `src/turret_demo_v2_mod.cpp`를 Arduino IDE에서 터렛용 스케치처럼 사용
 
-현재 저장소의 기본 README / `src/main.cpp`는 다른 펌웨어 흐름을 설명하고 있으므로,  
+현재 저장소의 기본 README / `src/go2/main.cpp`는 Go2 피격 펌웨어 흐름을 설명하고 있으므로,
 **turret v2 문서는 `turret_demo_v2_mod.cpp`를 별도 turret 제어 소스로 보고 해석**해야 합니다.
 
 `turret_demo_v2_mod.cpp`가 `turret_demo.cpp`와 다른 점:
