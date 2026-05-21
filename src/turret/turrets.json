@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "notes": "Per-turret install coordinates in centimeters. Only turret_5 is configured right now; fill the rest before building them.",
+  "notes": "Per-turret install coordinates and motion calibration in centimeters/degrees. Turrets 1-5 are configured; tune motion overrides per physical unit after bench calibration.",
   "turrets": {
     "turret_1": {
       "configured": true,
@@ -28,15 +28,71 @@
       "x_cm": -170.0,
       "y_cm": 190.0,
       "z_cm": 134.5,
-      "default_target_z_cm": 70.0
+      "default_target_z_cm": 70.0,
+      "pitch_offset_deg": -60.0,
+      "motion": {
+        "pitch": {
+          "cmd_min_deg": -60.0,
+          "idle_min_deg": -55.0,
+          "idle_max_deg": -35.0
+        }
+      }
     },
     "turret_5": {
       "configured": true,
       "x_cm": -170.0,
       "y_cm": 190.0,
       "z_cm": 134.5,
-      "default_target_z_cm": 70.0
+      "default_target_z_cm": 70.0,
+      "pitch_offset_deg": -70.0,
+      "motion": {
+        "pitch": {
+          "cmd_min_deg": -60.0,
+          "idle_min_deg": -55.0,
+          "idle_max_deg": -45.0
+        }
+      }
     },
-    "turret_6": { "configured": false }
+    "turret_6": {
+      "configured": true,
+      "x_cm": -170.0,
+      "y_cm": 190.0,
+      "z_cm": 134.5,
+      "default_target_z_cm": 70.0,
+      "pitch_offset_deg": -60.0,
+      "motion": {
+        "pitch": {
+          "cmd_min_deg": -60.0,
+          "idle_min_deg": -55.0,
+          "idle_max_deg": -35.0
+        }
+      }
+    }
+  },
+  "motion_defaults": {
+    "notes": "Fleet-safe baseline. Override per turret under turrets.<id>.motion after bench calibration.",
+    "yaw": {
+      "adc_low_cut": 300,
+      "adc_high_cut": 3700,
+      "cmd_min_deg": -140.0,
+      "cmd_max_deg": 140.0,
+      "idle_min_deg": -30.0,
+      "idle_max_deg": 30.0,
+      "idle_speed_deg_per_sec": 25.0,
+      "invert_motor": false,
+      "min_drive_us": 85.0
+    },
+    "pitch": {
+      "adc_low_cut": 1700,
+      "adc_high_cut": 2400,
+      "cmd_min_deg": -25.0,
+      "cmd_max_deg": 35.0,
+      "idle_min_deg": -8.0,
+      "idle_max_deg": 0.0,
+      "idle_speed_deg_per_sec": 8.0,
+      "dead_deg": 20.0,
+      "invert_motor": false,
+      "min_drive_us": 75.0
+    }
   }
 }

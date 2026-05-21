@@ -29,11 +29,11 @@ const unsigned long MQTT_STATUS_INTERVAL_MS = 10000;
 const unsigned long MQTT_RESUBSCRIBE_INTERVAL_MS = 5000;
 const unsigned long WIFI_CONNECT_WAIT_MS = 12000;
 
-// ===== ADC limits =====
-#define YAW_LOW_CUT    300
-#define YAW_HIGH_CUT   3700
-#define PITCH_LOW_CUT  1700
-#define PITCH_HIGH_CUT 2400
+// ===== ADC limits (per-turret motion profile) =====
+const int YAW_LOW_CUT = BUILD_CONFIG.yawMotion.adcLowCut;
+const int YAW_HIGH_CUT = BUILD_CONFIG.yawMotion.adcHighCut;
+const int PITCH_LOW_CUT = BUILD_CONFIG.pitchMotion.adcLowCut;
+const int PITCH_HIGH_CUT = BUILD_CONFIG.pitchMotion.adcHighCut;
 
 // ===== Servo / ESC =====
 const int SERVO_STOP_US = 1500;
@@ -51,8 +51,10 @@ float Kd = 0.15f;
 // ===== Control parameters =====
 const float YAW_DEADBAND   = 15.0f;
 const float PITCH_DEADBAND = 20.0f;
-const float YAW_MIN_DRIVE   = 85.0f;
-const float PITCH_MIN_DRIVE = 75.0f;
+const float YAW_MIN_DRIVE   = BUILD_CONFIG.yawMotion.minDriveUs;
+const float PITCH_MIN_DRIVE = BUILD_CONFIG.pitchMotion.minDriveUs;
+const bool YAW_INVERT_MOTOR = BUILD_CONFIG.yawMotion.invertMotor;
+const bool PITCH_INVERT_MOTOR = BUILD_CONFIG.pitchMotion.invertMotor;
 const float YAW_I_LIMIT   = 3000.0f;
 const float PITCH_I_LIMIT = 3000.0f;
 const int YAW_DIR_HYST = 30;
@@ -78,16 +80,19 @@ const float PITCH_REACHED_TOL_DEG = 2.0f;
 // ===== Ballistics =====
 const float v0_cm_s = 3962.4f;
 const float g_cm_s2 = 981.0f;
-const float PITCH_CMD_MIN_DEG = ((PITCH_LOW_CUT  - 2050.0f) * 180.0f) / (3110.0f - 2050.0f);
-const float PITCH_CMD_MAX_DEG = ((PITCH_HIGH_CUT - 2050.0f) * 180.0f) / (3110.0f - 2050.0f);
+const float YAW_CMD_MIN_DEG = BUILD_CONFIG.yawMotion.cmdMinDeg;
+const float YAW_CMD_MAX_DEG = BUILD_CONFIG.yawMotion.cmdMaxDeg;
+const float PITCH_CMD_MIN_DEG = BUILD_CONFIG.pitchMotion.cmdMinDeg;
+const float PITCH_CMD_MAX_DEG = BUILD_CONFIG.pitchMotion.cmdMaxDeg;
+const float PITCH_DEAD_DEG = BUILD_CONFIG.pitchDeadDeg;
 
-// ===== Idle behavior =====
-const float IDLE_YAW_MIN = -70.0f;
-const float IDLE_YAW_MAX =  70.0f;
-const float IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC = 25.0f;
-const float IDLE_PITCH_MIN_DEG = -10.0f;
-const float IDLE_PITCH_MAX_DEG = 0.0f;
-const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = 12.0f;
+// ===== Idle behavior (per-turret motion profile) =====
+const float IDLE_YAW_MIN = BUILD_CONFIG.yawMotion.idleMinDeg;
+const float IDLE_YAW_MAX = BUILD_CONFIG.yawMotion.idleMaxDeg;
+const float IDLE_YAW_SWEEP_SPEED_DEG_PER_SEC = BUILD_CONFIG.yawMotion.idleSpeedDegPerSec;
+const float IDLE_PITCH_MIN_DEG = BUILD_CONFIG.pitchMotion.idleMinDeg;
+const float IDLE_PITCH_MAX_DEG = BUILD_CONFIG.pitchMotion.idleMaxDeg;
+const float IDLE_PITCH_SWEEP_SPEED_DEG_PER_SEC = BUILD_CONFIG.pitchMotion.idleSpeedDegPerSec;
 
 // ===== MQTT =====
 const size_t MQTT_PAYLOAD_BUFFER_SIZE = 512;

@@ -5,6 +5,34 @@ float clampf(float v, float vmin, float vmax) {
   return v;
 }
 
+float minf2(float a, float b) {
+  return (a < b) ? a : b;
+}
+
+float maxf2(float a, float b) {
+  return (a > b) ? a : b;
+}
+
+float clampRangef(float v, float a, float b) {
+  return clampf(v, minf2(a, b), maxf2(a, b));
+}
+
+float clampYawCommand(float deg) {
+  return clampRangef(deg, YAW_CMD_MIN_DEG, YAW_CMD_MAX_DEG);
+}
+
+float clampPitchCommand(float deg) {
+  return clampRangef(deg, PITCH_CMD_MIN_DEG, PITCH_CMD_MAX_DEG);
+}
+
+float clampYawIdleTarget(float deg) {
+  return clampYawCommand(clampRangef(deg, IDLE_YAW_MIN, IDLE_YAW_MAX));
+}
+
+float clampPitchIdleTarget(float deg) {
+  return clampPitchCommand(clampRangef(deg, IDLE_PITCH_MIN_DEG, IDLE_PITCH_MAX_DEG));
+}
+
 bool isEmptyOrPlaceholder(const char* value) {
   if (value == nullptr || value[0] == '\0') return true;
   return strncmp(value, "YOUR_", 5) == 0 || strncmp(value, "CHANGE_ME_", 10) == 0;
@@ -105,8 +133,8 @@ void ensureMotionServosAttached(const char* reason) {
 
   updateCurrentAngles();
   resetPidState();
-  yawTargetDeg = yawCurrentDeg;
-  pitchTargetDeg = pitchCurrentDeg;
+  yawTargetDeg = clampYawCommand(yawCurrentDeg);
+  pitchTargetDeg = clampPitchCommand(pitchCurrentDeg);
 
   Serial.print("[POWER] attaching motion servos for ");
   Serial.println(reason);
@@ -301,6 +329,7 @@ void runPIDAxis(Servo &servo,
                 float deadband,
                 float minDrive,
                 float iLimit,
+                bool invertMotor,
                 float &prevErrorPseudo,
                 float &integralPseudo) {
   float errorDeg    = targetDeg - currentDeg;
@@ -324,6 +353,10 @@ void runPIDAxis(Servo &servo,
 
   if (fabs(output) < minDrive) {
     output = (output >= 0.0f) ? minDrive : -minDrive;
+  }
+
+  if (invertMotor) {
+    output = -output;
   }
 
   servo.writeMicroseconds(static_cast<int>(SERVO_STOP_US - output));

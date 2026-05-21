@@ -1,8 +1,21 @@
 # BattleBang ESP32
 
-ESP32 펌웨어 저장소입니다. Go2 피격 ESP, 터렛, Nixo 등 장치별 펌웨어를 PlatformIO env로 나누어 빌드합니다.
+ESP32 펌웨어 저장소입니다. Go2 피격 ESP, Nixo/game blaster, 터렛 등 장치별 펌웨어를 PlatformIO env로 나누어 빌드합니다.
 
-BTB-671부터 Go2 피격 ESP는 Command Center와 MQTT로 직접 통신할 수 있습니다.
+| PlatformIO env | Source entrypoint | Purpose |
+| --- | --- | --- |
+| `esp32dev`, `esp32dev_go2_*` | `src/main.cpp` + `src/go2/**` | Go2-mounted hit sensor / ring LED firmware (BTB-671) |
+| `esp32dev_nixo` | `src/nIxo/main.cpp` | Go2-mounted Nixo/game blaster MQTT fire firmware (BTB-633) |
+| `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
+| `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Future fleet firmware path |
+
+ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
+
+---
+
+## Go2 피격 ESP firmware summary (BTB-671)
+
+Go2 피격 ESP는 Command Center와 MQTT로 직접 통신합니다.
 
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
   - `hit_candidate`
@@ -22,84 +35,6 @@ Go2 피격 펌웨어 구조:
 - `src/go2/hit/hit_sensor.*`: 피에조 ISR, ADC peak capture, debounce/cooldown
 - `src/go2/game/game_state.*`: 로컬 fallback HP/dead 상태와 Jetson UART HP 송신
 - `src/go2/command_center/command_center_mqtt.*`: ESP↔Command Center MQTT, hit_candidate/heartbeat/ring command
-
----
-
-## ESP32 펌웨어 빌드 & 업로드 방법
-
-ESP32 MCU에 올리는 흐름은 **빌드 → 바이너리 생성 → USB로 업로드** 한 번입니다.
-
-### 1. Arduino IDE (가장 일반적)
-
-1. **Arduino IDE 설치**
-   https://www.arduino.cc/en/software
-
-2. **ESP32 보드 추가**
-   - `파일 → 환경설정` → "추가 보드 매니저 URL"에 아래 한 줄 추가:
-     ```
-     https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-     ```
-   - `도구 → 보드 → 보드 매니저`에서 "esp32" 검색 → **esp32 by Espressif Systems** 설치.
-
-3. **라이브러리 설치**
-   - `스케치 → 라이브러리 포함하기 → 라이브러리 관리`
-   - "FastLED", "PubSubClient", "ArduinoJson" 설치.
-
-4. **스케치로 열기**
-   - Go2 피격 ESP는 `src/main.cpp`가 `src/go2/**` 모듈을 include합니다.
-   - 현재 구조는 여러 파일로 분리되어 있으므로 Arduino IDE 단독보다 **PlatformIO 사용을 권장**합니다.
-
-5. **보드·포트 선택**
-   - `도구 → 보드` → **ESP32 Dev Module** (또는 사용 중인 ESP32 보드)
-   - `도구 → 포트` → ESP32가 연결된 COM 포트 선택 (USB 케이블 연결 후 표시됨).
-
-6. **업로드**
-   - 상단 **업로드 버튼**(→ 화살표) 클릭.
-   - 컴파일이 끝나면 자동으로 MCU로 업로드됩니다.
-   - 업로드 시 **BOOT 버튼** 눌러야 하는 보드도 있음 (실패하면 한 번 시도).
-
-정리: **한 번에 빌드되고, 그 결과가 한 번에 플래시에 업로드**됩니다. (기능별로 나눠서 올리는 방식 아님.)
-
----
-
-### 2. ESP-IDF (커맨드라인, 고급)
-
-ESP32 공식 툴체인으로 C/C++ 프로젝트를 빌드·플래시하는 방법입니다.
-
-1. **ESP-IDF 설치**
-   - https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/
-   - Windows: ESP-IDF Tools Installer 사용 권장.
-   - macOS/Linux: `install.sh` 실행 후 `export.sh`로 환경 변수 설정.
-
-2. **프로젝트 구성**
-   - 이 프로젝트를 ESP-IDF용으로 쓰려면 `main/main.c` 또는 `main/main.cpp`로 옮기고, `CMakeLists.txt`에서 Arduino 대신 ESP-IDF 컴포넌트로 빌드하도록 설정해야 합니다.
-   - **지금 소스는 Arduino (Arduino.h, FastLED) 기준**이므로, 그대로 쓰려면 **Arduino IDE 또는 PlatformIO**가 더 적합합니다.
-
-3. **빌드·업로드 (ESP-IDF 프로젝트일 때)**
-   ```bash
-   idf.py set-target esp32
-   idf.py build
-   idf.py -p /dev/cu.usbserial-xxx flash monitor   # macOS. Windows는 COM 포트
-   ```
-
-즉, **지금 코드 그대로** 쓰실 거면 Arduino IDE를 쓰는 게 가장 간단합니다.
-
----
-
-### 3. PlatformIO (선택)
-
-VS Code 등에서 쓰는 경우:
-
-- `platformio.ini`가 있으면 이 프로젝트를 **Open Project**로 열고
-- **Build**, **Upload** 버튼으로 빌드·업로드 가능.
-- 내부적으로도 **한 번 빌드 → 한 번 업로드**입니다.
-
-Go2 피격 ESP MQTT 설정은 기존 터렛과 같은 방식입니다.
-
-- `src/go2/robots.json`: 커밋 가능한 장치별 non-secret 프로필
-- `src/go2/local_secrets.h`: 커밋하면 안 되는 Wi-Fi/MQTT secret
-- `scripts/go2_config.py`: PlatformIO 빌드 시 profile/env를 C++ 매크로로 주입
-- `scripts/go2_flash.py`: 터렛의 `scripts/turret_flash.py`처럼 robot id와 USB port 기준으로 빌드/업로드
 
 초기 설정:
 
@@ -134,30 +69,70 @@ pio run -e esp32dev_go2
 
 ---
 
-## 요약
+## Nixo / game blaster firmware summary (BTB-633)
 
-| 방법        | 빌드                    | 업로드                    |
-|------------|-------------------------|----------------------------|
-| Arduino IDE | 스케치 컴파일 (자동)    | 업로드 버튼 한 번           |
-| ESP-IDF     | `idf.py build`          | `idf.py flash`             |
-| PlatformIO  | `pio run`               | `pio run -t upload`        |
+The production Nixo path is `src/nIxo/main.cpp` built with `esp32dev_nixo`.
 
-- **펌웨어는 항상 전체가 한 번에 빌드되고, 그 이미지를 MCU 플래시에 한 번에 업로드**합니다.
-- Go2 피격 펌웨어는 `src/main.cpp` + `src/go2/**` 모듈을 함께 사용합니다.
+Current hardware invariant discovered during bench debugging:
+
+- Real relay pin: `GPIO23`
+- Relay polarity: active-HIGH (`HIGH` = fire/on, `LOW` = off)
+- Second relay: disabled (`NIXO_RELAY2_PIN=-1`)
+- Live mapping: `go2_03 -> nixo_go2_03`
+- MQTT topic: `battlebang/nixo/nixo_go2_03/command`
+
+The older `src/nIxo/BluetoothSerial.cpp` file is a Bluetooth-only baseline/smoke sketch. It does not read USB Serial
+commands, so use Bluetooth SPP or the MQTT firmware's own local/debug inputs when comparing against it.
+
+For Nixo-specific secrets, hardware pins, MQTT topic, and smoke-test steps, see `src/nIxo/README.md`.
 
 ---
 
-## 단위 테스트 (게임 로직)
+## Recommended build/upload: PlatformIO
 
-HP/밴드/데미지/명령 파싱 등 **순수 로직**을 `lib/game_logic`으로 분리해 호스트 PC에서 테스트합니다.
+From this repo root:
 
-- **테스트 실행**
-  - 스크립트 (Google Test 필요: `brew install googletest` 또는 conda 등):
-    ```bash
-    chmod +x tests/run_tests.sh && ./tests/run_tests.sh
-    ```
-  - PlatformIO 사용 시:
-    ```bash
-    pio test -e native
-    ```
-- **구조**: `tests/test_game_logic.cpp` (Google Test) + `lib/game_logic/` (테스트용 로직).
+```bash
+# Build Go2 hit ESP firmware.
+pio run -e esp32dev_go2_05
+
+# Build the Go2-mounted Nixo firmware.
+pio run -e esp32dev_nixo
+
+# Upload to a specific connected board.
+pio run -e esp32dev_nixo -t upload --upload-port /dev/cu.usbserial-1130
+
+# Serial monitor after upload.
+pio device monitor -p /dev/cu.usbserial-1130 -b 115200
+```
+
+---
+
+## Arduino IDE path
+
+Arduino IDE is useful for simple single-sketch experiments, but this repository is now a multi-environment PlatformIO workspace. PlatformIO is the recommended path for Go2, Nixo, and turret firmware.
+
+1. Install Arduino IDE: https://www.arduino.cc/en/software
+2. Add ESP32 board support URL:
+   `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+3. Install **esp32 by Espressif Systems** and required libraries such as **FastLED**, **PubSubClient**, and **ArduinoJson**.
+4. If copying files into Arduino IDE manually, also port the relevant PlatformIO build flags, local secrets, and libraries.
+
+---
+
+## ESP-IDF note
+
+The current sources are Arduino-style C++ (`Arduino.h`, FastLED, PubSubClient/ArduinoJson for MQTT paths). If you want a pure ESP-IDF project, create a separate ESP-IDF component layout and port the Arduino dependencies deliberately. For this repo as-is, PlatformIO is the supported command-line build/upload path.
+
+---
+
+## Unit tests
+
+- Native C++ tests:
+  ```bash
+  pio test -e native
+  ```
+- Python tests:
+  ```bash
+  python3 -m pytest tests/python
+  ```
