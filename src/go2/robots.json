@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "notes": "Per-Go2 hit ESP profiles. Secrets stay in gitignored src/go2/local_secrets.h or shell env, not in this file. piezo_damage_divisor is a temporary game-rule scale: peak=4000 -> damage=40 by using peak/100; update when final damage rules are decided.",
+  "defaults": {
+    "hp_max": 100,
+    "piezo_damage_divisor": 100,
+    "hit_threshold": 3000,
+    "hit_cooldown_ms": 1500,
+    "hit_rearm_threshold": 1500,
+    "authority_fallback_timeout_ms": 600,
+    "led_pin": 4,
+    "num_leds": 40,
+    "led_brightness": 60,
+    "t1_do_pin": 25,
+    "t1_ao_pin": 34,
+    "t2_do_pin": 26,
+    "t2_ao_pin": 35,
+    "mqtt_topic_prefix": "battlebang/esp"
+  },
+  "robots": {
+    "go2_01": {
+      "configured": true
+    },
+    "go2_02": {
+      "configured": true
+    },
+    "go2_03": {
+      "configured": true
+    },
+    "go2_04": {
+      "configured": true
+    },
+    "go2_05": {
+      "configured": true
+    },
+    "go2_06": {
+      "configured": true
+    }
+  }
+}
