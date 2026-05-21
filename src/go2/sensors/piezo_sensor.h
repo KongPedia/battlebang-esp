@@ -2,14 +2,14 @@
 
 #include <Arduino.h>
 
-#include "../config.h"
+#include "../build_config.h"
 
 namespace go2 {
 
 using SystemTickFn = void (*)();
 using HitCallback = void (*)(int targetId, uint16_t peak);
 
-class HitSensor {
+class PiezoSensor {
  public:
   void begin();
   void resetFlags();

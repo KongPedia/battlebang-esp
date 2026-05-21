@@ -3,11 +3,11 @@
 #include <Arduino.h>
 #include <FastLED.h>
 
-#include "../config.h"
+#include "../build_config.h"
 
 namespace go2 {
 
-class LedRing {
+class RingDisplay {
  public:
   void begin();
   void tick(uint32_t now, int hp, bool dead);

@@ -5,11 +5,11 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
-#include "../config.h"
+#include "../build_config.h"
 
 namespace go2 {
 
-struct PendingAuthorityHit {
+struct PendingHitCandidate {
   bool active = false;
   int targetId = 0;
   uint16_t peak = 0;
@@ -26,16 +26,16 @@ struct RingDisplayUpdate {
 
 using RingDisplayHandler = void (*)(const RingDisplayUpdate& update);
 
-class CommandCenterMqtt {
+class HitMqttClient {
  public:
   void begin(RingDisplayHandler ringHandler);
-  void tick(uint32_t now, bool dead, bool remoteDisplayActive);
+  void tick(uint32_t now, bool remoteDisplayActive);
   bool configured() const;
   bool connected();
   bool publishHitCandidate(int targetId, uint16_t peak, uint32_t sequence, uint32_t now);
   void startPending(int targetId, uint16_t peak, uint32_t sequence, uint32_t now);
-  bool popTimedOutFallback(uint32_t now, PendingAuthorityHit& out);
-  bool popSupersededFallback(PendingAuthorityHit& out);
+  bool popTimedOutFallback(uint32_t now, PendingHitCandidate& out);
+  bool popSupersededFallback(PendingHitCandidate& out);
   void clearPending();
   const char* eventTopic() const;
   const char* ringCommandTopic() const;
@@ -44,7 +44,7 @@ class CommandCenterMqtt {
   WiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
   RingDisplayHandler ringHandler_ = nullptr;
-  PendingAuthorityHit pending_;
+  PendingHitCandidate pending_;
   char eventTopic_[128] = {0};
   char ringCommandTopic_[160] = {0};
   char clientId_[96] = {0};
@@ -53,14 +53,14 @@ class CommandCenterMqtt {
   uint32_t lastHeartbeatTxMs_ = 0;
   uint32_t heartbeatSequence_ = 0;
 
-  static CommandCenterMqtt* instance_;
+  static HitMqttClient* instance_;
   static void mqttMessageCallback(char* topic, byte* payload, unsigned int length);
   void handleMqttMessage(char* topic, byte* payload, unsigned int length);
   void ensureWiFiConnected(uint32_t now);
   void ensureMqttConnected(uint32_t now);
-  void publishHeartbeat(uint32_t now, bool dead, bool remoteDisplayActive);
-  const char* heartbeatMode(bool dead, bool remoteDisplayActive);
-  bool popPending(PendingAuthorityHit& out);
+  void publishHeartbeat(uint32_t now, bool remoteDisplayActive);
+  const char* heartbeatMode(bool remoteDisplayActive);
+  bool popPending(PendingHitCandidate& out);
 };
 
 }  // namespace go2

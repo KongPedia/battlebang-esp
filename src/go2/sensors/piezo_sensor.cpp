@@ -1,4 +1,4 @@
-#include "go2/hit/hit_sensor.h"
+#include "go2/sensors/piezo_sensor.h"
 
 namespace go2 {
 
@@ -112,7 +112,7 @@ void IRAM_ATTR isrT2() {
   t2Flag = true;
 }
 
-void HitSensor::begin() {
+void PiezoSensor::begin() {
   analogReadResolution(12);
   analogSetPinAttenuation(T1_AO, ADC_11db);
   analogSetPinAttenuation(T2_AO, ADC_11db);
@@ -123,14 +123,14 @@ void HitSensor::begin() {
   attachInterrupt(digitalPinToInterrupt(T2_DO), isrT2, RISING);
 }
 
-void HitSensor::resetFlags() {
+void PiezoSensor::resetFlags() {
   clearFlag(t1Flag);
   clearFlag(t2Flag);
   t1Gate = SensorGateState{};
   t2Gate = SensorGateState{};
 }
 
-void HitSensor::poll(uint32_t now, SystemTickFn systemTick, HitCallback onHit) {
+void PiezoSensor::poll(uint32_t now, SystemTickFn systemTick, HitCallback onHit) {
   handleSensor(t1Flag, t1Gate, now, 1, T1_DO, T1_AO, systemTick, onHit);
   handleSensor(t2Flag, t2Gate, now, 2, T2_DO, T2_AO, systemTick, onHit);
 }

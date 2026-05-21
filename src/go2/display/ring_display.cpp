@@ -1,15 +1,15 @@
-#include "go2/led/led_ring.h"
+#include "go2/display/ring_display.h"
 
 namespace go2 {
 
-void LedRing::begin() {
+void RingDisplay::begin() {
   FastLED.addLeds<WS2811, LED_PIN, RGB>(leds_, NUM_LEDS);
   FastLED.setBrightness(LED_BRIGHTNESS);
   FastLED.setMaxPowerInVoltsAndMilliamps(LED_MAX_VOLTS, LED_MAX_MA);
   dirty_ = true;
 }
 
-void LedRing::tick(uint32_t now, int hp, bool dead) {
+void RingDisplay::tick(uint32_t now, int hp, bool dead) {
   if (now - lastBlinkMs_ >= LED_BLINK_MS) {
     lastBlinkMs_ = now;
     blinkOn_ = !blinkOn_;
@@ -26,16 +26,16 @@ void LedRing::tick(uint32_t now, int hp, bool dead) {
   showTick(now);
 }
 
-void LedRing::markDirty() {
+void RingDisplay::markDirty() {
   dirty_ = true;
 }
 
-void LedRing::clearDamageBlink() {
+void RingDisplay::clearDamageBlink() {
   for (int i = 0; i < NUM_LEDS; i++) blinkMask_[i] = false;
   dirty_ = true;
 }
 
-void LedRing::applyDamageBlink(int oldHp, int newHp) {
+void RingDisplay::applyDamageBlink(int oldHp, int newHp) {
   clearDamageBlink();
   if (newHp <= 0) return;
 
@@ -49,7 +49,7 @@ void LedRing::applyDamageBlink(int oldHp, int newHp) {
   dirty_ = true;
 }
 
-void LedRing::setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now) {
+void RingDisplay::setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now) {
   remoteActive_ = true;
   remoteDown_ = down;
   remoteFillRatio_ = constrain(fillRatio, 0.0f, 1.0f);
@@ -59,7 +59,7 @@ void LedRing::setRemoteDisplay(float fillRatio, const String& mode, bool down, u
   dirty_ = true;
 }
 
-void LedRing::clearRemoteDisplay() {
+void RingDisplay::clearRemoteDisplay() {
   remoteActive_ = false;
   remoteDown_ = false;
   remoteFillRatio_ = 1.0f;
@@ -67,46 +67,55 @@ void LedRing::clearRemoteDisplay() {
   dirty_ = true;
 }
 
-bool LedRing::remoteDisplayActive() const {
+bool RingDisplay::remoteDisplayActive() const {
   return remoteActive_;
 }
 
-int LedRing::hpToBand(int hpVal) {
+int RingDisplay::hpToBand(int hpVal) {
   if (hpVal <= 0) return -1;
   return (hpVal - 1) / HP_PER_LAP;
 }
 
-int LedRing::hpToLapHp(int hpVal) {
+int RingDisplay::hpToLapHp(int hpVal) {
   if (hpVal <= 0) return 0;
   int r = hpVal % HP_PER_LAP;
   return (r == 0) ? HP_PER_LAP : r;
 }
 
-int LedRing::lapHpToLit(int lapHp) {
+int RingDisplay::lapHpToLit(int lapHp) {
   lapHp = constrain(lapHp, 0, HP_PER_LAP);
   return (long)lapHp * NUM_LEDS / HP_PER_LAP;
 }
 
-CRGB LedRing::bandColor(int band) {
+CRGB RingDisplay::bandColor(int band) {
   if (band >= 2) return CRGB::Green;
   if (band == 1) return CRGB::Yellow;
   if (band == 0) return CRGB::Red;
   return CRGB::Black;
 }
 
-CRGB LedRing::nextBandColor(int band) {
+CRGB RingDisplay::nextBandColor(int band) {
   if (band <= 0) return CRGB::Black;
   return bandColor(band - 1);
 }
 
-bool LedRing::remoteExpired(uint32_t now) const {
+bool RingDisplay::remoteExpired(uint32_t now) const {
   return remoteActive_ && remoteExpiresMs_ != 0 && (int32_t)(now - remoteExpiresMs_) >= 0;
 }
 
-void LedRing::handleRemoteExpiry(uint32_t now) {
+void RingDisplay::handleRemoteExpiry(uint32_t now) {
   if (!remoteExpired(now)) return;
 
-  if (!remoteDown_ && remoteMode_ == "hit_flash") {
+  if (remoteDown_ || remoteMode_ == "down") {
+    // Down is a Command Center display command, not ESP-owned HP state.
+    // Keep it latched until Command Center sends a non-down display command
+    // or local reset clears the remote display.
+    remoteExpiresMs_ = 0;
+    dirty_ = true;
+    return;
+  }
+
+  if (remoteMode_ == "hit_flash") {
     remoteMode_ = "active";
     remoteExpiresMs_ = 0;
     dirty_ = true;
@@ -117,7 +126,7 @@ void LedRing::handleRemoteExpiry(uint32_t now) {
   dirty_ = true;
 }
 
-void LedRing::renderRemote(uint32_t now) {
+void RingDisplay::renderRemote(uint32_t now) {
   if (remoteMode_ == "disabled") {
     for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Black;
     return;
@@ -148,7 +157,7 @@ void LedRing::renderRemote(uint32_t now) {
   for (int i = 0; i < NUM_LEDS; i++) leds_[i] = (i < lit) ? fillColor : CRGB::Black;
 }
 
-void LedRing::renderLocal(uint32_t now, int hp, bool dead) {
+void RingDisplay::renderLocal(uint32_t now, int hp, bool dead) {
   if (dead) {
     if (now - lastDeadBlinkMs_ >= LED_DEAD_BLINK_MS) {
       lastDeadBlinkMs_ = now;
@@ -175,7 +184,7 @@ void LedRing::renderLocal(uint32_t now, int hp, bool dead) {
   }
 }
 
-void LedRing::showTick(uint32_t now) {
+void RingDisplay::showTick(uint32_t now) {
   if (!dirty_) return;
   if (now - lastShowMs_ < LED_SHOW_PERIOD_MS) return;
   lastShowMs_ = now;

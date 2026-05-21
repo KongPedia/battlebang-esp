@@ -18,22 +18,16 @@
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
-    "go2_01": {
-      "configured": true
-    },
-    "go2_02": {
-      "configured": true
-    },
     "go2_03": {
-      "configured": true
-    },
-    "go2_04": {
       "configured": true
     },
     "go2_05": {
       "configured": true
     },
     "go2_06": {
+      "configured": true
+    },
+    "go2_07": {
       "configured": true
     }
   }

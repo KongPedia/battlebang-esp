@@ -4,7 +4,7 @@ ESP32 펌웨어 저장소입니다. Go2 피격 ESP, Nixo/game blaster, 터렛 �
 
 | PlatformIO env | Source entrypoint | Purpose |
 | --- | --- | --- |
-| `esp32dev`, `esp32dev_go2_*` | `src/main.cpp` + `src/go2/**` | Go2-mounted hit sensor / ring LED firmware (BTB-671) |
+| `esp32dev`, `esp32dev_go2_*` | `src/go2/main.cpp` + `src/go2/**` | Go2-mounted hit sensor / ring LED firmware (BTB-671) |
 | `esp32dev_nixo` | `src/nIxo/main.cpp` | Go2-mounted Nixo/game blaster MQTT fire firmware (BTB-633) |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
 | `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Future fleet firmware path |
@@ -26,15 +26,16 @@ Go2 피격 ESP는 Command Center와 MQTT로 직접 통신합니다.
 
 Go2 피격 펌웨어 구조:
 
-- `src/main.cpp`: setup/loop 오케스트레이션만 담당
-- `src/go2/config.h`: 핀, HP, MQTT topic, 빌드 설정
+- `src/go2/main.cpp`: Arduino `setup/loop` 진입점 및 Go2 피격 ESP runtime 오케스트레이션
+- `src/go2/build_config.h`: 핀, HP, MQTT topic, 빌드 설정
 - `src/go2/robots.json`: Go2별 non-secret 프로필. `robot_id`, 피격 임계값, LED/센서 핀 등
 - `src/go2/local_secrets.h`: Wi-Fi/MQTT secret. **gitignore 대상**
-- `src/go2/led/led_ring.*`: 로컬 HP LED / Command Center ring display 렌더링
-- `src/go2/fire/fire_control.*`: 서보/릴레이 발사 시퀀스
-- `src/go2/hit/hit_sensor.*`: 피에조 ISR, ADC peak capture, debounce/cooldown
-- `src/go2/game/game_state.*`: 로컬 fallback HP/dead 상태와 Jetson UART HP 송신
-- `src/go2/command_center/command_center_mqtt.*`: ESP↔Command Center MQTT, hit_candidate/heartbeat/ring command
+- `src/go2/sensors/piezo_sensor.*`: 피에조 ISR, ADC peak capture, debounce/cooldown
+- `src/go2/display/ring_display.*`: Command Center `ring_display` 렌더링과 fallback LED 표시
+- `src/go2/mqtt/hit_mqtt_client.*`: MQTT hit_candidate/heartbeat publish, ring_display subscribe
+- `src/go2/fallback/offline_hit_fallback.*`: Command Center/MQTT 미응답 시에만 쓰는 로컬 fallback HP/down 상태와 Jetson UART HP 송신
+- 발사/릴레이/서보 제어는 Go2 피격 ESP가 아니라 `src/nIxo/` 펌웨어가 담당
+- `src/go2/docs/`: 터렛 문서 구조와 맞춘 Go2 빌드/통신/fallback 문서
 
 초기 설정:
 
@@ -81,8 +82,7 @@ Current hardware invariant discovered during bench debugging:
 - Live mapping: `go2_03 -> nixo_go2_03`
 - MQTT topic: `battlebang/nixo/nixo_go2_03/command`
 
-The older `src/nIxo/BluetoothSerial.cpp` file is a Bluetooth-only baseline/smoke sketch. It does not read USB Serial
-commands, so use Bluetooth SPP or the MQTT firmware's own local/debug inputs when comparing against it.
+The older `src/nIxo/BluetoothSerial.cpp` file is a Bluetooth-only baseline/smoke sketch. It does not read USB Serial commands, so use Bluetooth SPP or the MQTT firmware's own local/debug inputs when comparing against it.
 
 For Nixo-specific secrets, hardware pins, MQTT topic, and smoke-test steps, see `src/nIxo/README.md`.
 
@@ -113,8 +113,7 @@ pio device monitor -p /dev/cu.usbserial-1130 -b 115200
 Arduino IDE is useful for simple single-sketch experiments, but this repository is now a multi-environment PlatformIO workspace. PlatformIO is the recommended path for Go2, Nixo, and turret firmware.
 
 1. Install Arduino IDE: https://www.arduino.cc/en/software
-2. Add ESP32 board support URL:
-   `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+2. Add ESP32 board support URL: `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
 3. Install **esp32 by Espressif Systems** and required libraries such as **FastLED**, **PubSubClient**, and **ArduinoJson**.
 4. If copying files into Arduino IDE manually, also port the relevant PlatformIO build flags, local secrets, and libraries.
 

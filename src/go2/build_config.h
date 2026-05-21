@@ -216,15 +216,13 @@
 
 namespace go2 {
 
-static constexpr const char* BT_NAME = "ESP32_HP_SERVO";
+static constexpr const char* BT_NAME = "ESP32_GO2_HIT";
 
 static constexpr int UART_RX_PIN = 16;
 static constexpr int UART_TX_PIN = 17;
 static constexpr uint32_t UART_BAUD = 115200;
 
-static constexpr char CMD_JETSON_FIRE = '1';
-static constexpr char CMD_JETSON_RESET_HP = '2';
-static constexpr char CMD_LOCAL_FIRE = 'f';
+static constexpr char CMD_RESET_HP = '2';
 
 static constexpr int HP_MAX = BATTLEBANG_HP_MAX;
 static constexpr int HP_PER_LAP = HP_MAX;
@@ -253,23 +251,6 @@ static constexpr uint32_t SAMPLE_INTERVAL_US = 1000;
 static constexpr int CAPTURE_SAMPLES = 200;
 static constexpr uint16_t HIT_THRESHOLD = BATTLEBANG_HIT_THRESHOLD;
 
-static constexpr int RELAY1_PIN = 22;
-static constexpr int RELAY2_PIN = 21;
-static constexpr bool RELAY_ON = LOW;
-static constexpr bool RELAY_OFF = HIGH;
-
-static constexpr int SERVO_PIN = 18;
-static constexpr int SERVO_PWM_FREQ = 50;
-static constexpr int SERVO_PWM_RES = 16;
-static constexpr int SERVO_PWM_CHANNEL = 0;
-static constexpr int FIRE_POS_A = 55;
-static constexpr int FIRE_POS_B = 145;
-static constexpr int SERVO_HOME_ANGLE = 125;
-static constexpr int SERVO_STEP = 2;
-static constexpr uint32_t SERVO_STEP_DT_MS = 15;
-static constexpr uint32_t RELAY_DELAY1_MS = 800;
-static constexpr uint32_t RELAY_DELAY2_MS = 1500;
-static constexpr uint32_t FIRE_COOLDOWN_MS = 2500;
 
 static constexpr const char* ROBOT_ID = BATTLEBANG_ROBOT_ID;
 static constexpr const char* WIFI_SSID = BATTLEBANG_WIFI_SSID;

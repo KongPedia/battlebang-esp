@@ -1,16 +1,16 @@
-#include "go2/command_center/command_center_mqtt.h"
+#include "go2/mqtt/hit_mqtt_client.h"
 
 namespace go2 {
 
-CommandCenterMqtt* CommandCenterMqtt::instance_ = nullptr;
+HitMqttClient* HitMqttClient::instance_ = nullptr;
 
-void CommandCenterMqtt::begin(RingDisplayHandler ringHandler) {
+void HitMqttClient::begin(RingDisplayHandler ringHandler) {
   ringHandler_ = ringHandler;
   snprintf(eventTopic_, sizeof(eventTopic_), "%s/%s/events", MQTT_TOPIC_PREFIX, ROBOT_ID);
   snprintf(ringCommandTopic_, sizeof(ringCommandTopic_), "%s/%s/ring_display/command", MQTT_TOPIC_PREFIX, ROBOT_ID);
   snprintf(clientId_, sizeof(clientId_), "battlebang-hit-%s", ROBOT_ID);
   mqttClient_.setBufferSize(MQTT_BUFFER_SIZE);
-  mqttClient_.setCallback(CommandCenterMqtt::mqttMessageCallback);
+  mqttClient_.setCallback(HitMqttClient::mqttMessageCallback);
   instance_ = this;
 
   if (!configured()) return;
@@ -20,23 +20,23 @@ void CommandCenterMqtt::begin(RingDisplayHandler ringHandler) {
   ensureWiFiConnected(millis());
 }
 
-void CommandCenterMqtt::tick(uint32_t now, bool dead, bool remoteDisplayActive) {
+void HitMqttClient::tick(uint32_t now, bool remoteDisplayActive) {
   ensureWiFiConnected(now);
   ensureMqttConnected(now);
   if (!mqttClient_.connected()) return;
   mqttClient_.loop();
-  publishHeartbeat(now, dead, remoteDisplayActive);
+  publishHeartbeat(now, remoteDisplayActive);
 }
 
-bool CommandCenterMqtt::configured() const {
+bool HitMqttClient::configured() const {
   return WIFI_SSID[0] != '\0' && MQTT_HOST[0] != '\0';
 }
 
-bool CommandCenterMqtt::connected() {
+bool HitMqttClient::connected() {
   return mqttClient_.connected();
 }
 
-bool CommandCenterMqtt::publishHitCandidate(int targetId, uint16_t peak, uint32_t sequence, uint32_t now) {
+bool HitMqttClient::publishHitCandidate(int targetId, uint16_t peak, uint32_t sequence, uint32_t now) {
   if (!mqttClient_.connected()) return false;
 
   StaticJsonDocument<384> doc;
@@ -67,7 +67,7 @@ bool CommandCenterMqtt::publishHitCandidate(int targetId, uint16_t peak, uint32_
   return ok;
 }
 
-void CommandCenterMqtt::startPending(int targetId, uint16_t peak, uint32_t sequence, uint32_t now) {
+void HitMqttClient::startPending(int targetId, uint16_t peak, uint32_t sequence, uint32_t now) {
   pending_.active = true;
   pending_.targetId = targetId;
   pending_.peak = peak;
@@ -75,34 +75,34 @@ void CommandCenterMqtt::startPending(int targetId, uint16_t peak, uint32_t seque
   pending_.startedMs = now;
 }
 
-bool CommandCenterMqtt::popTimedOutFallback(uint32_t now, PendingAuthorityHit& out) {
+bool HitMqttClient::popTimedOutFallback(uint32_t now, PendingHitCandidate& out) {
   if (!pending_.active) return false;
   if (now - pending_.startedMs < AUTHORITY_FALLBACK_TIMEOUT_MS) return false;
   return popPending(out);
 }
 
-bool CommandCenterMqtt::popSupersededFallback(PendingAuthorityHit& out) {
+bool HitMqttClient::popSupersededFallback(PendingHitCandidate& out) {
   return popPending(out);
 }
 
-void CommandCenterMqtt::clearPending() {
-  pending_ = PendingAuthorityHit{};
+void HitMqttClient::clearPending() {
+  pending_ = PendingHitCandidate{};
 }
 
-const char* CommandCenterMqtt::eventTopic() const {
+const char* HitMqttClient::eventTopic() const {
   return eventTopic_;
 }
 
-const char* CommandCenterMqtt::ringCommandTopic() const {
+const char* HitMqttClient::ringCommandTopic() const {
   return ringCommandTopic_;
 }
 
-void CommandCenterMqtt::mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
+void HitMqttClient::mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
   if (instance_ == nullptr) return;
   instance_->handleMqttMessage(topic, payload, length);
 }
 
-void CommandCenterMqtt::handleMqttMessage(char* topic, byte* payload, unsigned int length) {
+void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, ringCommandTopic_) != 0) return;
 
   StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
@@ -135,7 +135,7 @@ void CommandCenterMqtt::handleMqttMessage(char* topic, byte* payload, unsigned i
                 (unsigned long)update.ttlMs);
 }
 
-void CommandCenterMqtt::ensureWiFiConnected(uint32_t now) {
+void HitMqttClient::ensureWiFiConnected(uint32_t now) {
   if (!configured()) return;
   if (WiFi.status() == WL_CONNECTED) return;
   if (now - lastWiFiRetryMs_ < WIFI_RETRY_INTERVAL_MS) return;
@@ -147,7 +147,7 @@ void CommandCenterMqtt::ensureWiFiConnected(uint32_t now) {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
-void CommandCenterMqtt::ensureMqttConnected(uint32_t now) {
+void HitMqttClient::ensureMqttConnected(uint32_t now) {
   if (!configured()) return;
   if (WiFi.status() != WL_CONNECTED) return;
   if (mqttClient_.connected()) return;
@@ -165,7 +165,7 @@ void CommandCenterMqtt::ensureMqttConnected(uint32_t now) {
   Serial.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", ringCommandTopic_);
 }
 
-void CommandCenterMqtt::publishHeartbeat(uint32_t now, bool dead, bool remoteDisplayActive) {
+void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   if (now - lastHeartbeatTxMs_ < HEARTBEAT_TX_PERIOD_MS) return;
   lastHeartbeatTxMs_ = now;
 
@@ -176,21 +176,20 @@ void CommandCenterMqtt::publishHeartbeat(uint32_t now, bool dead, bool remoteDis
   doc["sensor_id"] = "hit_ring";
   doc["sequence"] = ++heartbeatSequence_;
   doc["firmware_ts_ms"] = now;
-  doc["mode"] = heartbeatMode(dead, remoteDisplayActive);
+  doc["mode"] = heartbeatMode(remoteDisplayActive);
 
   char buffer[256];
   size_t size = serializeJson(doc, buffer, sizeof(buffer));
   mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
 }
 
-const char* CommandCenterMqtt::heartbeatMode(bool dead, bool remoteDisplayActive) {
-  if (dead) return "down";
+const char* HitMqttClient::heartbeatMode(bool remoteDisplayActive) {
   if (remoteDisplayActive) return "direct";
   if (mqttClient_.connected()) return "mqtt_connected";
   return "fallback";
 }
 
-bool CommandCenterMqtt::popPending(PendingAuthorityHit& out) {
+bool HitMqttClient::popPending(PendingHitCandidate& out) {
   if (!pending_.active) return false;
   out = pending_;
   clearPending();
