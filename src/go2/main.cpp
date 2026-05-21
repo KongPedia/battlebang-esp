@@ -110,6 +110,7 @@ static void pollCommands() {
 static void systemTickLite() {
   uint32_t now = millis();
   pollCommands();
+  hitMqtt.tick(now, ringDisplay.remoteDisplayActive());
   ringDisplay.tick(now, offlineFallback.hp(), offlineFallback.down());
 }
 

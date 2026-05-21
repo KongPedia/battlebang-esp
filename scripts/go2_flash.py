@@ -9,7 +9,10 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    tomllib = None
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -214,11 +217,39 @@ def build_secret_env(
     return env_overrides, ", ".join(source_parts)
 
 
+def parse_simple_port_map(text: str, path: Path) -> dict:
+    """Parse the small [robots] upload-target TOML subset without Python 3.11 tomllib."""
+    robots: dict[str, str] = {}
+    section: str | None = None
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip()
+            continue
+        if section != "robots":
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            raise FlashConfigError(
+                f"Invalid port map line {line_number} in {path}: expected key = value"
+            )
+        robot_id = key.strip().strip('\"\'')
+        port = strip_quotes(value.strip())
+        if not robot_id or not port:
+            raise FlashConfigError(f"Invalid robot port mapping on line {line_number} in {path}")
+        robots[robot_id] = port
+    return {"robots": robots}
+
 def load_port_map(path: Path) -> list[FlashTarget]:
     if not path.exists():
         raise FlashConfigError(f"Port map file not found: {path}")
-    with path.open("rb") as f:
-        raw = tomllib.load(f)
+    if tomllib is not None:
+        with path.open("rb") as f:
+            raw = tomllib.load(f)
+    else:
+        raw = parse_simple_port_map(path.read_text(encoding="utf-8"), path)
     robots = raw.get("robots")
     if not isinstance(robots, dict) or not robots:
         raise FlashConfigError(f"{path} must define a non-empty [robots] table")

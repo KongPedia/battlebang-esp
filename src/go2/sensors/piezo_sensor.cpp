@@ -32,7 +32,6 @@ uint16_t samplePiezoPeak(int analogPin, SystemTickFn systemTick, uint16_t initia
     }
     uint16_t value = analogRead(analogPin);
     if (value > peak) peak = value;
-    if (systemTick != nullptr) systemTick();
   }
   return peak;
 }
