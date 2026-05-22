@@ -22,6 +22,7 @@ struct RingDisplayUpdate {
   String mode = "idle";
   bool down = false;
   uint32_t ttlMs = 1000;
+  bool resetHitState = false;
 };
 
 using RingDisplayHandler = void (*)(const RingDisplayUpdate& update);

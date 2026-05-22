@@ -23,6 +23,25 @@ Piezo -> ESP -> MQTT -> Command Center -> MQTT -> ESP Ring LED
 4. ESP가 로컬 HP와 ring LED를 갱신
 5. HP가 0이면 fallback 모드에서만 로컬 down LED 상태로 전환
 
+## Reset 경로
+
+Command Center의 `POST /api/robots/{robot_id}/hit/reset`은 서버 hit runtime을 초기화한 뒤 ESP에
+`ring_display` command를 내려보냅니다.
+
+이때 payload에 `reset_hit_state=true`가 포함되면 ESP는 display override만 갱신하지 않고 로컬 fallback 상태도
+같이 초기화합니다.
+
+초기화 대상:
+
+- fallback HP: `HP_MAX`
+- fallback down flag: `false`
+- pending hit fallback
+- piezo sensor latch/flags
+- damage blink / remote down display latch
+
+따라서 reset 이후 Command Center/MQTT가 잠시 끊겨 ESP가 fallback 렌더링으로 돌아가도, 이전 HP 0/down LED 상태가
+다시 나타나지 않아야 합니다.
+
 현재 임시 damage rule:
 
 ```text

@@ -116,6 +116,12 @@ static void systemTickLite() {
 
 static void onRingDisplayUpdate(const RingDisplayUpdate& update) {
   uint32_t now = millis();
+  if (update.resetHitState) {
+    offlineFallback.reset(ringDisplay);
+    piezoSensor.resetFlags();
+    Serial.println("[RESET] MQTT hit state reset");
+    if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT hit state reset");
+  }
   ringDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
 

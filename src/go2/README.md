@@ -8,7 +8,7 @@ Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 
 발사/릴레이/서보 제어는 이 펌웨어에서 제거되었습니다. Go2의 발사는 `src/nIxo/` Nixo/game blaster 펌웨어가 담당합니다.
 
-정상 MQTT 경로에서는 ESP가 HP/dead/down을 계산하거나 저장하지 않습니다. Command Center가 내려준 `ring_display` 명령을 렌더링만 하고, 로컬 HP/down은 Command Center/MQTT 미응답 fallback에서만 사용합니다.
+정상 MQTT 경로에서는 ESP가 HP/dead/down을 계산하거나 저장하지 않습니다. Command Center가 내려준 `ring_display` 명령을 렌더링만 하고, 로컬 HP/down은 Command Center/MQTT 미응답 fallback에서만 사용합니다. 단, Command Center reset API가 내려보내는 `reset_hit_state=true` 명령은 ESP의 fallback HP/down 상태도 함께 초기화합니다.
 
 현재 코드 구조는 아래 책임 기준으로 나눕니다.
 

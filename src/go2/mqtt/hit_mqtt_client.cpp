@@ -126,13 +126,15 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
   update.mode = String(doc["ring_display_mode"] | "idle");
   update.down = doc["down"] | false;
   update.ttlMs = doc["ttl_ms"] | 1000;
+  update.resetHitState = doc["reset_hit_state"] | false;
   if (ringHandler_ != nullptr) ringHandler_(update);
 
-  Serial.printf("[MQTT] ring command mode=%s fill=%.3f down=%s ttl=%lu\n",
+  Serial.printf("[MQTT] ring command mode=%s fill=%.3f down=%s ttl=%lu reset_hit_state=%s\n",
                 update.mode.c_str(),
                 constrain(update.fillRatio, 0.0f, 1.0f),
                 update.down ? "true" : "false",
-                (unsigned long)update.ttlMs);
+                (unsigned long)update.ttlMs,
+                update.resetHitState ? "true" : "false");
 }
 
 void HitMqttClient::ensureWiFiConnected(uint32_t now) {

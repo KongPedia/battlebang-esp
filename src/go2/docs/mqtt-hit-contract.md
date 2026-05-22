@@ -63,7 +63,8 @@ Command Center는 HP 값 자체나 score/debug 정보를 ESP에 모두 넘기지
   "ring_fill_ratio": 0.65,
   "down": false,
   "ring_display_mode": "hit_flash",
-  "ttl_ms": 1000
+  "ttl_ms": 1000,
+  "reset_hit_state": false
 }
 ```
 
@@ -73,3 +74,4 @@ ESP는 이 payload를 받아 ring LED를 갱신합니다.
 - `down`: 다운 상태 표시 여부
 - `ring_display_mode`: `idle`, `active`, `hit_flash`, `down` 등 semantic mode
 - `ttl_ms`: Command Center 표시가 유효한 시간
+- `reset_hit_state`: true면 ESP 내부 fallback HP/down 상태와 센서 플래그를 초기화합니다. 일반 hit display command에서는 생략하거나 false로 둡니다. Command Center의 `POST /api/robots/{robot_id}/hit/reset` 응답 command에서 true로 내려옵니다.
