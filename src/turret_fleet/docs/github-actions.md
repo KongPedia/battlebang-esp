@@ -84,36 +84,50 @@ https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.js
 1. Merge the PR to `main`.
 2. Wait for the **Turret Fleet Firmware** Action run to finish and create a
    release.
-3. Read the latest manifest/build:
+3. Set the MQTT broker host locally. This is the Command Center/MQTT broker IP
+   or DNS name, not the ESP device IP:
+
+   ```bash
+   export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+   ```
+
+4. Read the latest manifest/build:
 
    ```bash
    curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
    ```
 
-4. Approve that exact build for a turret. This publishes an MQTT config patch to
+5. Approve that exact build for a turret. This publishes an MQTT config patch to
    `battlebang/turrets/{turret_id}/config`; the ESP then polls the latest
    manifest itself:
 
    ```bash
-   ./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
+   ./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"
    ```
 
-5. Watch `battlebang/turrets/turret_2/status` for `config_applied`,
+   Or read the latest build and approve it without typing the number:
+
+   ```bash
+   BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
+   ./bin/turret fleet-mqtt turret_2 update --desired-build "$BUILD" --host "$MQTT_BROKER_HOST"
+   ```
+
+6. Watch `battlebang/turrets/turret_2/status` for `config_applied`,
    `ota_downloading`, `ota_rebooting`, then `connected` with the new
    `firmware_build`.
-6. After OTA reboot, automatic HOME is intentionally inhibited. Send an explicit
+7. After OTA reboot, automatic HOME is intentionally inhibited. Send an explicit
    command:
 
    ```bash
-   ./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
+   ./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
    # or a target command
-   ./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host 10.2.80.52
+   ./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host "$MQTT_BROKER_HOST"
    ```
 
-7. Disable polling when the rollout is done unless continuous polling is desired:
+8. Disable polling when the rollout is done unless continuous polling is desired:
 
    ```bash
-   ./bin/turret fleet-mqtt turret_2 config --host 10.2.80.52 \
+   ./bin/turret fleet-mqtt turret_2 config --host "$MQTT_BROKER_HOST" \
      --config-version $(date +%s) \
      --ota-auto-check-enabled false \
      --ota-desired-build <LATEST_BUILD> \
@@ -157,7 +171,7 @@ an immediate job. Use `update --desired-build N` for the normal post-merge flow.
 ## Why not GitHub runner direct-to-MQTT?
 
 A GitHub-hosted runner usually cannot reach a private LAN broker such as
-`10.2.80.x`. Let Command Center/operator approve via MQTT from the LAN, or use a
+`<PRIVATE_LAN_MQTT_BROKER>`. Let Command Center/operator approve via MQTT from the LAN, or use a
 self-hosted runner on Jetson if direct publish is required.
 
 ## Security notes

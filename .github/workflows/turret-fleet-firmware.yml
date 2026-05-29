@@ -20,7 +20,7 @@ on:
         required: true
         default: "1"
       firmware_base_url:
-        description: "Optional HTTP base URL reachable by ESP32 devices, e.g. http://10.2.80.105:8080/firmware"
+        description: "Optional HTTP base URL reachable by ESP32 devices, e.g. http://COMMAND_CENTER_IP_OR_DNS:8080/firmware"
         required: false
         default: ""
       public_release_repo:

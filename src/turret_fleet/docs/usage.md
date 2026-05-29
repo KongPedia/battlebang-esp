@@ -12,7 +12,7 @@ Latest verified flow on PR branch `feature/BTB-721-turret-fleet-rebuild-plan`:
 3. MQTT target was sent:
 
    ```bash
-   ./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host 10.2.80.52
+   ./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host "$MQTT_BROKER_HOST"
    ```
 
    With default `mqtt_target_unit=m`, this means `(x=0m, y=-2m, z=0.6m)` and
@@ -102,14 +102,21 @@ battlebang/turrets/all/ota
 ```
 
 `./bin/turret fleet-mqtt ...` publishes to these topics. It reads
-`src/turret_fleet/.env.turret_fleet`; use `--host 10.2.80.52` if needed.
+`src/turret_fleet/.env.turret_fleet`; use `--host "$MQTT_BROKER_HOST"` if needed.
+The `--host` value is the MQTT broker/Command Center broker address, not the
+ESP's own Wi-Fi IP. Keep real lab IPs in your local gitignored env file or
+shell, not in committed docs:
+
+```bash
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+```
 
 ## Command examples
 
 ### Target: world-coordinate solve
 
 ```bash
-./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host "$MQTT_BROKER_HOST"
 ```
 
 Payload:
@@ -125,7 +132,7 @@ to target `(x,y,z)`. Valid target/aim setpoints are clamped to `motion.limits`.
 Optional frame guard:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --frame-id boss_stage_v1 --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --frame-id boss_stage_v1 --host "$MQTT_BROKER_HOST"
 ```
 
 If `frame_id` does not match config, firmware rejects before motion/fire.
@@ -133,8 +140,8 @@ If `frame_id` does not match config, firmware rejects before motion/fire.
 ### Initiate/home: local 0,0
 
 ```bash
-./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 home --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 home --host "$MQTT_BROKER_HOST"
 ```
 
 Both publish `{"command":"home"}`. This returns to configured local
@@ -143,8 +150,8 @@ Both publish `{"command":"home"}`. This returns to configured local
 ### Aim: direct local yaw/pitch debug
 
 ```bash
-./bin/turret fleet-mqtt turret_2 aim 0 10 --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 aim -10 5 --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 aim 0 10 --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 aim -10 5 --host "$MQTT_BROKER_HOST"
 ```
 
 Use this for local axis calibration because it bypasses world target solving.
@@ -152,10 +159,10 @@ Use this for local axis calibration because it bypasses world target solving.
 ### Idle / dead / hold / recover
 
 ```bash
-./bin/turret fleet-mqtt turret_2 idle --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 dead --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 hold --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 recover --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 idle --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 dead --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 hold --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 recover --host "$MQTT_BROKER_HOST"
 ```
 
 - `idle`: sweeps within configured idle yaw/pitch ranges.
@@ -167,7 +174,7 @@ Use this for local axis calibration because it bypasses world target solving.
 ### Fire
 
 ```bash
-./bin/turret fleet-mqtt turret_2 fire --duration-ms 500 --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 fire --duration-ms 500 --host "$MQTT_BROKER_HOST"
 ```
 
 Fire is immediate; no `--fire-hardware-enabled` or pre-arm config exists. It is
@@ -184,14 +191,14 @@ All config patches are saved to ESP NVS and survive reboot/OTA.
 ./bin/turret fleet-mqtt turret_2 config \
   --yaw-axis-offset-deg 1.0 \
   --pitch-axis-offset-deg -0.5 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 
 # World solver correction: use only if direct local aim is good but world target
 # consistently lands left/right/up/down.
 ./bin/turret fleet-mqtt turret_2 config \
   --yaw-offset-deg 0 \
   --pitch-offset-deg 0 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 ```
 
 ### Home and safe envelope
@@ -204,7 +211,7 @@ All config patches are saved to ESP NVS and survive reboot/OTA.
   --yaw-max-deg 35 \
   --pitch-min-deg -45 \
   --pitch-max-deg 70 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 ```
 
 Config validation rejects envelopes wider than the firmware's allowed 150° total
@@ -221,7 +228,7 @@ envelope.
   --pitch-min-drive-us 70 \
   --servo-attach-settle-ms 200 \
   --axis-switch-cooldown-ms 500 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 ```
 
 Larger `*_max_delta_us` moves faster but can increase current draw/brownout risk.
@@ -239,7 +246,7 @@ Keep `ota.apply_only_in_safe_state=true` and watch `motion_state` during tuning.
   --idle-pitch-speed-deg-s 25 \
   --dead-pitch-deg 65 \
   --fire-default-hold-ms 500 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 ```
 
 ## OTA usage
@@ -283,10 +290,19 @@ the latest manifest build, then approve that build by turret id:
 ```bash
 # 1) after the merge Action completes, read the build from the latest release
 curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
-# or: gh release view --repo KongPedia/battlebang-esp --json tagName,isLatest
+# or: gh release view --repo KongPedia/battlebang-esp --json tagName,publishedAt,url
 
 # 2) approve exactly that build for one turret; this publishes to /config
-./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"
+```
+
+Convenience one-liner when you want the helper to read latest `build` but still
+keep the broker IP outside git:
+
+```bash
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
+./bin/turret fleet-mqtt turret_2 update --desired-build "$BUILD" --host "$MQTT_BROKER_HOST"
 ```
 
 `update` is only a convenience wrapper around the existing NVS config patch. It
@@ -347,15 +363,15 @@ After successful OTA reboot, automatic HOME drive is inhibited to avoid motion
 surprise. Command Center should then send one of:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 target 0 -2 0.6 --host "$MQTT_BROKER_HOST"
 ```
 
 After the desired build is reached, disable polling unless continuous polling is
 intended:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 config --host 10.2.80.52 \
+./bin/turret fleet-mqtt turret_2 config --host "$MQTT_BROKER_HOST" \
   --config-version $(date +%s) \
   --ota-auto-check-enabled false \
   --ota-desired-build <LATEST_BUILD> \

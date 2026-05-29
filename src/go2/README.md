@@ -75,7 +75,7 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 ```cpp
 #define ESP_WIFI_SSID "abcdefg"
 #define ESP_WIFI_PASSWORD "********"
-#define ESP_MQTT_HOST "192.168.123.1"
+#define ESP_MQTT_HOST "COMMAND_CENTER_IP_OR_DNS"
 #define ESP_MQTT_PORT 1883
 #define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
 ```
@@ -172,7 +172,7 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 업로드가 완료되면 Serial Monitor에서 아래 로그를 확인합니다.
 
 ```text
-[CC] robot_id=go2_03 mqtt=enabled broker=10.2.80.80:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
+[CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
 [WIFI] connecting ssid=...
 [MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command

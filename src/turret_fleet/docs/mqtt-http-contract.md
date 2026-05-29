@@ -163,8 +163,15 @@ Payload examples:
 
 ### Local MQTT helper examples
 
+Set the broker host locally first. This host is the MQTT broker/Command Center
+address, not the ESP device IP:
+
 ```bash
-./bin/turret fleet-mqtt turret_2 target 0 0 1 --host 10.2.80.52
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+```
+
+```bash
+./bin/turret fleet-mqtt turret_2 target 0 0 1 --host "$MQTT_BROKER_HOST"
 ./bin/turret fleet-mqtt turret_2 aim 0 10
 ./bin/turret fleet-mqtt turret_2 home
 ./bin/turret fleet-mqtt turret_2 initiate
@@ -206,7 +213,7 @@ Payload:
   "hardware": "esp32dev-turret-v2",
   "version": "0.2.0",
   "build": 42,
-  "url": "http://10.2.80.105:8080/firmware/battlebang-turret-fleet-0.2.0.bin",
+  "url": "http://COMMAND_CENTER_IP_OR_DNS:8080/firmware/battlebang-turret-fleet-0.2.0.bin",
   "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "size": 934000,
   "force": false
@@ -252,7 +259,7 @@ not paste a manifest URL; they approve exactly one latest-build number by turret
 id:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"
 ```
 
 That command publishes a config patch to `battlebang/turrets/turret_2/config`:
@@ -322,7 +329,7 @@ Payload includes:
   "ota_channel": "stable",
   "ota_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
   "wifi": "UP",
-  "ip": "10.2.80.123",
+  "ip": "<ESP_IP>",
   "rssi": -54,
   "uptime_ms": 123456
 }
