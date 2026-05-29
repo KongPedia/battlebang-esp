@@ -222,8 +222,6 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
             doc["motion"] = motion
 
         fire: dict[str, Any] = {}
-        if args.fire_hardware_enabled is not None:
-            fire["hardware_enabled"] = args.fire_hardware_enabled
         if args.fire_default_hold_ms is not None:
             fire["default_hold_ms"] = args.fire_default_hold_ms
         if args.fire_esc_run_us is not None:
@@ -471,7 +469,6 @@ def build_parser() -> argparse.ArgumentParser:
     cfg.add_argument("--idle-pitch-min-deg", type=float)
     cfg.add_argument("--idle-pitch-max-deg", type=float)
     cfg.add_argument("--idle-pitch-speed-deg-s", type=float)
-    cfg.add_argument("--fire-hardware-enabled", type=parse_bool_text)
     cfg.add_argument("--fire-default-hold-ms", type=int)
     cfg.add_argument("--fire-esc-run-us", type=int)
     cfg.add_argument("--fire-esc-stop-us", type=int)

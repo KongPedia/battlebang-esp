@@ -180,11 +180,6 @@ void MqttBus::handleConfigPayload(const char* payload) {
     return;
   }
 
-  const bool sanitized = control_ != nullptr && control_->sanitizeConfigForSafety(next);
-  if (sanitized) {
-    Serial.println("[fleet][config] fire.hardware_enabled recorded false while brownout lockout is active");
-  }
-
   const bool wifiChanged = next.wifiSsid != config_->wifiSsid ||
                            next.wifiPassword != config_->wifiPassword;
   const bool mqttChanged = next.mqttHost != config_->mqttHost ||

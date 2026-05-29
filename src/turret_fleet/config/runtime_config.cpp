@@ -133,7 +133,6 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
 
   JsonObjectConst fire = doc["fire"].as<JsonObjectConst>();
   if (!fire.isNull()) {
-    next.fireHardwareEnabled = getBoolOr(fire["hardware_enabled"], next.fireHardwareEnabled);
     next.fireEscRunUs = fire["esc_run_us"] | next.fireEscRunUs;
     next.fireEscStopUs = fire["esc_stop_us"] | next.fireEscStopUs;
     next.fireDefaultHoldMs = getUIntOr(fire["default_hold_ms"], next.fireDefaultHoldMs);
@@ -371,7 +370,6 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   calibration["home_pitch_deg"] = config.homePitchDeg;
 
   JsonObject fire = doc.createNestedObject("fire");
-  fire["hardware_enabled"] = config.fireHardwareEnabled;
   fire["esc_run_us"] = config.fireEscRunUs;
   fire["esc_stop_us"] = config.fireEscStopUs;
   fire["default_hold_ms"] = config.fireDefaultHoldMs;
@@ -472,7 +470,6 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.yawMaxDeg = prefs.getFloat("yaw_max_deg", config.yawMaxDeg);
   config.pitchMinDeg = prefs.getFloat("pit_min_deg", config.pitchMinDeg);
   config.pitchMaxDeg = prefs.getFloat("pit_max_deg", config.pitchMaxDeg);
-  config.fireHardwareEnabled = prefs.getBool("fire_hw", config.fireHardwareEnabled);
   config.fireEscRunUs = prefs.getUShort("fire_run", config.fireEscRunUs);
   config.fireEscStopUs = prefs.getUShort("fire_stop", config.fireEscStopUs);
   config.fireDefaultHoldMs = prefs.getUInt("fire_def", config.fireDefaultHoldMs);
@@ -552,7 +549,6 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putFloat("yaw_max_deg", config.yawMaxDeg) > 0;
   ok &= prefs.putFloat("pit_min_deg", config.pitchMinDeg) > 0;
   ok &= prefs.putFloat("pit_max_deg", config.pitchMaxDeg) > 0;
-  ok &= prefs.putBool("fire_hw", config.fireHardwareEnabled) > 0;
   ok &= prefs.putUShort("fire_run", config.fireEscRunUs) > 0;
   ok &= prefs.putUShort("fire_stop", config.fireEscStopUs) > 0;
   ok &= prefs.putUInt("fire_def", config.fireDefaultHoldMs) > 0;

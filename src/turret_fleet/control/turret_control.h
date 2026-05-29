@@ -16,8 +16,7 @@ class TurretControl {
   void setBrownoutLockout(bool active);
   bool brownoutLockoutActive() const;
   bool recoverBrownoutLockoutIfSafe(const char* source);
-  bool sanitizeConfigForSafety(RuntimeConfig& config) const;
-  void enterBootInitialTarget(bool enableMotion = true);
+  void enterBootInitialTarget(bool motionAllowed = true);
   void loop();
   void handleCommandJson(JsonDocument& doc, const char* source);
   void appendStatus(JsonObject doc) const;
@@ -164,7 +163,7 @@ class TurretControl {
                   int& lastCommandUs);
   bool validateFrame(JsonVariantConst frameVariant, const char* command, const char* source);
   bool applyTargetObject(JsonObjectConst target, const char* source);
-  bool applyTargetCm(float xCm, float yCm, float zCm, const char* source, bool enableTracking = true);
+  bool applyTargetCm(float xCm, float yCm, float zCm, const char* source);
   bool applyDirectAimCommand(JsonDocument& doc, const char* source);
   bool applyHomeCommand(const char* source);
   bool applyJogCommand(JsonDocument& doc, const char* source);

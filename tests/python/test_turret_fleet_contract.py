@@ -26,7 +26,7 @@ def test_fleet_control_boots_wait_command_then_initial_target_after_mqtt() -> No
     assert 'mode_ = config.configured ? "WAIT_COMMAND" : "UNCONFIGURED";' in control
     assert 'mode_ = config.configured ? "IDLE" : "UNCONFIGURED";' not in control
     assert "waits for MQTT, then initial local home only" in control
-    assert "void TurretControl::enterBootInitialTarget(bool enableMotion)" in control
+    assert "void TurretControl::enterBootInitialTarget(bool motionAllowed)" in control
     assert "MQTT_READY(home_0_0)" in control
     assert 'mode_ = "HOME"' in control
     assert "Motion tracking" in control
@@ -463,7 +463,9 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "fireRecoveryRequiredAtBoot = loadFireRecoveryMarker();" in main
     assert "recoveryLockoutRequiredAtBoot = loadRecoveryLockoutMarker();" in main
     assert "&&\n                                   !recoveryLockoutRequiredAtBoot" in main
-    assert "boot safety lockout recorded fire.hardware_enabled=false" in main
+    assert "fireHardwareEnabled" not in read("src/turret_fleet/config/runtime_config.h")
+    assert "hardware_enabled" not in read("scripts/turret_fleet/provision.py")
+    assert "--fire-hardware-enabled" not in helper
     assert "control.setBrownoutLockout(!bootInitialTargetMotionAllowed)" in main
     assert 'doc["fire_recovery_required_at_boot"] = fireRecoveryRequiredAtBoot;' in main
     assert 'doc["recovery_lockout_required_at_boot"] = recoveryLockoutRequiredAtBoot;' in main
@@ -473,7 +475,7 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert 'bootAutoRecoverySucceeded = control.recoverBrownoutLockoutIfSafe("boot_auto_recover")' in main
     assert 'doc["boot_auto_recovery_attempted"] = bootAutoRecoveryAttempted;' in main
     assert 'doc["boot_auto_recovery_succeeded"] = bootAutoRecoverySucceeded;' in main
-    assert "sanitizeConfigForSafety" in header
+    assert "sanitizeConfigForSafety" not in header
     assert "brownout/fire-reset lockout active: motion/fire blocked until recover succeeds" in control
     assert "writeFireRecoveryMarker(true)" in control
     assert "writeFireRecoveryMarker(false)" in control
@@ -485,8 +487,6 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "fire rejected after brownout lockout" in control
     assert "recover rejected: feedback outside stable soft window" in control
     assert 'motion["brownout_lockout"] = brownoutLockoutActive_;' in control
-    assert "fire.hardware_enabled recorded false while brownout lockout is active" in main
-    assert "fire.hardware_enabled recorded false while brownout lockout is active" in mqtt
     assert '"recover"' in helper
 
 
@@ -610,8 +610,6 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
         "config",
         "--yaw-axis-offset-deg",
         "9",
-        "--fire-hardware-enabled",
-        "false",
         "--dead-pitch-deg",
         "24",
         "--yaw-stop-us",
@@ -644,7 +642,7 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
     suffix, payload = module.build_command_payload(args)
     assert suffix == "config"
     assert payload["calibration"]["yaw_axis_offset_deg"] == 9.0
-    assert payload["fire"]["hardware_enabled"] is False
+    assert "hardware_enabled" not in payload.get("fire", {})
     assert payload["motion"]["dead"]["pitch_deg"] == 24.0
     assert payload["motion"]["yaw_stop_us"] == 1500
     assert payload["motion"]["pitch_stop_us"] == 1500

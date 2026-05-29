@@ -36,7 +36,7 @@ Brownout or a reset during active firing is treated as an interrupted unsafe ope
 
 - During an active fire sequence the firmware writes an NVS `fire_active` marker.
 - If boot sees ESP reset reason `BROWNOUT`, `fire_active=true`, or a persisted `recover_req=true` marker, it enters brownout/fire-reset lockout.
-- Lockout records `fire.hardware_enabled=false` in NVS/status, detaches/stops fire outputs, skips boot HOME output drive, and blocks direct fire via `brownout_lockout` until recovery.
+- Lockout detaches/stops fire outputs, skips boot HOME output drive, and blocks direct fire via `brownout_lockout` until recovery. There is no MQTT/NVS pre-arm enable flag for fire.
 - Firmware immediately attempts automatic safe recovery. It clears the lockout only if current yaw/pitch feedback is stable and inside the calibrated soft window; it recovers to `WAIT_COMMAND`, not to a saved target.
 - If auto-recovery fails, the lockout marker stays in NVS and target/idle/dead/aim/jog/fire/pattern remain rejected until explicit `recover` succeeds.
 - Saved/stale pose is used for diagnostics only and is never trusted as authority to resume motion after a brownout.
@@ -189,7 +189,7 @@ Latest turret_2 bench evidence after the yaw/pitch recovery guard (2026-05-28):
   - idle wide config persisted with yaw `-60..60`, pitch `-15..12`, speeds `24/8`, then `idle` was received but inhibited by yaw hard-edge;
   - idle narrow config persisted with yaw `-15..15`, pitch `-5..5`, speeds `8/4`, then `idle` was received but inhibited by yaw hard-edge;
   - `dead` was received but inhibited by yaw hard-edge;
-  - Historical note: before the direct-fire policy change, `fire --duration-ms 500` was rejected when `fire.hardware_enabled=false`; current firmware treats explicit `fire` as the arm/trigger command unless DEAD/lockout/unconfigured.
+  - Historical note: the old `fire.hardware_enabled` pre-arm/status field was removed; current firmware treats explicit `fire` as the arm/trigger command unless DEAD/lockout/unconfigured.
 
 Interpretation: the current failure is not MQTT delivery, config persistence, or coordinate solving. The firmware can compute targets and can recover pitch automatically. Yaw feedback is reporting a hard-edge ADC value before motion starts, so the safe behavior is to refuse yaw drive rather than force the motor into a possible mechanical/electrical limit. If the mechanism is visibly centered while `yaw_raw=0`, the likely issue is the yaw potentiometer/feedback path: disconnected signal, short to ground, wrong pin, ADC reference/power, or sensor wiring reversed/broken. Once yaw raw is inside a recoverable range (`>300` and `<3700`, ideally inside `640..3360`), the same bounded software recovery path will run before target/idle/dead motion.
 
@@ -286,7 +286,7 @@ If motion is still unstable, debug in this order:
 
 ## Safety notes
 
-- Fire is explicit. For bench work, do not send `fire`; `fire.hardware_enabled=false` is only a status/legacy marker, not a direct-fire pre-arm gate.
+- Fire is explicit. For bench work, do not send `fire`; there is no pre-arm config flag to toggle first.
 - Fire duration default is 500 ms and bounded by config.
 - `dead` pitch is config-driven and should stay within safe range.
 - Wrong `frame_id` commands are rejected before motion/fire.
@@ -388,7 +388,7 @@ Latest full MQTT/serial hardware suite after safe-envelope config (2026-05-29):
   - `motion.limits.pitch=-45..70deg`;
   - idle wide/visible sweep: yaw `-45..30deg` at `50deg/s`, pitch `-20..20deg` at `25deg/s`;
   - dead pitch `65deg`;
-  - fire remains `hardware_enabled=false` in status for bench visibility, but direct `fire` will still energize outputs unless DEAD/lockout/unconfigured.
+  - fire has no `hardware_enabled` status/config flag; direct `fire` will energize outputs unless DEAD/lockout/unconfigured.
 - Full suite log: `.omx/logs/turret_fleet_corrected_hw_suite_20260529_131433.log`.
   - 15/17 strict checks passed on the first sweep. The two strict failures were final-sample `aim_reached=false` at about `2.1..2.2deg` pitch error while nearby serial samples were already within target; this is a control jitter/tolerance observation, not MQTT/config rejection.
   - Follow-up HOME restore with restored drive config reached local home: final `yaw≈0.37deg`, `pitch≈1.19deg`, `aim_reached=true`, `last_error=""`.
@@ -406,7 +406,7 @@ Latest full MQTT/serial hardware suite after safe-envelope config (2026-05-29):
     - target `(0.223,4.369,1)` solved `-70.01deg`, clamped to `-55deg`, actual `≈-53.76deg`, raw `1326` within soft `1309..2521`.
   - MQTT config updates changed behavior live: narrow idle (`-20..20`, `-8..8`) then wide/fast idle (`-45..30`, `-20..20`) were both accepted and visible in status/config; wide idle stayed inside yaw soft window.
   - `dead` command moved pitch high safely: observed `pitch≈61.8deg` for configured `65deg`, no last_error, fire outputs safe-off.
-  - Historical note: `fire --duration-ms 500` was previously tested with `fire.hardware_enabled=false` and rejected. Current firmware no longer uses that flag to block explicit fire.
+  - Historical note: `fire --duration-ms 500` was previously blocked by a now-removed pre-arm flag. Current firmware no longer has that flag and does not use it to block explicit fire.
 - Important tuning note:
   - Attempting to lower `pitch_min_drive_us` to `40` reduced authority too much: pitch stalled around `+12deg` on HOME and around `-6deg` for `target 0,0,0` while command PWM was only `1540us`.
   - Restored final config uses `pitch_min_drive_us=90` / `pitch_max_delta_us=140` (runtime tracking still caps pitch delta internally) because this reliably crosses friction/backlash and reaches HOME/targets.

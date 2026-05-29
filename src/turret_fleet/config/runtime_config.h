@@ -71,7 +71,6 @@ struct RuntimeConfig {
   uint16_t axisDivergenceGuardMs = 3000;
   float axisDivergenceMarginDeg = 20.0f;
 
-  bool fireHardwareEnabled = true;
   uint16_t fireEscRunUs = 1700;
   uint16_t fireEscStopUs = 1000;
   uint32_t fireDefaultHoldMs = 500;

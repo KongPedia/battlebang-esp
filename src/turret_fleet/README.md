@@ -143,7 +143,7 @@ that Command Center will send. The helper reads `src/turret_fleet/.env.turret_fl
 ./bin/turret fleet-mqtt turret_2 dead
 ./bin/turret fleet-mqtt turret_2 hold
 
-# fire is an explicit live-fire command; no --fire-hardware-enabled pre-arm is required
+# fire is an explicit live-fire command; no pre-arm config flag exists
 # It starts immediately, even during TARGET motion. Firmware rejects only DEAD,
 # brownout lockout, or unconfigured state.
 ./bin/turret fleet-mqtt turret_2 config --fire-default-hold-ms 500
@@ -227,8 +227,7 @@ Command Center can re-run that same local zeroing step without reboot by sending
 
 If the ESP boots after a brownout or after a reset while `fire_active` was set,
 the firmware does not trust the interrupted motion/fire state. It persists a
-`recover_req` lockout marker in NVS, records `fire.hardware_enabled=false`
-for status/Command Center visibility, and skips boot HOME output drive. It then attempts automatic safe recovery to
+`recover_req` lockout marker in NVS and skips boot HOME output drive. It then attempts automatic safe recovery to
 `WAIT_COMMAND`: recovery clears only when current yaw/pitch feedback is stable and
 inside the calibrated soft window. If that auto-recovery fails, motion/fire
 commands remain blocked until Command Center or a serial operator sends

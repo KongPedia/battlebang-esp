@@ -294,11 +294,6 @@ void applyAndPersistConfig(const char* json) {
     return;
   }
 
-  const bool sanitized = control.sanitizeConfigForSafety(next);
-  if (sanitized) {
-    Serial.println("[fleet][serial] fire.hardware_enabled recorded false while brownout lockout is active");
-  }
-
   config = next;
   const bool saved = configStore.save(config);
   Serial.print("[fleet][serial] config applied saved=");
@@ -459,13 +454,6 @@ void setup() {
 
   config = makeDefaultRuntimeConfig(buildDeviceId());
   configStore.load(config);
-  if (!bootInitialTargetMotionAllowed && config.fireHardwareEnabled) {
-    config.fireHardwareEnabled = false;
-    const bool saved = configStore.save(config);
-    Serial.print("[fleet][safety] boot safety lockout recorded fire.hardware_enabled=false saved=");
-    Serial.println(saved ? "yes" : "no");
-  }
-
   Serial.println("=== BATTLEBANG TURRET FLEET FIRMWARE ===");
   Serial.print("app=");
   Serial.print(BB_TURRET_FLEET_APP_NAME);

@@ -203,7 +203,6 @@ def build_config(turret_id: str, env: dict[str, str], include_secrets: bool = Tr
             "dead": {"pitch_deg": dead_pitch},
         },
         "fire": {
-            "hardware_enabled": parse_bool(env_first(env, "TURRET_FLEET_FIRE_HARDWARE_ENABLED", default="true"), default=True),
             "esc_run_us": fire_run_us,
             "esc_stop_us": int(env_first(env, "TURRET_FLEET_FIRE_ESC_STOP_US", default="1000") or "1000"),
             "default_hold_ms": fire_default_ms,

@@ -31,7 +31,6 @@
     "home_pitch_deg": 0.0
   },
   "fire": {
-    "hardware_enabled": true,
     "esc_run_us": 1700,
     "esc_stop_us": 1000,
     "default_hold_ms": 500,

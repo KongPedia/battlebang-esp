@@ -11,7 +11,7 @@ Important fields:
 - `calibration.yaw_offset_deg` / `pitch_offset_deg`: world target solver correction after local zero is good.
 - `motion.limits`: local yaw/pitch command envelope; default total range is 150°.
 - `motion.home`: local boot/init pose, normally `0,0`.
-- `fire.hardware_enabled`: legacy/status arm marker persisted in NVS. Direct `fire` commands do not require this flag; `DEAD`, brownout lockout, and unconfigured state are the firmware fire blockers.
+- `fire.*`: fire timing/ESC parameters only. There is no MQTT/NVS pre-arm enable flag; explicit `fire` commands run unless blocked by `DEAD`, brownout lockout, or unconfigured state.
 - `ota.*`: Command Center-approved OTA polling policy.
 
 Validation rejects invalid envelopes: yaw span >150°, pitch span >150°, home/idle/dead outside limits, servo tuning out of allowed PWM ranges, invalid MQTT target unit, and unsafe fire timings.

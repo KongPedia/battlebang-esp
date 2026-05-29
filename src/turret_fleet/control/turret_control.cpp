@@ -222,16 +222,16 @@ void TurretControl::begin(const RuntimeConfig& config) {
 }
 
 
-void TurretControl::enterBootInitialTarget(bool enableMotion) {
+void TurretControl::enterBootInitialTarget(bool motionAllowed) {
   if (!config_.configured) {
     mode_ = "UNCONFIGURED";
     return;
   }
 
   Serial.print("[fleet][control] MQTT-ready initial local home: yaw=home_yaw,pitch=home_pitch motion=");
-  Serial.println(enableMotion ? "enabled" : "inhibited_after_brownout");
+  Serial.println(motionAllowed ? "allowed" : "inhibited_after_brownout");
   bool bootProbeSafe = true;
-  if (enableMotion) {
+  if (motionAllowed) {
     bootProbeSafe = runBootAxisProbe();
   }
   updateCurrentAngles();
@@ -247,7 +247,7 @@ void TurretControl::enterBootInitialTarget(bool enableMotion) {
   patternState_ = "IDLE";
   resetPidState();
 
-  const bool trackInitialHome = enableMotion && bootProbeSafe && ensureMotionSafetyForTracking("MQTT_READY(home_0_0)");
+  const bool trackInitialHome = motionAllowed && bootProbeSafe && ensureMotionSafetyForTracking("MQTT_READY(home_0_0)");
   if (trackInitialHome) {
     setTrackedTarget(clampedYawDeg_, clampedPitchDeg_);
     mode_ = "HOME";
@@ -271,7 +271,7 @@ void TurretControl::enterBootInitialTarget(bool enableMotion) {
   Serial.print("Motion tracking    : ");
   Serial.println(trackInitialHome ? "ENABLED" : "INHIBITED");
   Serial.println("=====================================");
-  if (!enableMotion) {
+  if (!motionAllowed) {
     lastError_ = "boot home motion inhibited after brownout/fire reset";
     Serial.print("[fleet][motion] ");
     Serial.println(lastError_);
@@ -293,7 +293,6 @@ void TurretControl::enterBootInitialTarget(bool enableMotion) {
 void TurretControl::applyConfig(const RuntimeConfig& config) {
   const bool wasUnconfigured = (mode_ == "UNCONFIGURED" || mode_ == "BOOT");
   config_ = config;
-  sanitizeConfigForSafety(config_);
   if (wasUnconfigured && config_.configured) {
     mode_ = "WAIT_COMMAND";
   }
@@ -338,9 +337,7 @@ void TurretControl::applyConfig(const RuntimeConfig& config) {
   Serial.print(" pitch_max_delta_us=");
   Serial.print(config.pitchMaxDeltaUs);
   Serial.print(" axis_switch_cooldown_ms=");
-  Serial.print(config.axisSwitchCooldownMs);
-  Serial.print(" fire_hw=");
-  Serial.println(config_.fireHardwareEnabled ? "on" : "off");
+  Serial.println(config.axisSwitchCooldownMs);
 }
 
 void TurretControl::setBrownoutLockout(bool active) {
@@ -358,7 +355,6 @@ void TurretControl::setBrownoutLockout(bool active) {
   yawTrackingSuppressed_ = false;
   lockedMotionAxis_ = 'N';
   selectedMotionAxis_ = 'N';
-  config_.fireHardwareEnabled = false;
   mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
   fireState_ = "SAFE_OFF";
   patternState_ = "IDLE";
@@ -372,12 +368,6 @@ bool TurretControl::brownoutLockoutActive() const {
 
 bool TurretControl::recoverBrownoutLockoutIfSafe(const char* source) {
   return clearBrownoutLockoutIfSafe(source);
-}
-
-bool TurretControl::sanitizeConfigForSafety(RuntimeConfig& config) const {
-  if (!brownoutLockoutActive_ || !config.fireHardwareEnabled) return false;
-  config.fireHardwareEnabled = false;
-  return true;
 }
 
 void TurretControl::ensureYawAttached(const char* reason) {
@@ -1880,8 +1870,7 @@ bool TurretControl::pitchRawInsideSoftWindow(int raw) const {
 bool TurretControl::applyTargetCm(float xCm,
                                   float yCm,
                                   float zCm,
-                                  const char* source,
-                                  bool enableTracking) {
+                                  const char* source) {
   if (!config_.configured) {
     lastError_ = "target rejected: turret is unconfigured";
     Serial.print("[fleet][control] ");
@@ -1917,13 +1906,13 @@ bool TurretControl::applyTargetCm(float xCm,
   patternState_ = "IDLE";
   lockedMotionAxis_ = 'N';
   resetPidState();
-  const bool trackingAllowed = enableTracking && ensureMotionSafetyForTracking(source);
+  const bool trackingAllowed = ensureMotionSafetyForTracking(source);
   bool pitchOnlyTrackingAllowed = false;
   if (trackingAllowed) {
     setTrackedTarget(clampedYawDeg_, clampedPitchDeg_);
     mode_ = "TARGET";
     lastError_ = "";
-  } else if (enableTracking && ensurePitchSafetyForTracking(source)) {
+  } else if (ensurePitchSafetyForTracking(source)) {
     detachYawOutput("target_pitch_only_yaw_inhibited");
     setPitchOnlyTrackedTarget(clampedPitchDeg_);
     mode_ = "TARGET";
@@ -2608,7 +2597,6 @@ void TurretControl::appendStatus(JsonObject doc) const {
   doc["last_command_id"] = lastCommandId_;
 
   JsonObject fire = doc.createNestedObject("fire_output_state");
-  fire["hardware_enabled"] = config_.fireHardwareEnabled;
   fire["esc_run_us_config"] = config_.fireEscRunUs;
   fire["esc_stop_us_config"] = config_.fireEscStopUs;
   fire["relay_step_delay_ms"] = config_.fireRelayStepDelayMs;

@@ -137,10 +137,8 @@ or fire are rejected until explicit recovery. Status includes
 ```
 
 Only when status shows `motion_state.brownout_lockout=false` should it resume
-`target`, `idle`, `dead`, or `fire`. The ESP also forces
-`fire.hardware_enabled=false` in NVS while locked out for status visibility.
-Direct `fire` commands do not require this flag after recovery; the actual blockers
-are `DEAD`, brownout lockout, and unconfigured state.
+`target`, `idle`, `dead`, or `fire`. There is no MQTT/NVS fire pre-arm flag;
+the actual blockers are `DEAD`, brownout lockout, and unconfigured state.
 
 ## Command payload
 
@@ -173,7 +171,7 @@ Payload examples:
 ./bin/turret fleet-mqtt turret_2 config --yaw-axis-offset-deg 9
 ./bin/turret fleet-mqtt turret_2 config --home-yaw-deg 0 --home-pitch-deg 0 --yaw-min-deg -75 --yaw-max-deg 75 --pitch-min-deg -75 --pitch-max-deg 75
 ./bin/turret fleet-mqtt turret_2 config --fire-default-hold-ms 500
-# direct fire starts immediately; it is not gated by fire.hardware_enabled or aim stability
+# direct fire starts immediately; it is not gated by any pre-arm flag or aim stability
 ./bin/turret fleet-mqtt turret_2 fire --duration-ms 500
 ```
 
