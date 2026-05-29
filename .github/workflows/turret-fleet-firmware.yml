@@ -106,19 +106,25 @@ jobs:
       - name: Create GitHub Release for tag
         if: inputs.create_release
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN || github.token }}
-          RELEASE_TOKEN_IS_SECRET: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN != '' }}
+          DEFAULT_GITHUB_TOKEN: ${{ github.token }}
+          PUBLIC_RELEASE_REPO_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}
         run: |
           TAG="turret-fleet-v${{ steps.version.outputs.version }}"
           PUBLIC_REPO="${{ inputs.public_release_repo }}"
           TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
+          if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then
+            export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"
+          else
+            export GH_TOKEN="${PUBLIC_RELEASE_REPO_TOKEN}"
+            if [[ -z "${GH_TOKEN}" ]]; then
+              echo "Cross-repo release to ${PUBLIC_REPO} requires repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
+              echo "Same-repo public releases to ${GITHUB_REPOSITORY} use the built-in GITHUB_TOKEN." >&2
+              exit 2
+            fi
+          fi
+
           if [[ -z "${GH_TOKEN}" ]]; then
             echo "Missing GitHub token." >&2
-            exit 2
-          fi
-          if [[ "${PUBLIC_REPO}" != "${GITHUB_REPOSITORY}" && "${RELEASE_TOKEN_IS_SECRET}" != "true" ]]; then
-            echo "Cross-repo release to ${PUBLIC_REPO} requires repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
-            echo "Same-repo public releases to ${GITHUB_REPOSITORY} use the built-in GITHUB_TOKEN." >&2
             exit 2
           fi
 
