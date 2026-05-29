@@ -292,6 +292,59 @@ If motion is still unstable, debug in this order:
 - Wrong `frame_id` commands are rejected before motion/fire.
 - Secrets must stay in ignored env/secret files only.
 
+## Motion speed tuning notes
+
+Closed-loop speed is adjusted over MQTT/NVS; no rebuild is required:
+
+```bash
+./bin/turret fleet-mqtt turret_2 config \
+  --config-version <new_monotonic_version> \
+  --yaw-max-delta-us 180 \
+  --yaw-min-drive-us 130 \
+  --pitch-max-delta-us 120 \
+  --pitch-min-drive-us 70 \
+  --host 10.2.80.52
+```
+
+`yaw_max_delta_us` is the maximum yaw PWM distance from neutral for larger
+errors; `yaw_min_drive_us` is the minimum yaw PWM distance once outside the
+deadband. Increase these in small steps and test `initiate -> target -> initiate`
+while watching serial status for `reset_reason`, `brownout_lockout`,
+`last_error`, and `motion_state.aim_reached`.
+
+Latest turret_2 speed-tuning evidence (2026-05-29):
+
+- `yaw_max_delta_us=300` with `yaw_min_drive_us=180..220` did **not** brown out,
+  but it caused overshoot/feedback excursions. One run drove yaw beyond the
+  configured `+35deg` soft edge, and another produced pitch feedback outside the
+  calibrated window. Do not use these values on the current bench power/mechanics.
+- `yaw_max_delta_us=280`, `yaw_min_drive_us=160` also failed to converge cleanly.
+- The current safe fallback kept in NVS after testing is
+  `yaw_max_delta_us=180`, `yaw_min_drive_us=130`, `pitch_max_delta_us=120`,
+  `pitch_min_drive_us=70`. It is slower but avoids the high-speed feedback
+  excursions observed above.
+- If aggressive tuning leaves yaw just outside the configured soft window, a
+  temporary recovery envelope can bring it home without widening production
+  limits permanently:
+
+```bash
+# temporary recovery only; restore yaw_max_deg after HOME is reached
+./bin/turret fleet-mqtt turret_2 config \
+  --config-version <new_monotonic_version> \
+  --yaw-min-deg -55 \
+  --yaw-max-deg 45 \
+  --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 config \
+  --config-version <newer_monotonic_version> \
+  --yaw-min-deg -55 \
+  --yaw-max-deg 35 \
+  --host 10.2.80.52
+```
+
+Do not leave a faster config in NVS unless the full `target` round trip reaches
+`aim_reached=true` with no brownout and no soft-window inhibition.
+
 Latest centered-origin calibration attempt and yaw PID direction fix (2026-05-29):
 
 - Corrected test method per operator intent: do not sweep from an arbitrary current pose. First drive to local `yaw=0,pitch=0`, then test symmetric steps from that origin: `0,+1,+2,+3` and `0,-1,-2,-3` with `1 step = 15deg`.
