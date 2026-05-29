@@ -377,7 +377,10 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert 'default="esp32dev-turret-v2"' in script
     assert "KongPedia/battlebang-esp" in provision
     assert 'default: "KongPedia/battlebang-esp"' in workflow
-    assert "GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN || github.token }}" in workflow
+    assert "DEFAULT_GITHUB_TOKEN: ${{ github.token }}" in workflow
+    assert "PUBLIC_RELEASE_REPO_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}" in workflow
+    assert 'if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then' in workflow
+    assert 'export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"' in workflow
     assert example["app"] == "battlebang-turret-fleet"
     assert example["hardware"] == "esp32dev-turret-v2"
 
@@ -462,11 +465,15 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
 
     assert "fireRecoveryRequiredAtBoot = loadFireRecoveryMarker();" in main
     assert "recoveryLockoutRequiredAtBoot = loadRecoveryLockoutMarker();" in main
-    assert "&&\n                                   !recoveryLockoutRequiredAtBoot" in main
+    assert "otaRebootInhibitRequiredAtBoot = consumeOtaRebootMarker();" in main
+    assert "bootSafetyLockoutRequired = bootResetReason == ESP_RST_BROWNOUT" in main
+    assert "!otaRebootInhibitRequiredAtBoot" in main
     assert "fireHardwareEnabled" not in read("src/turret_fleet/config/runtime_config.h")
     assert "hardware_enabled" not in read("scripts/turret_fleet/provision.py")
     assert "--fire-hardware-enabled" not in helper
-    assert "control.setBrownoutLockout(!bootInitialTargetMotionAllowed)" in main
+    assert "control.setBrownoutLockout(bootSafetyLockoutRequired)" in main
+    assert "writeOtaRebootMarker(true)" in main
+    assert "post-OTA boot: automatic HOME drive inhibited" in main
     assert 'doc["fire_recovery_required_at_boot"] = fireRecoveryRequiredAtBoot;' in main
     assert 'doc["recovery_lockout_required_at_boot"] = recoveryLockoutRequiredAtBoot;' in main
     assert "setBrownoutLockout" in header
@@ -475,6 +482,7 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert 'bootAutoRecoverySucceeded = control.recoverBrownoutLockoutIfSafe("boot_auto_recover")' in main
     assert 'doc["boot_auto_recovery_attempted"] = bootAutoRecoveryAttempted;' in main
     assert 'doc["boot_auto_recovery_succeeded"] = bootAutoRecoverySucceeded;' in main
+    assert 'doc["ota_reboot_inhibit_required_at_boot"] = otaRebootInhibitRequiredAtBoot;' in main
     assert "sanitizeConfigForSafety" not in header
     assert "brownout/fire-reset lockout active: motion/fire blocked until recover succeeds" in control
     assert "writeFireRecoveryMarker(true)" in control

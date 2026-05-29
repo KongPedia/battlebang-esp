@@ -28,6 +28,8 @@ bool fireRecoveryRequiredAtBoot = false;
 bool recoveryLockoutRequiredAtBoot = false;
 bool bootAutoRecoveryAttempted = false;
 bool bootAutoRecoverySucceeded = false;
+bool otaRebootInhibitRequiredAtBoot = false;
+bool bootSafetyLockoutRequired = false;
 unsigned long lastAutoOtaCheckMs = 0;
 
 namespace {
@@ -36,6 +38,7 @@ size_t serialLen = 0;
 const char* kSafetyPrefsNamespace = "bb_fleet";
 const char* kFireRecoveryMarkerKey = "fire_active";
 const char* kRecoveryLockoutMarkerKey = "recover_req";
+const char* kOtaRebootMarkerKey = "ota_reboot";
 
 String configuredOtaPollUrl();
 
@@ -51,6 +54,25 @@ bool loadRecoveryLockoutMarker() {
   Preferences prefs;
   if (!prefs.begin(kSafetyPrefsNamespace, true)) return false;
   const bool active = prefs.getBool(kRecoveryLockoutMarkerKey, false);
+  prefs.end();
+  return active;
+}
+
+void writeOtaRebootMarker(bool active) {
+  Preferences prefs;
+  if (!prefs.begin(kSafetyPrefsNamespace, false)) {
+    Serial.println("[fleet][ota] reboot marker NVS open failed");
+    return;
+  }
+  prefs.putBool(kOtaRebootMarkerKey, active);
+  prefs.end();
+}
+
+bool consumeOtaRebootMarker() {
+  Preferences prefs;
+  if (!prefs.begin(kSafetyPrefsNamespace, false)) return false;
+  const bool active = prefs.getBool(kOtaRebootMarkerKey, false);
+  if (active) prefs.putBool(kOtaRebootMarkerKey, false);
   prefs.end();
   return active;
 }
@@ -82,10 +104,11 @@ const char* resetReasonName(esp_reset_reason_t reason) {
   }
 }
 
-const char* bootLockoutReasonName() {
+const char* bootInitialInhibitReasonName() {
   if (bootResetReason == ESP_RST_BROWNOUT) return "brownout";
   if (fireRecoveryRequiredAtBoot) return "fire-reset-marker";
   if (recoveryLockoutRequiredAtBoot) return "recovery-marker";
+  if (otaRebootInhibitRequiredAtBoot) return "ota-reboot";
   return "none";
 }
 
@@ -164,6 +187,7 @@ void printStatus(const char* reason) {
   doc["recovery_lockout_required_at_boot"] = recoveryLockoutRequiredAtBoot;
   doc["boot_auto_recovery_attempted"] = bootAutoRecoveryAttempted;
   doc["boot_auto_recovery_succeeded"] = bootAutoRecoverySucceeded;
+  doc["ota_reboot_inhibit_required_at_boot"] = otaRebootInhibitRequiredAtBoot;
   doc["uptime_ms"] = millis();
 
   String out;
@@ -267,6 +291,7 @@ bool checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterA
   Serial.println(result.message);
   publishMqttStatusIfConnected(result.ok ? "ota_rebooting" : "ota_failed");
   if (result.ok) {
+    writeOtaRebootMarker(true);
     delay(500);
     ESP.restart();
   }
@@ -443,9 +468,12 @@ void setup() {
   bootResetReason = esp_reset_reason();
   fireRecoveryRequiredAtBoot = loadFireRecoveryMarker();
   recoveryLockoutRequiredAtBoot = loadRecoveryLockoutMarker();
-  bootInitialTargetMotionAllowed = bootResetReason != ESP_RST_BROWNOUT &&
-                                   !fireRecoveryRequiredAtBoot &&
-                                   !recoveryLockoutRequiredAtBoot;
+  otaRebootInhibitRequiredAtBoot = consumeOtaRebootMarker();
+  bootSafetyLockoutRequired = bootResetReason == ESP_RST_BROWNOUT ||
+                              fireRecoveryRequiredAtBoot ||
+                              recoveryLockoutRequiredAtBoot;
+  bootInitialTargetMotionAllowed = !bootSafetyLockoutRequired &&
+                                   !otaRebootInhibitRequiredAtBoot;
 
   Serial.println("[fleet][power] stopping Bluetooth controller");
   btStop();
@@ -468,8 +496,8 @@ void setup() {
   Serial.print("reset_reason=");
   Serial.println(resetReasonName(bootResetReason));
   if (!bootInitialTargetMotionAllowed) {
-    Serial.print("[fleet][motion] boot safety lockout; reason=");
-    Serial.print(bootLockoutReasonName());
+    Serial.print("[fleet][motion] boot initial target inhibited; reason=");
+    Serial.print(bootInitialInhibitReasonName());
     Serial.println("; boot initial target will be computed but outputs stay detached");
   }
   Serial.print("release_repo=");
@@ -477,8 +505,8 @@ void setup() {
   Serial.print("latest_manifest=");
   Serial.println(BB_TURRET_FLEET_LATEST_MANIFEST_URL);
   control.begin(config);
-  control.setBrownoutLockout(!bootInitialTargetMotionAllowed);
-  if (!bootInitialTargetMotionAllowed) {
+  control.setBrownoutLockout(bootSafetyLockoutRequired);
+  if (bootSafetyLockoutRequired) {
     bootAutoRecoveryAttempted = true;
     bootAutoRecoverySucceeded = control.recoverBrownoutLockoutIfSafe("boot_auto_recover");
     if (bootAutoRecoverySucceeded) {
@@ -486,6 +514,8 @@ void setup() {
     } else {
       Serial.println("[fleet][safety] boot auto-recovery kept lockout active; use hold/recover after checking hardware");
     }
+  } else if (otaRebootInhibitRequiredAtBoot) {
+    Serial.println("[fleet][ota] post-OTA boot: automatic HOME drive inhibited until Command Center sends initiate/target");
   }
   Serial.println(runtimeConfigToJson(config, false));
   printStatus("boot");
