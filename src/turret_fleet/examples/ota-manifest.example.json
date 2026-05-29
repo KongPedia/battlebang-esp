@@ -6,7 +6,7 @@
   "hardware": "esp32dev-turret-v2",
   "version": "0.2.0",
   "build": 42,
-  "url": "http://10.2.80.105:8080/firmware/battlebang-turret-fleet-0.2.0.bin",
+  "url": "http://COMMAND_CENTER_IP_OR_DNS:8080/firmware/battlebang-turret-fleet-0.2.0.bin",
   "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "size": 934000,
   "force": false

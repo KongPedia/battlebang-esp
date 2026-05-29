@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+PRIVATE_LAB_PREFIX = ".".join(["10", "2", "80"]) + "."
 
 
 def read(path: str) -> str:
@@ -72,6 +73,8 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     assert "esp32dev_turret_fleet" in helper
     assert "src/turret_fleet/.env.turret_fleet" in gitignore
     assert "TURRET_FLEET_WIFI_PASSWORD=YOUR_WIFI_PASSWORD" in env_example
+    assert "TURRET_FLEET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS" in env_example
+    assert PRIVATE_LAB_PREFIX not in env_example
     assert "TURRET_FLEET_NETWORK_AUTO_START=true" in env_example
     assert "Keep false while power/servo brownout" not in env_example
     assert "TURRET_FLEET_YAW_STOP_US=1500" in env_example
@@ -464,6 +467,28 @@ def test_fleet_docs_do_not_reference_old_pitch_pattern_or_old_ota_identity() -> 
     assert "Post-OTA boot intentionally stayed in `WAIT_COMMAND`" in combined
 
 
+def test_fleet_docs_mask_lab_broker_ip_and_define_mqtt_broker_host() -> None:
+    paths = [
+        "README.md",
+        "bin/turret",
+        "scripts/turret_fleet/README.md",
+        "src/turret_fleet/.env.turret_fleet.example",
+        "src/turret_fleet/README.md",
+        "src/turret_fleet/docs/context.md",
+        "src/turret_fleet/docs/github-actions.md",
+        "src/turret_fleet/docs/mqtt-http-contract.md",
+        "src/turret_fleet/docs/usage.md",
+        "src/turret_fleet/mqtt/README.md",
+        "src/turret_fleet/ota/README.md",
+    ]
+    combined = "\n".join(read(path) for path in paths)
+
+    assert PRIVATE_LAB_PREFIX not in combined
+    assert "$MQTT_BROKER_HOST" in combined
+    assert "host is the MQTT broker" in combined
+    assert "COMMAND_CENTER_IP_OR_DNS" in combined
+
+
 def test_serial_and_mqtt_json_buffers_are_heap_backed_to_avoid_loop_stack_overflow() -> None:
     main = read("src/turret_fleet/main.cpp")
     mqtt = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
@@ -616,25 +641,25 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
     spec.loader.exec_module(module)
 
     assert module.topic_for("battlebang/", "turret_2", "command") == "battlebang/turrets/turret_2/command"
-    args = module.build_parser().parse_args(["--host", "10.2.80.52", "2", "target", "0", "0", "2"])
+    args = module.build_parser().parse_args(["--host", "192.0.2.52", "2", "target", "0", "0", "2"])
     suffix, payload = module.build_command_payload(args)
     assert suffix == "command"
     assert payload["command"] == "target"
     assert payload["target"] == {"x": 0.0, "y": 0.0, "z": 2.0}
 
-    args = module.build_parser().parse_args(["--host", "10.2.80.52", "2", "initiate"])
+    args = module.build_parser().parse_args(["--host", "192.0.2.52", "2", "initiate"])
     suffix, payload = module.build_command_payload(args)
     assert suffix == "command"
     assert payload["command"] == "home"
 
-    args = module.build_parser().parse_args(["--host", "10.2.80.52", "2", "recover"])
+    args = module.build_parser().parse_args(["--host", "192.0.2.52", "2", "recover"])
     suffix, payload = module.build_command_payload(args)
     assert suffix == "command"
     assert payload["command"] == "recover"
 
     args = module.build_parser().parse_args([
         "--host",
-        "10.2.80.52",
+        "192.0.2.52",
         "turret_2",
         "jog",
         "yaw",
@@ -654,7 +679,7 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
 
     args = module.build_parser().parse_args([
         "--host",
-        "10.2.80.52",
+        "192.0.2.52",
         "turret_2",
         "config",
         "--yaw-axis-offset-deg",
@@ -708,7 +733,7 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
 
     args = module.build_parser().parse_args([
         "--host",
-        "10.2.80.52",
+        "192.0.2.52",
         "turret_2",
         "update",
         "--desired-build",

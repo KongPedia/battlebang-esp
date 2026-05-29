@@ -114,7 +114,10 @@ python3 -m venv .venv-pio
 
 ./.venv-pio/bin/pio run -e esp32dev_turret_fleet
 ./bin/turret fleet-upload 2 /dev/cu.usbserial-120
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host 10.2.80.52
+
+# MQTT_BROKER_HOST is the Command Center/MQTT broker, not the ESP device IP.
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
 ```
 
 The fleet firmware is a single generic image. First provisioning over USB stores

@@ -73,7 +73,8 @@ Fleet first provisioning:
     injects turret_2 runtime config over USB serial into ESP32 NVS.
   - Env file can be overridden with TURRET_FLEET_ENV_FILE=/path/to/.env.
   - `fleet-mqtt` reads the same module-local env file for broker host/port/root. Use
-    --host 10.2.80.52 when the env file is absent.
+    --host "$MQTT_BROKER_HOST" when the env file is absent; this host is the MQTT broker,
+    not the ESP device IP. Example: MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS.
   - `fleet-mqtt ... update --desired-build N` approves polling against the GitHub latest manifest.
   - `fleet-ota-publish` publishes a full release manifest to MQTT for direct OTA jobs.
 USAGE

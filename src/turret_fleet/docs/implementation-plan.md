@@ -286,7 +286,7 @@ Payload:
     "channel": "boss-demo",
     "desired_build": 42,
     "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v0.3.0/manifest.json",
-    "local_mirror_url": "http://10.2.80.105:8080/firmware/turret/manifest.json",
+    "local_mirror_url": "http://COMMAND_CENTER_IP_OR_DNS:8080/firmware/turret/manifest.json",
     "check_interval_s": 300,
     "apply_only_in_safe_state": true
   }
@@ -425,7 +425,7 @@ Safety:
   "channel": "boss-demo",
   "version": "0.3.0",
   "build": 42,
-  "url": "http://10.2.80.105:8080/firmware/battlebang-turret-fleet-0.3.0.bin",
+  "url": "http://COMMAND_CENTER_IP_OR_DNS:8080/firmware/battlebang-turret-fleet-0.3.0.bin",
   "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "size": 934000,
   "force": false,

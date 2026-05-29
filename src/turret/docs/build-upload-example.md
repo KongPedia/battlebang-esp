@@ -14,7 +14,7 @@ $EDITOR src/turret/local_secrets.h
 ```cpp
 #define TURRET_WIFI_SSID "YOUR_WIFI_SSID"
 #define TURRET_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
-#define TURRET_MQTT_HOST "192.168.0.10"
+#define TURRET_MQTT_HOST "COMMAND_CENTER_IP_OR_DNS"
 #define TURRET_MQTT_PORT 1883
 #define TURRET_MQTT_USERNAME ""
 #define TURRET_MQTT_PASSWORD ""
@@ -31,7 +31,7 @@ $EDITOR src/turret/local_secrets.h
 ```bash
 TURRET_WIFI_SSID='YOUR_WIFI_SSID' \
 TURRET_WIFI_PASSWORD='YOUR_WIFI_PASSWORD' \
-TURRET_MQTT_HOST='192.168.0.10' \
+TURRET_MQTT_HOST='COMMAND_CENTER_IP_OR_DNS' \
 TURRET_MQTT_PORT=1883 \
 ./.venv-pio/bin/pio run -e esp32dev_turret_5
 ```
@@ -41,7 +41,7 @@ TURRET_MQTT_PORT=1883 \
 ```bash
 TURRET_WIFI_SSID='YOUR_WIFI_SSID' \
 TURRET_WIFI_PASSWORD='YOUR_WIFI_PASSWORD' \
-TURRET_MQTT_HOST='192.168.0.10' \
+TURRET_MQTT_HOST='COMMAND_CENTER_IP_OR_DNS' \
 ./.venv-pio/bin/pio run -e esp32dev_turret_5 -t upload --upload-port /dev/cu.usbserial-1130
 ```
 

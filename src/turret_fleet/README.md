@@ -118,7 +118,15 @@ post-OTA `initiate` behavior.
 After USB provisioning, Wi-Fi/MQTT starts automatically. You can send the same MQTT messages
 that Command Center will send. The helper reads `src/turret_fleet/.env.turret_fleet` for
 `TURRET_FLEET_MQTT_HOST`, port, and root. If the env file is absent, pass
-`--host 10.2.80.52`.
+`--host "$MQTT_BROKER_HOST"`.
+
+`--host` is the MQTT broker/Command Center broker address, not the ESP device IP.
+Keep real lab broker IPs in `src/turret_fleet/.env.turret_fleet` or a local shell
+variable:
+
+```bash
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+```
 
 ```bash
 # world-coordinate targets; default MQTT target unit is meters
@@ -211,7 +219,15 @@ post-merge rollout is manifest-free for the operator:
 ```bash
 # read latest manifest, then approve its build by turret id
 curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
-./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"
+```
+
+To avoid manually typing the build while still keeping the broker host local:
+
+```bash
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
+./bin/turret fleet-mqtt turret_2 update --desired-build "$BUILD" --host "$MQTT_BROKER_HOST"
 ```
 
 The `update` helper publishes an NVS config patch to

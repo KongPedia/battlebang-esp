@@ -45,9 +45,9 @@ Brownout or a reset during active firing is treated as an interrupted unsafe ope
 Recovery commands:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 hold --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 recover --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host 10.2.80.52  # only after lockout=false
+./bin/turret fleet-mqtt turret_2 hold --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 recover --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"  # only after lockout=false
 ```
 
 ## Clamp/reject rule
@@ -88,13 +88,13 @@ For `turret_2` and root `battlebang`:
 Useful local helper examples:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 hold --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 home --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 aim 0 0 --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 config --yaw-axis-offset-deg 5 --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 config --yaw-stop-us 1500 --pitch-stop-us 1500 --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 hold --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 home --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 aim 0 0 --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 config --yaw-axis-offset-deg 5 --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 config --yaw-stop-us 1500 --pitch-stop-us 1500 --host "$MQTT_BROKER_HOST"
 ```
 
 `home` / `init` / `initiate` are command-topic aliases that re-run the local
@@ -116,7 +116,7 @@ Current expected first-install defaults:
 ```bash
 TURRET_FLEET_WIFI_SSID=...
 TURRET_FLEET_WIFI_PASSWORD=...
-TURRET_FLEET_MQTT_HOST=10.2.80.52
+TURRET_FLEET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS
 TURRET_FLEET_MQTT_PORT=1883
 TURRET_FLEET_MQTT_ROOT=battlebang
 TURRET_FLEET_NETWORK_AUTO_START=true
@@ -181,7 +181,7 @@ Latest turret_2 bench evidence after the yaw/pitch recovery guard (2026-05-28):
   - yaw probe/recovery skipped at hard edge;
   - pitch already safe or recovered safely;
   - initial `(0,0,0.7m)` solved as `yaw=0.000`, `pitch=-9.498`, but `Motion tracking: INHIBITED` because yaw feedback remains outside the safe window.
-- MQTT command delivery and config persistence were verified against broker `10.2.80.52:1883`:
+- MQTT command delivery and config persistence were verified against broker `<MQTT_BROKER_IP>:1883`:
   - `target (0,0,0.7)` => `yaw=0.000`, `pitch=-9.498`, tracking inhibited by yaw hard-edge;
   - `target (0,1,1.0)` => `yaw=-15.255`, `pitch=-5.661`, tracking inhibited by yaw hard-edge;
   - `target (1,-1,2.0)` => `yaw=3.180`, `pitch=8.360`, tracking inhibited by yaw hard-edge;
@@ -303,7 +303,7 @@ Closed-loop speed is adjusted over MQTT/NVS; no rebuild is required:
   --yaw-min-drive-us 130 \
   --pitch-max-delta-us 120 \
   --pitch-min-drive-us 70 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 ```
 
 `yaw_max_delta_us` is the maximum yaw PWM distance from neutral for larger
@@ -333,13 +333,13 @@ Latest turret_2 speed-tuning evidence (2026-05-29):
   --config-version <new_monotonic_version> \
   --yaw-min-deg -55 \
   --yaw-max-deg 45 \
-  --host 10.2.80.52
-./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
 ./bin/turret fleet-mqtt turret_2 config \
   --config-version <newer_monotonic_version> \
   --yaw-min-deg -55 \
   --yaw-max-deg 35 \
-  --host 10.2.80.52
+  --host "$MQTT_BROKER_HOST"
 ```
 
 Do not leave a faster config in NVS unless the full `target` round trip reaches
@@ -433,8 +433,8 @@ Latest full MQTT/serial hardware suite after safe-envelope config (2026-05-29):
 - Hardware/bench identity:
   - ESP serial: `/dev/cu.usbserial-120`;
   - turret ID: `turret_2`;
-  - MQTT broker: `10.2.80.52:1883`, root `battlebang`;
-  - ESP IP during test: `10.2.80.83`.
+  - MQTT broker: `<MQTT_BROKER_IP>:1883`, root `battlebang`;
+  - ESP IP during test: `<ESP_IP>`.
 - Final persisted config after the run:
   - `config_version=1780028414`;
   - `motion.limits.yaw=-55..35deg` (`yaw_soft_raw≈1309..2521`) because the earlier `+45deg` max sat too close to the yaw high deadzone/noise edge;
@@ -477,11 +477,11 @@ Latest full MQTT/serial hardware suite after safe-envelope config (2026-05-29):
 - After merge to `main`, the workflow now auto-runs for fleet/workflow/platformio changes and creates `turret-fleet-v0.1.${GITHUB_RUN_NUMBER}-main`; manual `workflow_dispatch` remains for PR smoke tests.
 - Direct MQTT `/ota` manifest is immediate Command Center approval.
 - Automatic polling is disabled by default. Command Center enables it with `ota.auto_check_enabled=true` and `ota.desired_build=<build>`. With `ota.command_center_controlled=true`, polled manifest build must exactly match `desired_build`.
-- Preferred post-merge command is `./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52`; this publishes the polling config patch using the stable latest manifest URL, so no release-specific manifest URL is pasted.
+- Preferred post-merge command is `./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"`; this publishes the polling config patch using the stable latest manifest URL, so no release-specific manifest URL is pasted.
 
 Example:
 
 ```bash
 curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
-./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"
 ```
