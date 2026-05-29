@@ -11,6 +11,7 @@
 #include "net/wifi_manager.h"
 #include "ota/http_ota.h"
 #include "ota/ota_manifest.h"
+#include "ota/reboot_marker.h"
 
 using namespace battlebang::turret_fleet;
 
@@ -38,9 +39,9 @@ size_t serialLen = 0;
 const char* kSafetyPrefsNamespace = "bb_fleet";
 const char* kFireRecoveryMarkerKey = "fire_active";
 const char* kRecoveryLockoutMarkerKey = "recover_req";
-const char* kOtaRebootMarkerKey = "ota_reboot";
 
 String configuredOtaPollUrl();
+void publishMqttStatusIfConnected(const char* reason);
 
 bool loadFireRecoveryMarker() {
   Preferences prefs;
@@ -54,25 +55,6 @@ bool loadRecoveryLockoutMarker() {
   Preferences prefs;
   if (!prefs.begin(kSafetyPrefsNamespace, true)) return false;
   const bool active = prefs.getBool(kRecoveryLockoutMarkerKey, false);
-  prefs.end();
-  return active;
-}
-
-void writeOtaRebootMarker(bool active) {
-  Preferences prefs;
-  if (!prefs.begin(kSafetyPrefsNamespace, false)) {
-    Serial.println("[fleet][ota] reboot marker NVS open failed");
-    return;
-  }
-  prefs.putBool(kOtaRebootMarkerKey, active);
-  prefs.end();
-}
-
-bool consumeOtaRebootMarker() {
-  Preferences prefs;
-  if (!prefs.begin(kSafetyPrefsNamespace, false)) return false;
-  const bool active = prefs.getBool(kOtaRebootMarkerKey, false);
-  if (active) prefs.putBool(kOtaRebootMarkerKey, false);
   prefs.end();
   return active;
 }
@@ -124,6 +106,16 @@ void startNetwork(const char* reason) {
   } else {
     mqtt.reconfigure();
   }
+}
+
+void runBootInitialTargetIfNeeded(const char* reason) {
+  if (bootInitialTargetDone || !config.configured) return;
+  bootInitialTargetDone = true;
+  Serial.print("[fleet][boot] running initial local home before MQTT dependency reason=");
+  Serial.println(reason);
+  control.enterBootInitialTarget(bootInitialTargetMotionAllowed);
+  publishMqttStatusIfConnected(bootInitialTargetMotionAllowed ? "boot_initial_target" :
+                                                                "boot_initial_target_inhibited");
 }
 
 void stopNetwork(const char* reason) {
@@ -520,6 +512,7 @@ void setup() {
   Serial.println(runtimeConfigToJson(config, false));
   printStatus("boot");
   printHelp();
+  runBootInitialTargetIfNeeded("setup_local_boot");
   if (!config.networkAutoStart) {
     Serial.println("[fleet][network] auto_start disabled in NVS, but boot auto-network is forced for turret_fleet operation");
   }
@@ -535,10 +528,7 @@ void loop() {
     wifi.loop(config);
     mqtt.loop();
     if (!bootInitialTargetDone && mqttStarted && mqtt.connected() && config.configured) {
-      bootInitialTargetDone = true;
-      control.enterBootInitialTarget(bootInitialTargetMotionAllowed);
-      mqtt.publishStatus(bootInitialTargetMotionAllowed ? "boot_initial_target" :
-                                                          "boot_initial_target_brownout_inhibited");
+      runBootInitialTargetIfNeeded("mqtt_ready_fallback");
     }
     pollConfiguredOta();
   }

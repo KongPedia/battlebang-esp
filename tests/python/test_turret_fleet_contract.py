@@ -18,23 +18,25 @@ def test_legacy_turret_boots_hold_not_idle_sweep() -> None:
     assert "clearPendingFireFlags();\n  enterIdleMode();" not in setup_body
 
 
-def test_fleet_control_boots_wait_command_then_initial_target_after_mqtt() -> None:
+def test_fleet_control_boots_wait_command_then_initial_local_home() -> None:
     control = read("src/turret_fleet/control/turret_control.cpp")
     main = read("src/turret_fleet/main.cpp")
     mqtt_h = read("src/turret_fleet/mqtt/mqtt_bus.h")
 
     assert 'mode_ = config.configured ? "WAIT_COMMAND" : "UNCONFIGURED";' in control
     assert 'mode_ = config.configured ? "IDLE" : "UNCONFIGURED";' not in control
-    assert "waits for MQTT, then initial local home only" in control
+    assert "runs initial local home without MQTT dependency" in control
     assert "void TurretControl::enterBootInitialTarget(bool motionAllowed)" in control
-    assert "MQTT_READY(home_0_0)" in control
+    assert "BOOT_HOME(home_0_0)" in control
     assert 'mode_ = "HOME"' in control
     assert "Motion tracking" in control
     assert "Auto fire on target: DISABLED" in control
     assert 'startNetwork("boot_forced")' in main
+    assert 'runBootInitialTargetIfNeeded("setup_local_boot")' in main
+    assert 'runBootInitialTargetIfNeeded("mqtt_ready_fallback")' in main
     assert "mqtt.connected()" in main
     assert "control.enterBootInitialTarget(bootInitialTargetMotionAllowed)" in main
-    assert "boot_initial_target_brownout_inhibited" in main
+    assert "boot_initial_target_inhibited" in main
     assert "bool connected();" in mqtt_h
 
 
@@ -205,7 +207,7 @@ def test_mqtt_config_update_can_change_wifi_or_broker_after_first_provisioning()
     assert "reconfigure();" in bus
 
 
-def test_network_autostart_is_forced_before_boot_initial_target() -> None:
+def test_network_autostart_is_forced_after_local_boot_initial_target() -> None:
     main = read("src/turret_fleet/main.cpp")
     config_h = read("src/turret_fleet/config/runtime_config.h")
     config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
@@ -221,6 +223,8 @@ def test_network_autostart_is_forced_before_boot_initial_target() -> None:
     assert 'startNetwork("boot_forced")' in main
     assert 'startNetwork("boot_retry")' in main.split("void loop()", 1)[1]
     assert "mqtt.connected()" in main.split("void loop()", 1)[1]
+    setup_body = main.split("void setup()", 1)[1].split("void loop()", 1)[0]
+    assert setup_body.index('runBootInitialTargetIfNeeded("setup_local_boot")') < setup_body.index('startNetwork("boot_forced")')
     assert "prearmMotion" not in main
     assert "network_start_before_wifi" not in main
     assert "wifi.begin(config);" in main
@@ -355,6 +359,25 @@ def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
     assert "const bool kPitchInvertMotor = false;" in control
 
 
+def test_new_motion_commands_preempt_stale_axis_state_before_tracking() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    header = read("src/turret_fleet/control/turret_control.h")
+
+    assert "prepareForNewMotionCommand" in header
+    assert "void TurretControl::prepareForNewMotionCommand(const char* source)" in control
+    assert "stopMotionOutputs();\n  updateCurrentAngles();" in control
+    assert "yawGoalDeg_ = yawCurrentDeg_" in control
+    assert "pitchGoalDeg_ = pitchCurrentDeg_" in control
+    assert "targetSlewActive_ = false;" in control
+    assert "selectedMotionAxis_ = 'N';" in control
+    assert "lockedMotionAxis_ = 'N';" in control
+    assert "resetAxisGuard('A');" in control
+    assert "preempted active motion for" in control
+    assert "prepareForNewMotionCommand(source);\n\n  lastTargetCmX_ = xCm;" in control
+    assert "prepareForNewMotionCommand(source);\n\n  solvedYawDeg_ = doc" in control
+    assert "forceFireOutputsSafeOff();\n  prepareForNewMotionCommand(source);" in control
+
+
 def test_fleet_env_includes_esp32servo_for_yaw_pitch_motion() -> None:
     platformio = read("platformio.ini")
     fleet_env = platformio.split("[env:esp32dev_turret_fleet]", 1)[1].split("[env:native]", 1)[0]
@@ -466,6 +489,8 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "fireRecoveryRequiredAtBoot = loadFireRecoveryMarker();" in main
     assert "recoveryLockoutRequiredAtBoot = loadRecoveryLockoutMarker();" in main
     assert "otaRebootInhibitRequiredAtBoot = consumeOtaRebootMarker();" in main
+    assert '#include "ota/reboot_marker.h"' in main
+    assert '#include "../ota/reboot_marker.h"' in mqtt
     assert "bootSafetyLockoutRequired = bootResetReason == ESP_RST_BROWNOUT" in main
     assert "!otaRebootInhibitRequiredAtBoot" in main
     assert "fireHardwareEnabled" not in read("src/turret_fleet/config/runtime_config.h")
@@ -473,6 +498,7 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "--fire-hardware-enabled" not in helper
     assert "control.setBrownoutLockout(bootSafetyLockoutRequired)" in main
     assert "writeOtaRebootMarker(true)" in main
+    assert "writeOtaRebootMarker(true)" in mqtt
     assert "post-OTA boot: automatic HOME drive inhibited" in main
     assert 'doc["fire_recovery_required_at_boot"] = fireRecoveryRequiredAtBoot;' in main
     assert 'doc["recovery_lockout_required_at_boot"] = recoveryLockoutRequiredAtBoot;' in main
@@ -510,6 +536,9 @@ def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
     assert "manifest.build != config.otaDesiredBuild" in main
     assert "config.otaCommandCenterControlled" in main
     assert "config.otaApplyOnlyInSafeState && !control.isSafeForOta()" in main
+    assert 'if (mode_ == "HOME" || mode_ == "TARGET")' in read("src/turret_fleet/control/turret_control.cpp")
+    assert "aimReached() && !targetSlewActive_" in read("src/turret_fleet/control/turret_control.cpp")
+    assert "selectedMotionAxis_ == 'N'" in read("src/turret_fleet/control/turret_control.cpp")
     assert "ota_poll_not_approved" in main
     assert 'doc["ota_auto_check_enabled"] = config.otaAutoCheckEnabled;' in main
     assert 'doc["ota_desired_build"] = config.otaDesiredBuild;' in main

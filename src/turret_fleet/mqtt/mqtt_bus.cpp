@@ -6,6 +6,7 @@
 #include "../app/firmware_info.h"
 #include "../ota/http_ota.h"
 #include "../ota/ota_manifest.h"
+#include "../ota/reboot_marker.h"
 
 namespace battlebang {
 namespace turret_fleet {
@@ -243,6 +244,7 @@ void MqttBus::handleOtaPayload(const char* payload) {
   Serial.println(result.message);
   publishStatus(result.ok ? "ota_rebooting" : "ota_failed");
   if (result.ok) {
+    writeOtaRebootMarker(true);
     delay(500);
     ESP.restart();
   }

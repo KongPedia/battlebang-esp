@@ -209,7 +209,7 @@ void TurretControl::begin(const RuntimeConfig& config) {
   lastLoopMs_ = millis();
   Serial.print("[fleet][control] mode=");
   Serial.println(mode_);
-  Serial.println("[fleet][control] boot safe: waits for MQTT, then initial local home only; no idle sweep, pattern, or fire");
+  Serial.println("[fleet][control] boot safe: runs initial local home without MQTT dependency; no idle sweep, pattern, or fire");
   Serial.print("[fleet][motion] boot ADC yaw_raw=");
   Serial.print(yawRawCurrent_);
   Serial.print(" yaw_deg=");
@@ -221,6 +221,23 @@ void TurretControl::begin(const RuntimeConfig& config) {
   Serial.println("[fleet][fire] relay outputs parked safe-off; ESC lazy-attached on fire command");
 }
 
+void TurretControl::prepareForNewMotionCommand(const char* source) {
+  stopMotionOutputs();
+  updateCurrentAngles();
+  yawTargetDeg_ = yawCurrentDeg_;
+  pitchTargetDeg_ = pitchCurrentDeg_;
+  yawGoalDeg_ = yawCurrentDeg_;
+  pitchGoalDeg_ = pitchCurrentDeg_;
+  targetSlewActive_ = false;
+  yawTrackingSuppressed_ = false;
+  selectedMotionAxis_ = 'N';
+  lockedMotionAxis_ = 'N';
+  resetPidState();
+  resetAxisGuard('A');
+  Serial.print("[fleet][motion] preempted active motion for ");
+  Serial.println(source);
+}
+
 
 void TurretControl::enterBootInitialTarget(bool motionAllowed) {
   if (!config_.configured) {
@@ -228,13 +245,13 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
     return;
   }
 
-  Serial.print("[fleet][control] MQTT-ready initial local home: yaw=home_yaw,pitch=home_pitch motion=");
+  Serial.print("[fleet][control] boot initial local home: yaw=home_yaw,pitch=home_pitch motion=");
   Serial.println(motionAllowed ? "allowed" : "inhibited_after_brownout");
   bool bootProbeSafe = true;
   if (motionAllowed) {
     bootProbeSafe = runBootAxisProbe();
   }
-  updateCurrentAngles();
+  prepareForNewMotionCommand("boot_initial_home");
   solvedYawDeg_ = config_.homeYawDeg;
   solvedPitchDeg_ = config_.homePitchDeg;
   pitchReachable_ = true;
@@ -247,7 +264,7 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
   patternState_ = "IDLE";
   resetPidState();
 
-  const bool trackInitialHome = motionAllowed && bootProbeSafe && ensureMotionSafetyForTracking("MQTT_READY(home_0_0)");
+  const bool trackInitialHome = motionAllowed && bootProbeSafe && ensureMotionSafetyForTracking("BOOT_HOME(home_0_0)");
   if (trackInitialHome) {
     setTrackedTarget(clampedYawDeg_, clampedPitchDeg_);
     mode_ = "HOME";
@@ -1884,7 +1901,7 @@ bool TurretControl::applyTargetCm(float xCm,
     return false;
   }
 
-  updateCurrentAngles();
+  prepareForNewMotionCommand(source);
 
   lastTargetCmX_ = xCm;
   lastTargetCmY_ = yCm;
@@ -2024,7 +2041,7 @@ bool TurretControl::applyDirectAimCommand(JsonDocument& doc, const char* source)
     return false;
   }
 
-  updateCurrentAngles();
+  prepareForNewMotionCommand(source);
 
   solvedYawDeg_ = doc["yaw_deg"].as<float>();
   solvedPitchDeg_ = doc["pitch_deg"].as<float>();
@@ -2096,7 +2113,7 @@ bool TurretControl::applyHomeCommand(const char* source) {
   }
 
   forceFireOutputsSafeOff();
-  updateCurrentAngles();
+  prepareForNewMotionCommand(source);
 
   solvedYawDeg_ = config_.homeYawDeg;
   solvedPitchDeg_ = config_.homePitchDeg;
@@ -2471,7 +2488,7 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
       lastError_ = "idle rejected: turret is unconfigured";
     } else {
       haveTarget_ = false;
-      updateCurrentAngles();
+      prepareForNewMotionCommand(source);
       const bool fullMotionAllowed = ensureMotionSafetyForTracking(source);
       bool pitchOnlyAllowed = false;
       if (!fullMotionAllowed) {
@@ -2500,7 +2517,7 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
     }
   } else if (strcmp(command, "dead") == 0) {
     haveTarget_ = false;
-    updateCurrentAngles();
+    prepareForNewMotionCommand(source);
     forceFireOutputsSafeOff();
     const bool fullMotionAllowed = ensureMotionSafetyForTracking(source);
     bool pitchOnlyAllowed = false;
@@ -2712,7 +2729,16 @@ const char* TurretControl::patternState() const {
 }
 
 bool TurretControl::isSafeForOta() const {
-  return fireState_ != "FIRING" && mode_ != "PATTERN" && mode_ != "FIRING";
+  if (brownoutLockoutActive_ || motionSafetyInhibited_) return false;
+  if (fireState_ == "FIRING" || isFireSequenceActive()) return false;
+  if (mode_ == "PATTERN" || mode_ == "FIRING" || mode_ == "IDLE" || mode_ == "DEAD") return false;
+  if (mode_ == "HOME" || mode_ == "TARGET") {
+    return aimReached() && !targetSlewActive_ &&
+           selectedMotionAxis_ == 'N' &&
+           yawLastCommandUs_ == config_.yawStopUs &&
+           pitchLastCommandUs_ == config_.pitchStopUs;
+  }
+  return mode_ == "WAIT_COMMAND" || mode_ == "UNCONFIGURED";
 }
 
 }  // namespace turret_fleet

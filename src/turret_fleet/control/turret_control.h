@@ -126,6 +126,7 @@ class TurretControl {
   void detachYawOutput(const char* reason);
   void detachPitchOutput(const char* reason);
   void stopMotionOutputs();
+  void prepareForNewMotionCommand(const char* source);
   bool runBootAxisProbe();
   bool probeAxisDirection(const char* axis, bool positivePulse);
   bool recoverMotionSoftWindow(const char* source);
