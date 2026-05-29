@@ -3,14 +3,22 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FLASH_SCRIPT="$ROOT_DIR/scripts/turret_flash.py"
+FLEET_PROVISION_SCRIPT="$ROOT_DIR/scripts/turret_fleet/provision.py"
+FLEET_MQTT_SCRIPT="$ROOT_DIR/scripts/turret_fleet/mqtt_command.py"
+FLEET_OTA_PUBLISH_SCRIPT="$ROOT_DIR/scripts/turret_fleet/publish_mqtt_manifest.py"
 PIO_BIN="$ROOT_DIR/.venv-pio/bin/pio"
+PYTHON_BIN="$ROOT_DIR/.venv-pio/bin/python"
 TURRETS_JSON="$ROOT_DIR/src/turret/turrets.json"
 LOCAL_SECRETS="$ROOT_DIR/src/turret/local_secrets.h"
 UPLOAD_TARGETS="$ROOT_DIR/src/turret/upload_targets.toml"
+FLEET_ENV_FILE="${TURRET_FLEET_ENV_FILE:-$ROOT_DIR/src/turret_fleet/.env.turret_fleet}"
 declare -a SECRET_ARGS=()
 
 if [[ ! -x "$PIO_BIN" ]]; then
   PIO_BIN="pio"
+fi
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="python3"
 fi
 
 usage() {
@@ -24,6 +32,11 @@ Usage:
   ./bin/turret upload <turret-number|turret_id> [port]
   ./bin/turret build-all
   ./bin/turret upload-all
+  ./bin/turret fleet-config <turret-number|turret_id>
+  ./bin/turret fleet-provision <turret-number|turret_id> [port]
+  ./bin/turret fleet-upload <turret-number|turret_id> [port]
+  ./bin/turret fleet-mqtt <turret-number|turret_id> <idle|dead|hold|recover|target|aim|fire|config|update> [options]
+  ./bin/turret fleet-ota-publish <manifest.json> [topic]
   ./bin/turret monitor [port]
   ./bin/turret config
 
@@ -36,14 +49,33 @@ Examples:
   ./bin/turret monitor /dev/cu.usbserial-1120
   ./bin/turret build-all
   ./bin/turret upload-all
+  ./bin/turret fleet-upload 2
+  ./bin/turret fleet-provision turret_2 /dev/cu.usbserial-120
+  ./bin/turret fleet-mqtt turret_2 target 0 0 1
+  ./bin/turret fleet-mqtt turret_2 aim 0 10
+  ./bin/turret fleet-mqtt turret_2 recover
+  ./bin/turret fleet-mqtt turret_2 fire --duration-ms 500
+  ./bin/turret fleet-mqtt turret_2 update --desired-build 7
+  ./bin/turret fleet-mqtt turret_2 config --ota-auto-check-enabled true --ota-desired-build 2
+  ./bin/turret fleet-ota-publish dist/manifest.json battlebang/turrets/all/ota
 
 Secrets:
   - Default: src/turret/local_secrets.h
   - Optional one-shot override:
-      TURRET_WIFI_SSID=kongstudios \
-      TURRET_WIFI_PASSWORD=cypress3428 \
-      TURRET_MQTT_HOST=jetson-go2-02.local \
+      TURRET_WIFI_SSID=YOUR_WIFI_SSID \
+      TURRET_WIFI_PASSWORD=YOUR_WIFI_PASSWORD \
+      TURRET_MQTT_HOST=COMMAND_CENTER_IP \
       ./bin/turret upload 5
+
+Fleet first provisioning:
+  - Copy src/turret_fleet/.env.turret_fleet.example -> src/turret_fleet/.env.turret_fleet and fill Wi-Fi/MQTT.
+  - `fleet-upload 2` uploads one generic esp32dev_turret_fleet image and then
+    injects turret_2 runtime config over USB serial into ESP32 NVS.
+  - Env file can be overridden with TURRET_FLEET_ENV_FILE=/path/to/.env.
+  - `fleet-mqtt` reads the same module-local env file for broker host/port/root. Use
+    --host 10.2.80.52 when the env file is absent.
+  - `fleet-mqtt ... update --desired-build N` approves polling against the GitHub latest manifest.
+  - `fleet-ota-publish` publishes a full release manifest to MQTT for direct OTA jobs.
 USAGE
 }
 
@@ -244,6 +276,84 @@ case "$cmd" in
     build_secret_args
     require_upload_targets
     run_flash_script --map-file "$UPLOAD_TARGETS" "$@"
+    ;;
+  fleet-config)
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    exec "$PYTHON_BIN" "$FLEET_PROVISION_SCRIPT" build-config "$turret_id" --env-file "$FLEET_ENV_FILE" "$@"
+    ;;
+  fleet-mqtt)
+    if [[ "${2:-}" == "help" || "${2:-}" == "-h" || "${2:-}" == "--help" || -z "${2:-}" ]]; then
+      exec "$PYTHON_BIN" "$FLEET_MQTT_SCRIPT" --help
+    fi
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    exec "$PYTHON_BIN" "$FLEET_MQTT_SCRIPT" --env-file "$FLEET_ENV_FILE" "$turret_id" "$@"
+    ;;
+  fleet-ota-publish)
+    shift || true
+    manifest="${1:-}"
+    if [[ -z "$manifest" ]]; then
+      echo "[bin/turret] fleet-ota-publish requires a manifest path" >&2
+      usage >&2
+      exit 2
+    fi
+    shift || true
+    topic="${1:-battlebang/turrets/all/ota}"
+    "$PYTHON_BIN" - "$FLEET_ENV_FILE" "$manifest" "$topic" "$FLEET_OTA_PUBLISH_SCRIPT" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+env_file = Path(sys.argv[1])
+manifest = sys.argv[2]
+topic = sys.argv[3]
+script = sys.argv[4]
+values = {}
+if env_file.exists():
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        value = value.strip().strip("'\"")
+        values[key.strip()] = value
+host = os.environ.get("TURRET_FLEET_MQTT_HOST") or values.get("TURRET_FLEET_MQTT_HOST") or os.environ.get("TURRET_MQTT_HOST") or values.get("TURRET_MQTT_HOST")
+port = os.environ.get("TURRET_FLEET_MQTT_PORT") or values.get("TURRET_FLEET_MQTT_PORT") or os.environ.get("TURRET_MQTT_PORT") or values.get("TURRET_MQTT_PORT") or "1883"
+username = os.environ.get("TURRET_FLEET_MQTT_USERNAME") or values.get("TURRET_FLEET_MQTT_USERNAME") or ""
+password = os.environ.get("TURRET_FLEET_MQTT_PASSWORD") or values.get("TURRET_FLEET_MQTT_PASSWORD") or ""
+if not host:
+    raise SystemExit("missing TURRET_FLEET_MQTT_HOST or TURRET_MQTT_HOST")
+cmd = [sys.executable, script, "--host", host, "--port", str(port), "--topic", topic, "--manifest", manifest]
+if username:
+    cmd += ["--username", username]
+if password:
+    cmd += ["--password", password]
+os.execv(sys.executable, cmd)
+PY
+    ;;
+  fleet-provision)
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    port="${1:-}"
+    if [[ -z "$port" || "$port" == --* ]]; then
+      port="$(auto_detect_port)"
+    else
+      shift || true
+    fi
+    exec "$PYTHON_BIN" "$FLEET_PROVISION_SCRIPT" provision "$turret_id" --env-file "$FLEET_ENV_FILE" --port "$port" "$@"
+    ;;
+  fleet-upload|fleet-flash)
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    port="${1:-}"
+    if [[ -z "$port" || "$port" == --* ]]; then
+      port="$(auto_detect_port)"
+    else
+      shift || true
+    fi
+    "$PIO_BIN" run -e esp32dev_turret_fleet -t upload --upload-port "$port"
+    exec "$PYTHON_BIN" "$FLEET_PROVISION_SCRIPT" provision "$turret_id" --env-file "$FLEET_ENV_FILE" --port "$port" "$@"
     ;;
   monitor)
     shift || true

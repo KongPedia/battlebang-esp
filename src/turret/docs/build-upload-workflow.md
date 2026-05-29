@@ -104,9 +104,9 @@ cp src/turret/local_secrets.example.h src/turret/local_secrets.h
 예:
 
 ```cpp
-#define TURRET_WIFI_SSID "kongstudios"
-#define TURRET_WIFI_PASSWORD "cypress3428"
-#define TURRET_MQTT_HOST "jetson-go2-02.local"
+#define TURRET_WIFI_SSID "YOUR_WIFI_SSID"
+#define TURRET_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#define TURRET_MQTT_HOST "COMMAND_CENTER_IP"
 #define TURRET_MQTT_PORT 1883
 #define TURRET_MQTT_USERNAME ""
 #define TURRET_MQTT_PASSWORD ""
@@ -248,9 +248,9 @@ python3 scripts/turret_flash.py flash \
 ```bash
 python3 scripts/turret_flash.py flash \
   --target turret_5=/dev/cu.usbserial-1120 \
-  --wifi-ssid kongstudios \
-  --wifi-password cypress3428 \
-  --mqtt-host jetson-go2-02.local \
+  --wifi-ssid YOUR_WIFI_SSID \
+  --wifi-password YOUR_WIFI_PASSWORD \
+  --mqtt-host COMMAND_CENTER_IP \
   --mqtt-port 1883
 ```
 
@@ -276,9 +276,9 @@ python3 scripts/turret_flash.py flash --target turret_5=/dev/cu.usbserial-1120
 ```bash
 python3 scripts/turret_flash.py flash \
   --target turret_5=/dev/cu.usbserial-1120 \
-  --wifi-ssid kongstudios \
-  --wifi-password cypress3428 \
-  --mqtt-host jetson-go2-02.local
+  --wifi-ssid YOUR_WIFI_SSID \
+  --wifi-password YOUR_WIFI_PASSWORD \
+  --mqtt-host COMMAND_CENTER_IP
 ```
 
 ### 패턴 C: 1~6 포트를 다 적어두고 순차 업로드
@@ -308,9 +308,9 @@ python3 scripts/turret_flash.py flash
 ### 시크릿까지 빌드 시 직접 주입
 
 ```bash
-TURRET_WIFI_SSID='kongstudios' \
-TURRET_WIFI_PASSWORD='cypress3428' \
-TURRET_MQTT_HOST='jetson-go2-02.local' \
+TURRET_WIFI_SSID='YOUR_WIFI_SSID' \
+TURRET_WIFI_PASSWORD='YOUR_WIFI_PASSWORD' \
+TURRET_MQTT_HOST='COMMAND_CENTER_IP' \
 TURRET_MQTT_PORT=1883 \
 ./.venv-pio/bin/pio run -e esp32dev_turret_5 -t upload --upload-port /dev/cu.usbserial-1120
 ```

@@ -1,6 +1,14 @@
 name: Turret Fleet Firmware
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/turret-fleet-firmware.yml"
+      - "platformio.ini"
+      - "src/turret_fleet/**"
+      - "scripts/turret_fleet/**"
   workflow_dispatch:
     inputs:
       version:
@@ -16,9 +24,9 @@ on:
         required: false
         default: ""
       public_release_repo:
-        description: "Public repository that hosts firmware releases"
+        description: "Public repository that hosts firmware releases. Same-repo releases use GITHUB_TOKEN; cross-repo releases need PUBLIC_RELEASE_REPO_TOKEN."
         required: true
-        default: "KongPedia/battlebang-firmware"
+        default: "KongPedia/battlebang-esp"
       public_release_target_branch:
         description: "Target branch in the public release repository used when creating a new release tag"
         required: true
@@ -27,7 +35,7 @@ on:
         description: "Create/update a Release in the public firmware repository"
         required: true
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
@@ -52,14 +60,33 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION="${{ inputs.version }}"
-          BUILD="${{ inputs.build }}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            BUILD="${{ inputs.build }}"
+            FIRMWARE_BASE_URL="${{ inputs.firmware_base_url }}"
+            PUBLIC_REPO="${{ inputs.public_release_repo }}"
+            TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
+            CREATE_RELEASE="${{ inputs.create_release }}"
+          else
+            VERSION="0.1.${GITHUB_RUN_NUMBER}-main"
+            BUILD="${GITHUB_RUN_NUMBER}"
+            FIRMWARE_BASE_URL=""
+            PUBLIC_REPO="${GITHUB_REPOSITORY}"
+            TARGET_BRANCH="${GITHUB_REF_NAME}"
+            CREATE_RELEASE="true"
+          fi
+
           if ! [[ "${BUILD}" =~ ^[0-9]+$ ]]; then
-            echo "build input must be numeric, got: ${BUILD}" >&2
+            echo "build must be numeric, got: ${BUILD}" >&2
             exit 2
           fi
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+          echo "firmware_base_url=${FIRMWARE_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "public_release_repo=${PUBLIC_REPO}" >> "$GITHUB_OUTPUT"
+          echo "public_release_target_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "create_release=${CREATE_RELEASE}" >> "$GITHUB_OUTPUT"
 
       - name: Generate firmware version header
         shell: bash
@@ -79,11 +106,11 @@ jobs:
         run: |
           mkdir -p dist
           FIRMWARE_NAME="battlebang-turret-fleet-${{ steps.version.outputs.version }}.bin"
-          BASE_URL="${{ inputs.firmware_base_url }}"
-          PUBLIC_REPO="${{ inputs.public_release_repo }}"
+          BASE_URL="${{ steps.version.outputs.firmware_base_url }}"
+          PUBLIC_REPO="${{ steps.version.outputs.public_release_repo }}"
           if [[ -n "${BASE_URL}" ]]; then
             FIRMWARE_URL="${BASE_URL%/}/${FIRMWARE_NAME}"
-          elif [[ "${{ inputs.create_release }}" == "true" ]]; then
+          elif [[ "${{ steps.version.outputs.create_release }}" == "true" ]]; then
             FIRMWARE_URL="https://github.com/${PUBLIC_REPO}/releases/download/turret-fleet-v${{ steps.version.outputs.version }}/${FIRMWARE_NAME}"
           else
             FIRMWARE_URL=""
@@ -104,16 +131,27 @@ jobs:
           path: dist/*
 
       - name: Create GitHub Release for tag
-        if: inputs.create_release
+        if: steps.version.outputs.create_release == 'true'
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}
+          DEFAULT_GITHUB_TOKEN: ${{ github.token }}
+          PUBLIC_RELEASE_REPO_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}
         run: |
           TAG="turret-fleet-v${{ steps.version.outputs.version }}"
-          PUBLIC_REPO="${{ inputs.public_release_repo }}"
-          TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
+          PUBLIC_REPO="${{ steps.version.outputs.public_release_repo }}"
+          TARGET_BRANCH="${{ steps.version.outputs.public_release_target_branch }}"
+          if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then
+            export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"
+          else
+            export GH_TOKEN="${PUBLIC_RELEASE_REPO_TOKEN}"
+            if [[ -z "${GH_TOKEN}" ]]; then
+              echo "Cross-repo release to ${PUBLIC_REPO} requires repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
+              echo "Same-repo public releases to ${GITHUB_REPOSITORY} use the built-in GITHUB_TOKEN." >&2
+              exit 2
+            fi
+          fi
+
           if [[ -z "${GH_TOKEN}" ]]; then
-            echo "Missing repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
-            echo "Create a fine-grained PAT with Contents: Read and write on ${PUBLIC_REPO}." >&2
+            echo "Missing GitHub token." >&2
             exit 2
           fi
 

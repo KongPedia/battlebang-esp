@@ -54,6 +54,13 @@
 *.backup
 .env
 .env.local
+.env.turret_fleet
+# Module-local ESP firmware env files (examples stay tracked).
+src/turret_fleet/.env.turret_fleet
+src/*/.env
+src/*/.env.local
+src/*/.env.*
+!src/*/.env*.example
 *.local
 src/local_secrets.h
 src/go2/local_secrets.h
