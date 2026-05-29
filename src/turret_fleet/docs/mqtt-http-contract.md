@@ -92,11 +92,13 @@ Coordinate rules:
 
 ## Boot local home
 
-Configured turrets automatically start Wi-Fi/MQTT on power-up. After MQTT is
-connected/subscribed, the firmware locally executes a no-fire `HOME` aim to
-`motion.home` (default local `yaw=0,pitch=0`). No MQTT command is required for
-this boot aim, and it never triggers `fire`. World-coordinate `(x,y,z)` target
-solving starts only when Command Center sends an explicit `target` command.
+Configured turrets execute a no-fire `HOME` aim to `motion.home` (default local
+`yaw=0,pitch=0`) on normal power-up before waiting on Wi-Fi/MQTT. Wi-Fi/MQTT then
+starts automatically. No MQTT command is required for this normal boot aim, and
+it never triggers `fire`. OTA/brownout/fire-reset boots intentionally inhibit
+automatic HOME drive; Command Center should send `home`/`initiate`, `target`, or
+`recover` after inspecting status. World-coordinate `(x,y,z)` target solving
+starts only when Command Center sends an explicit `target` command.
 Command Center may re-run the same local home/init step later by publishing
 `{"command":"home"}` on the command topic; `init` and `initiate` are accepted
 aliases. This is not a world-coordinate target and does not use the current
@@ -262,7 +264,13 @@ To permit one build through polling, send runtime config:
 
 With `ota.command_center_controlled=true`, the ESP applies a polled manifest only
 when `manifest.build == ota.desired_build`; otherwise it publishes/skips with an
-OTA status reason.
+OTA status reason. In the current firmware, setting `ota_auto_check_enabled=true`
+plus `ota_desired_build=N` is the Command Center approval/apply command for
+polling. If the desired two-stage UX is “update available, then apply on command”,
+Command Center should discover releases itself, wait for operator approval, then
+send that polling config patch or publish the manifest directly to `/ota`.
+After OTA reboot, automatic HOME is inhibited; send `initiate` or a new `target`
+after status shows the updated build.
 
 ## Status payload
 

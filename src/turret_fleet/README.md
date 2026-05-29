@@ -2,8 +2,8 @@
 
 Existing `src/turret/` is intentionally left in place as the legacy/reference
 firmware. New fleet work for BTB-721 happens here. The compact handoff/context
-document is `docs/context.md`; the longer execution plan is
-`docs/implementation-plan.md`.
+document is `docs/context.md`; the operator command/OTA usage guide is
+`docs/usage.md`; the longer execution plan is `docs/implementation-plan.md`.
 
 This folder is a new, modular firmware path for the future fleet architecture:
 
@@ -28,11 +28,14 @@ This firmware compiles separately from `src/turret/`:
 
 It includes dynamic config storage, MQTT topics, status publish, OTA manifest
 parsing, and HTTP OTA download/apply logic. The physical turret motion/fire
-control now boots safe into `WAIT_COMMAND`/`UNCONFIGURED`, forces Wi-Fi/MQTT
-startup, then performs a no-fire local `HOME` aim (`motion.home`, default
-`yaw=0,pitch=0`) after MQTT is connected. Production tracking is clamped to a
-runtime-configurable 150° envelope (default `yaw=-75..75`, `pitch=-75..75`) and
-blocked when raw feedback is outside that calibrated envelope/deadzone guard. It
+control now boots safe into `WAIT_COMMAND`/`UNCONFIGURED`, performs a no-fire
+local `HOME` aim (`motion.home`, default `yaw=0,pitch=0`) on normal power-up
+before waiting for MQTT, and then forces Wi-Fi/MQTT startup.
+OTA/brownout/fire-reset boots inhibit automatic HOME until Command Center sends
+an explicit command.
+Production tracking is clamped to a runtime-configurable 150° envelope (default
+`yaw=-75..75`, `pitch=-75..75`) and blocked when raw feedback is outside that
+calibrated envelope/deadzone guard. It
 accepts runtime config, validates coordinate frames, computes target yaw/pitch
 with the current `src/turret` solver convention, and tracks explicit
 fire/pattern state without boot-time fire.
@@ -107,8 +110,10 @@ The manifest's `url` may also point at a GitHub Release `.bin` asset. The curren
 prototype follows HTTPS redirects and uses insecure TLS for easier testing; pin a
 CA certificate or signed manifest before production use.
 
-
 ## Local MQTT command helper
+
+See `docs/usage.md` for the full operator runbook, including OTA polling and
+post-OTA `initiate` behavior.
 
 After USB provisioning, Wi-Fi/MQTT starts automatically. You can send the same MQTT messages
 that Command Center will send. The helper reads `src/turret_fleet/.env.turret_fleet` for
@@ -216,22 +221,24 @@ The ESP polls only when `ota.auto_check_enabled=true`; with
 
 ## Boot behavior
 
-On power-up, a configured turret starts Wi-Fi/MQTT automatically even if an old
-NVS config has `network.auto_start=false`. Once MQTT is connected/subscribed,
-the firmware runs a local no-fire `HOME` aim to `motion.home` (`0,0` by
-default). This replaces the older manual `start-network` bench path; `target`
-still never auto-fires. World/frame `(x,y,z)` targeting happens only after an
-explicit MQTT/serial `target` command and is still clamped to `motion.limits`.
+On normal power-up, a configured turret first runs a local no-fire `HOME` aim to
+`motion.home` (`0,0` by default), then starts Wi-Fi/MQTT automatically even if an
+old NVS config has `network.auto_start=false`. This replaces the older manual
+`start-network` bench path; `target` still never auto-fires. World/frame
+`(x,y,z)` targeting happens only after an explicit MQTT/serial `target` command
+and is still clamped to `motion.limits`.
 Command Center can re-run that same local zeroing step without reboot by sending
 `{"command":"home"}`; `init` and `initiate` are accepted aliases.
 
-If the ESP boots after a brownout or after a reset while `fire_active` was set,
-the firmware does not trust the interrupted motion/fire state. It persists a
-`recover_req` lockout marker in NVS and skips boot HOME output drive. It then attempts automatic safe recovery to
-`WAIT_COMMAND`: recovery clears only when current yaw/pitch feedback is stable and
-inside the calibrated soft window. If that auto-recovery fails, motion/fire
-commands remain blocked until Command Center or a serial operator sends
-`recover`. Saved pose is diagnostic, not a resume target.
+If the ESP boots after OTA, brownout, or a reset while `fire_active` was set, the
+firmware does not trust the interrupted motion/fire state and skips boot HOME
+output drive. Brownout/fire-reset recovery uses the persisted `recover_req`
+marker and attempts automatic safe recovery to `WAIT_COMMAND`: recovery clears
+only when current yaw/pitch feedback is stable and inside the calibrated soft
+window. If that auto-recovery fails, motion/fire commands remain blocked until
+Command Center or a serial operator sends `recover`. Saved pose is diagnostic,
+not a resume target. After a successful OTA reboot, confirm the new build on
+status, then send `initiate` or a fresh `target`.
 
 ## MQTT topics
 

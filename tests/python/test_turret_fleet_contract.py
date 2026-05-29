@@ -443,6 +443,7 @@ def test_fleet_docs_do_not_reference_old_pitch_pattern_or_old_ota_identity() -> 
     paths = [
         "src/turret_fleet/docs/implementation-plan.md",
         "src/turret_fleet/docs/mqtt-http-contract.md",
+        "src/turret_fleet/docs/usage.md",
         "src/turret_fleet/examples/ota-manifest.example.json",
     ]
     combined = "\n".join(read(path) for path in paths)
@@ -453,6 +454,8 @@ def test_fleet_docs_do_not_reference_old_pitch_pattern_or_old_ota_identity() -> 
     assert "sweep_vertical" in combined
     assert "battlebang-turret-fleet" in combined
     assert "esp32dev-turret-v2" in combined
+    assert "Two-stage" in combined
+    assert "Post-OTA boot intentionally stayed in `WAIT_COMMAND`" in combined
 
 
 def test_serial_and_mqtt_json_buffers_are_heap_backed_to_avoid_loop_stack_overflow() -> None:
