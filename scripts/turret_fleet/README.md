@@ -12,6 +12,6 @@ Use the repository venvs:
 Helpers:
 
 - `provision.py`: builds/provisions runtime config over USB serial into ESP NVS.
-- `mqtt_command.py`: publishes command/config payloads without external MQTT tools.
+- `mqtt_command.py`: publishes command/config payloads without external MQTT tools; `update --desired-build N` approves OTA polling against the stable GitHub latest manifest URL.
 - `make_release_manifest.py`: generates `manifest.json` for GitHub Releases.
 - `publish_mqtt_manifest.py`: publishes a manifest to an OTA MQTT topic without external MQTT tools.

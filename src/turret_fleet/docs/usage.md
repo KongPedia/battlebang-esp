@@ -246,7 +246,15 @@ Keep `ota.apply_only_in_safe_state=true` and watch `motion_state` during tuning.
 
 ### Build/release from GitHub Actions
 
-Manual workflow:
+After PR merge to `main`, `.github/workflows/turret-fleet-firmware.yml` runs
+automatically when fleet firmware/workflow files change. The push build creates
+a public GitHub Release in this repo with:
+
+- tag `turret-fleet-v0.1.${GITHUB_RUN_NUMBER}-main`
+- firmware build `${GITHUB_RUN_NUMBER}`
+- assets `manifest.json`, `battlebang-turret-fleet-{version}.bin`, `sha256.txt`
+
+Manual `workflow_dispatch` still exists for PR smoke tests or one-off builds:
 
 ```bash
 gh workflow run turret-fleet-firmware.yml \
@@ -260,45 +268,60 @@ gh workflow run turret-fleet-firmware.yml \
   -f create_release=true
 ```
 
-Release assets:
+Release assets are reachable through either the exact tag or the stable latest URL:
 
 ```text
 https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/manifest.json
-https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/battlebang-turret-fleet-{version}.bin
-sha256.txt
+https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
 ```
 
-### Command Center-approved polling
+### Manifest-free Command Center-approved polling
 
-Polling is disabled by default. In the current implementation, this config patch
-is the Command Center's approval/update command: if the polled manifest build
-matches `desired_build`, ESP applies it automatically when safe.
+Normal operator flow should **not** paste a release-specific manifest URL. Read
+the latest manifest build, then approve that build by turret id:
 
 ```bash
-MANIFEST='https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v0.1.4-pr9-bootfix/manifest.json'
+# 1) after the merge Action completes, read the build from the latest release
+curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+# or: gh release view --repo KongPedia/battlebang-esp --json tagName,isLatest
 
-./bin/turret fleet-mqtt turret_2 config --host 10.2.80.52 \
-  --config-version $(date +%s) \
-  --ota-command-center-controlled true \
-  --ota-auto-check-enabled true \
-  --ota-desired-build 5 \
-  --ota-channel stable \
-  --ota-public-manifest-url "$MANIFEST" \
-  --ota-check-interval-s 30 \
-  --ota-apply-only-in-safe-state true
+# 2) approve exactly that build for one turret; this publishes to /config
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
 ```
 
-Firmware applies only when all are true:
+`update` is only a convenience wrapper around the existing NVS config patch. It
+sends:
+
+```json
+{
+  "type": "config",
+  "schema": 2,
+  "config_version": 1780000000,
+  "ota": {
+    "command_center_controlled": true,
+    "auto_check_enabled": true,
+    "desired_build": 7,
+    "channel": "stable",
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "local_mirror_url": "",
+    "check_interval_s": 30,
+    "apply_only_in_safe_state": true
+  }
+}
+```
+
+The ESP then polls the latest manifest itself. With
+`command_center_controlled=true`, it applies only when all are true:
 
 - `ota.auto_check_enabled=true`
 - manifest `app` and `hardware` match
-- manifest `build` is greater than current build
-- with `command_center_controlled=true`, manifest `build == ota.desired_build`
+- manifest `build` is greater than current `firmware_build`
+- manifest `build == ota.desired_build`
 - hash/size verification passes
 - if `apply_only_in_safe_state=true`, turret is not firing, not idle/dead/pattern,
   and target/home motion is settled at stop PWM
 
-Status reasons to watch:
+Watch `battlebang/turrets/turret_2/status` every heartbeat/event for:
 
 ```text
 config_applied
@@ -311,8 +334,17 @@ connected
 heartbeat
 ```
 
-After successful OTA reboot, automatic HOME drive is inhibited. Command Center
-should then send one of:
+Important status fields proving the ESP saw and accepted the rollout policy:
+
+```text
+firmware_version, firmware_build
+ota_auto_check_enabled=true
+ota_desired_build=<LATEST_BUILD>
+ota_manifest_url=https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+```
+
+After successful OTA reboot, automatic HOME drive is inhibited to avoid motion
+surprise. Command Center should then send one of:
 
 ```bash
 ./bin/turret fleet-mqtt turret_2 initiate --host 10.2.80.52
@@ -326,7 +358,7 @@ intended:
 ./bin/turret fleet-mqtt turret_2 config --host 10.2.80.52 \
   --config-version $(date +%s) \
   --ota-auto-check-enabled false \
-  --ota-desired-build 5 \
+  --ota-desired-build <LATEST_BUILD> \
   --ota-apply-only-in-safe-state true
 ```
 
@@ -337,17 +369,18 @@ If Command Center wants a visible two-stage flow, do not set
 
 1. Command Center watches GitHub releases/webhook and decides update is available.
 2. UI/operator approves.
-3. Command Center either:
-   - sends the polling approval config above (`desired_build=N`, auto check true), or
-   - publishes the exact manifest to `/ota` for immediate direct OTA.
+3. Command Center sends `fleet-mqtt <turret_id> update --desired-build N` to let
+   the ESP poll latest and apply exactly build `N`.
 
 Current ESP firmware does not publish an “available but waiting for approval”
 event by itself while `auto_check_enabled=false`; that discovery belongs to
-Command Center.
+Command Center. Once approved, ESP status confirms the desired build and polling
+URL.
 
 ### Direct OTA MQTT job
 
-Publish a complete manifest to one turret or all turrets:
+Publish a complete manifest to one turret or all turrets only for immediate jobs
+where Command Center already has the manifest body:
 
 ```bash
 ./bin/turret fleet-ota-publish dist/manifest.json battlebang/turrets/turret_2/ota
@@ -355,7 +388,8 @@ Publish a complete manifest to one turret or all turrets:
 ```
 
 Direct `/ota` is treated as an explicit Command Center-approved update job. It
-still honors manifest validation and safe-state gating.
+still honors manifest validation and safe-state gating. For normal post-merge
+rollout, prefer `fleet-mqtt ... update --desired-build N`.
 
 ## Status fields to monitor
 

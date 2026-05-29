@@ -399,9 +399,15 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert 'default="battlebang-turret-fleet"' in script
     assert 'default="esp32dev-turret-v2"' in script
     assert "KongPedia/battlebang-esp" in provision
+    assert "push:" in workflow
+    assert "branches:" in workflow
+    assert "- main" in workflow
+    assert 'VERSION="0.1.${GITHUB_RUN_NUMBER}-main"' in workflow
+    assert 'BUILD="${GITHUB_RUN_NUMBER}"' in workflow
     assert 'default: "KongPedia/battlebang-esp"' in workflow
     assert "DEFAULT_GITHUB_TOKEN: ${{ github.token }}" in workflow
     assert "PUBLIC_RELEASE_REPO_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}" in workflow
+    assert "steps.version.outputs.public_release_repo" in workflow
     assert 'if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then' in workflow
     assert 'export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"' in workflow
     assert example["app"] == "battlebang-turret-fleet"
@@ -548,6 +554,9 @@ def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
     assert 'doc["ota_auto_check_enabled"] = config_->otaAutoCheckEnabled;' in mqtt
     assert "--ota-auto-check-enabled" in helper
     assert 'ota["desired_build"] = args.ota_desired_build' in helper
+    assert "DEFAULT_LATEST_MANIFEST_URL" in helper
+    assert "ota-update" in helper
+    assert "fleet-mqtt turret_2 update --desired-build" in bin_helper
     assert "fleet-ota-publish" in bin_helper
     assert "from mqtt_command import publish_mqtt" in publisher
 
@@ -696,3 +705,23 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
     assert payload["ota"]["desired_build"] == 2
     assert payload["ota"]["public_manifest_url"].endswith("/manifest.json")
     assert "yaw_stop_us" not in payload["motion"].get("idle", {})
+
+    args = module.build_parser().parse_args([
+        "--host",
+        "10.2.80.52",
+        "turret_2",
+        "update",
+        "--desired-build",
+        "7",
+    ])
+    suffix, payload = module.build_command_payload(args)
+    assert suffix == "config"
+    assert payload["type"] == "config"
+    assert payload["ota"]["command_center_controlled"] is True
+    assert payload["ota"]["auto_check_enabled"] is True
+    assert payload["ota"]["desired_build"] == 7
+    assert payload["ota"]["channel"] == "stable"
+    assert payload["ota"]["public_manifest_url"] == module.DEFAULT_LATEST_MANIFEST_URL
+    assert payload["ota"]["local_mirror_url"] == ""
+    assert payload["ota"]["check_interval_s"] == 30
+    assert payload["ota"]["apply_only_in_safe_state"] is True

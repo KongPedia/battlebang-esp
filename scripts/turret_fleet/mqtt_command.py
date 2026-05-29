@@ -12,6 +12,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "turret_fleet" / ".env.turret_fleet"
+DEFAULT_LATEST_MANIFEST_URL = "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json"
 
 
 class MqttCommandError(RuntimeError):
@@ -141,6 +142,24 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
             "command_id": command_id,
             "duration_ms": args.duration_ms,
         }
+
+    if action in {"update", "ota-update"}:
+        doc: dict[str, Any] = {
+            "type": "config",
+            "schema": 2,
+            "config_version": config_version(args.config_version),
+            "ota": {
+                "command_center_controlled": True,
+                "auto_check_enabled": True,
+                "desired_build": args.desired_build,
+                "channel": args.channel,
+                "public_manifest_url": args.manifest_url,
+                "local_mirror_url": args.local_mirror_url,
+                "check_interval_s": args.check_interval_s,
+                "apply_only_in_safe_state": args.apply_only_in_safe_state,
+            },
+        }
+        return "config", doc
 
     if action == "config":
         doc: dict[str, Any] = {
@@ -438,6 +457,19 @@ def build_parser() -> argparse.ArgumentParser:
     fire = sub.add_parser("fire", help="explicit live fire command; rejected only in DEAD, brownout lockout, or unconfigured state")
     fire.add_argument("--duration-ms", type=int, default=500)
     fire.add_argument("--id", dest="command_id")
+
+    update = sub.add_parser(
+        "update",
+        aliases=["ota-update"],
+        help="approve one Command Center-controlled OTA polling update without typing a release-specific manifest URL",
+    )
+    update.add_argument("--desired-build", type=int, required=True, help="exact manifest build allowed to apply")
+    update.add_argument("--config-version", type=int)
+    update.add_argument("--channel", default="stable")
+    update.add_argument("--manifest-url", default=DEFAULT_LATEST_MANIFEST_URL, help="default: GitHub latest manifest URL")
+    update.add_argument("--local-mirror-url", default="", help="optional Command Center mirror URL; empty uses --manifest-url")
+    update.add_argument("--check-interval-s", type=int, default=30)
+    update.add_argument("--apply-only-in-safe-state", type=parse_bool_text, default=True)
 
     cfg = sub.add_parser("config", help="publish a partial runtime config patch saved to ESP NVS")
     cfg.add_argument("--config-version", type=int)

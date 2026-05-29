@@ -35,7 +35,7 @@ Usage:
   ./bin/turret fleet-config <turret-number|turret_id>
   ./bin/turret fleet-provision <turret-number|turret_id> [port]
   ./bin/turret fleet-upload <turret-number|turret_id> [port]
-  ./bin/turret fleet-mqtt <turret-number|turret_id> <idle|dead|hold|recover|target|aim|fire|config> [options]
+  ./bin/turret fleet-mqtt <turret-number|turret_id> <idle|dead|hold|recover|target|aim|fire|config|update> [options]
   ./bin/turret fleet-ota-publish <manifest.json> [topic]
   ./bin/turret monitor [port]
   ./bin/turret config
@@ -55,6 +55,7 @@ Examples:
   ./bin/turret fleet-mqtt turret_2 aim 0 10
   ./bin/turret fleet-mqtt turret_2 recover
   ./bin/turret fleet-mqtt turret_2 fire --duration-ms 500
+  ./bin/turret fleet-mqtt turret_2 update --desired-build 7
   ./bin/turret fleet-mqtt turret_2 config --ota-auto-check-enabled true --ota-desired-build 2
   ./bin/turret fleet-ota-publish dist/manifest.json battlebang/turrets/all/ota
 
@@ -73,7 +74,8 @@ Fleet first provisioning:
   - Env file can be overridden with TURRET_FLEET_ENV_FILE=/path/to/.env.
   - `fleet-mqtt` reads the same module-local env file for broker host/port/root. Use
     --host 10.2.80.52 when the env file is absent.
-  - `fleet-ota-publish` publishes a release manifest to MQTT using the module-local env file.
+  - `fleet-mqtt ... update --desired-build N` approves polling against the GitHub latest manifest.
+  - `fleet-ota-publish` publishes a full release manifest to MQTT for direct OTA jobs.
 USAGE
 }
 

@@ -29,6 +29,7 @@ Command Center usage notes:
   `recover`, `jog`, and `fire`.
 - `config` patches are persisted in NVS and are the normal way to change Wi-Fi,
   MQTT broker, calibration, motion limits/speeds, fire duration, and OTA policy.
+- `update --desired-build N` in the CLI publishes OTA polling approval as a config patch; no release-specific manifest URL is typed by the operator.
 - `ota` accepts a full firmware manifest for an immediate approved update job.
 - `status.reason` reports transitions such as `command_applied`,
   `config_applied`, `ota_downloading`, `ota_rebooting`, and `connected`.

@@ -193,31 +193,37 @@ safety failures are reject-on-ESP.
 
 ## OTA rollout
 
-Default public release host is this repository:
+Default public release host is this repository's latest fleet manifest:
 
 ```text
 https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
 ```
 
-Manual GitHub Actions runs build one generic `esp32dev_turret_fleet` binary and
-release `manifest.json`, `.bin`, and `sha256.txt`. Same-repo public releases use
+After PR merge to `main`, the fleet firmware workflow automatically builds one
+generic `esp32dev_turret_fleet` binary and publishes `manifest.json`, `.bin`,
+and `sha256.txt` as a public GitHub Release. Same-repo public releases use
 GitHub Actions' built-in `GITHUB_TOKEN`; `PUBLIC_RELEASE_REPO_TOKEN` is only
 needed for cross-repo publishing.
 
-Command Center approval is still required for autonomous polling: keep
-`ota.command_center_controlled=true`, then send config such as:
+Command Center approval is still required for autonomous polling. Normal
+post-merge rollout is manifest-free for the operator:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 config \
-  --ota-auto-check-enabled true \
-  --ota-desired-build 2 \
-  --ota-public-manifest-url https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+# read latest manifest, then approve its build by turret id
+curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
 ```
 
-The ESP polls only when `ota.auto_check_enabled=true`; with
+The `update` helper publishes an NVS config patch to
+`battlebang/turrets/turret_2/config` with `ota.auto_check_enabled=true`,
+`ota.command_center_controlled=true`, `ota.desired_build=<LATEST_BUILD>`, and
+the stable latest manifest URL. The ESP polls only when enabled; with
 `command_center_controlled=true`, the polled manifest build must exactly match
-`ota.desired_build`. For immediate Command Center jobs, publish a manifest to
-`battlebang/turrets/all/ota` or a per-turret `/ota` topic.
+`ota.desired_build`.
+
+For immediate Command Center jobs where the full manifest body is already known,
+publish that manifest to `battlebang/turrets/all/ota` or a per-turret `/ota`
+topic.
 
 ## Boot behavior
 

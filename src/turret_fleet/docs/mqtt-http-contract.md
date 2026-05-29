@@ -225,50 +225,60 @@ ESP behavior:
 ## GitHub Release manifest polling
 
 For a minimal test without a local firmware HTTP server, `manifest.json` and the
-firmware `.bin` can both live in a GitHub Release:
-
-```text
-https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v0.1.0/manifest.json
-https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v0.1.0/battlebang-turret-fleet-0.1.0.bin
-```
-
-The ESP serial command for a manual smoke test is:
-
-```text
-check-ota https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v0.1.0/manifest.json
-```
-
-The firmware also has a default latest-manifest URL:
+firmware `.bin` can both live in a GitHub Release. Merge-to-main Action builds
+update the stable latest manifest URL:
 
 ```text
 https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
 ```
 
-So these serial commands can manually check the latest public firmware release during maintenance. Normal automatic rollout remains Command Center controlled over MQTT:
+Exact release URLs also exist for debugging:
 
 ```text
-check-ota
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/manifest.json
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/battlebang-turret-fleet-{version}.bin
+```
+
+Serial maintenance commands can manually check the configured/default public
+manifest:
+
+```text
+check-ota [manifest-url]
 check-latest
 ```
 
-For controlled fleet rollout, either keep MQTT `/ota` as the immediate trigger
-path or enable Command Center-approved polling. Polling is disabled by default.
-To permit one build through polling, send runtime config:
+Normal fleet rollout remains Command Center controlled over MQTT. Operators do
+not paste a manifest URL; they approve exactly one latest-build number by turret
+id:
 
 ```bash
-./bin/turret fleet-mqtt turret_2 config \
-  --ota-auto-check-enabled true \
-  --ota-desired-build 2 \
-  --ota-public-manifest-url https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host 10.2.80.52
+```
+
+That command publishes a config patch to `battlebang/turrets/turret_2/config`:
+
+```json
+{
+  "type": "config",
+  "schema": 2,
+  "ota": {
+    "command_center_controlled": true,
+    "auto_check_enabled": true,
+    "desired_build": 7,
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "check_interval_s": 30,
+    "apply_only_in_safe_state": true
+  }
+}
 ```
 
 With `ota.command_center_controlled=true`, the ESP applies a polled manifest only
 when `manifest.build == ota.desired_build`; otherwise it publishes/skips with an
-OTA status reason. In the current firmware, setting `ota_auto_check_enabled=true`
-plus `ota_desired_build=N` is the Command Center approval/apply command for
-polling. If the desired two-stage UX is “update available, then apply on command”,
-Command Center should discover releases itself, wait for operator approval, then
-send that polling config patch or publish the manifest directly to `/ota`.
+OTA status reason. If the desired two-stage UX is “update available, then apply
+on command”, Command Center should discover releases itself, wait for operator
+approval, then send `update --desired-build N`. Direct `/ota` remains available
+for immediate jobs that publish the complete manifest body.
+
 After OTA reboot, automatic HOME is inhibited; send `initiate` or a new `target`
 after status shows the updated build.
 
@@ -306,7 +316,11 @@ Payload includes:
     "pitch_error_deg": 1.1,
     "reachable": true
   },
-  "ota_state": "idle",
+  "ota_command_center_controlled": true,
+  "ota_auto_check_enabled": true,
+  "ota_desired_build": 42,
+  "ota_channel": "stable",
+  "ota_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
   "wifi": "UP",
   "ip": "10.2.80.123",
   "rssi": -54,
