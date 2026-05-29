@@ -16,9 +16,9 @@ on:
         required: false
         default: ""
       public_release_repo:
-        description: "Public repository that hosts firmware releases"
+        description: "Public repository that hosts firmware releases. Same-repo releases use GITHUB_TOKEN; cross-repo releases need PUBLIC_RELEASE_REPO_TOKEN."
         required: true
-        default: "KongPedia/battlebang-firmware"
+        default: "KongPedia/battlebang-esp"
       public_release_target_branch:
         description: "Target branch in the public release repository used when creating a new release tag"
         required: true
@@ -27,7 +27,7 @@ on:
         description: "Create/update a Release in the public firmware repository"
         required: true
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
@@ -106,14 +106,19 @@ jobs:
       - name: Create GitHub Release for tag
         if: inputs.create_release
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN || github.token }}
+          RELEASE_TOKEN_IS_SECRET: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN != '' }}
         run: |
           TAG="turret-fleet-v${{ steps.version.outputs.version }}"
           PUBLIC_REPO="${{ inputs.public_release_repo }}"
           TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
           if [[ -z "${GH_TOKEN}" ]]; then
-            echo "Missing repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
-            echo "Create a fine-grained PAT with Contents: Read and write on ${PUBLIC_REPO}." >&2
+            echo "Missing GitHub token." >&2
+            exit 2
+          fi
+          if [[ "${PUBLIC_REPO}" != "${GITHUB_REPOSITORY}" && "${RELEASE_TOKEN_IS_SECRET}" != "true" ]]; then
+            echo "Cross-repo release to ${PUBLIC_REPO} requires repository secret PUBLIC_RELEASE_REPO_TOKEN." >&2
+            echo "Same-repo public releases to ${GITHUB_REPOSITORY} use the built-in GITHUB_TOKEN." >&2
             exit 2
           fi
 

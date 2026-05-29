@@ -12,7 +12,7 @@ namespace turret_fleet {
 namespace {
 const unsigned long kMqttRetryMs = 5000;
 const unsigned long kStatusIntervalMs = 10000;
-const size_t kPayloadLimit = 2048;
+const size_t kPayloadLimit = 4096;
 }
 
 void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManager& wifi, TurretControl& control) {
@@ -32,6 +32,10 @@ void MqttBus::reconfigure() {
   subscriptionsDirty_ = true;
   if (client_.connected()) client_.disconnect();
   lastConnectAttemptMs_ = 0;
+}
+
+bool MqttBus::connected() {
+  return client_.connected();
 }
 
 void MqttBus::loop() {
@@ -109,7 +113,7 @@ void MqttBus::subscribeTopics() {
 void MqttBus::publishStatus(const char* reason) {
   if (config_ == nullptr || wifi_ == nullptr || control_ == nullptr || !client_.connected()) return;
 
-  StaticJsonDocument<1024> doc;
+  DynamicJsonDocument doc(4096);
   doc["type"] = "status";
   doc["reason"] = reason;
   doc["device_id"] = config_->deviceId;
@@ -120,10 +124,16 @@ void MqttBus::publishStatus(const char* reason) {
   doc["firmware_build"] = BB_TURRET_FLEET_BUILD;
   doc["git_sha"] = BB_TURRET_FLEET_GIT_SHA;
   doc["config_version"] = config_->configVersion;
-  doc["mode"] = control_->mode();
+  control_->appendStatus(doc.as<JsonObject>());
   doc["wifi"] = wifi_->connected() ? "UP" : "DOWN";
   doc["ip"] = wifi_->ip();
   doc["rssi"] = wifi_->rssi();
+  doc["ota_command_center_controlled"] = config_->otaCommandCenterControlled;
+  doc["ota_auto_check_enabled"] = config_->otaAutoCheckEnabled;
+  doc["ota_desired_build"] = config_->otaDesiredBuild;
+  doc["ota_channel"] = config_->otaChannel;
+  doc["ota_manifest_url"] = config_->otaLocalMirrorUrl.length() > 0 ? config_->otaLocalMirrorUrl :
+                                                                config_->otaPublicManifestUrl;
   doc["uptime_ms"] = millis();
 
   String payload;
@@ -170,10 +180,33 @@ void MqttBus::handleConfigPayload(const char* payload) {
     return;
   }
 
+  const bool sanitized = control_ != nullptr && control_->sanitizeConfigForSafety(next);
+  if (sanitized) {
+    Serial.println("[fleet][config] fire.hardware_enabled recorded false while brownout lockout is active");
+  }
+
+  const bool wifiChanged = next.wifiSsid != config_->wifiSsid ||
+                           next.wifiPassword != config_->wifiPassword;
+  const bool mqttChanged = next.mqttHost != config_->mqttHost ||
+                           next.mqttPort != config_->mqttPort ||
+                           next.mqttUsername != config_->mqttUsername ||
+                           next.mqttPassword != config_->mqttPassword ||
+                           next.mqttRoot != config_->mqttRoot ||
+                           next.turretId != config_->turretId;
+
   *config_ = next;
   const bool saved = store_->save(*config_);
   control_->applyConfig(*config_);
-  subscriptionsDirty_ = true;
+  if (wifiChanged && wifi_ != nullptr) {
+    Serial.println("[fleet][config] Wi-Fi settings changed; reconnecting");
+    wifi_->begin(*config_);
+  }
+  if (mqttChanged) {
+    Serial.println("[fleet][config] MQTT identity/settings changed; reconnecting/resubscribing");
+    reconfigure();
+  } else {
+    subscriptionsDirty_ = true;
+  }
   Serial.print("[fleet][config] applied config_version=");
   Serial.print(config_->configVersion);
   Serial.print(" saved=");
@@ -199,6 +232,12 @@ void MqttBus::handleOtaPayload(const char* payload) {
     return;
   }
 
+  if (control_ != nullptr && !control_->isSafeForOta()) {
+    Serial.println("[fleet][ota] deferred: turret is not in a safe OTA state");
+    publishStatus("ota_deferred");
+    return;
+  }
+
   Serial.print("[fleet][ota] accepted ");
   Serial.println(otaManifestSummary(manifest));
   publishStatus("ota_downloading");
@@ -215,7 +254,7 @@ void MqttBus::handleOtaPayload(const char* payload) {
 }
 
 void MqttBus::handleCommandPayload(const char* topic, const char* payload) {
-  StaticJsonDocument<768> doc;
+  DynamicJsonDocument doc(1024);
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
     Serial.print("[fleet][command] invalid json: ");

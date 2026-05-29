@@ -49,7 +49,7 @@ Shell environment values can override the local file at build time:
 NIXO_ID=nixo_go2_03 \
 NIXO_WIFI_SSID='...' \
 NIXO_WIFI_PASSWORD='...' \
-NIXO_MQTT_HOST=jetson-go2-02.local \
+NIXO_MQTT_HOST=<BROKER_IP> \
 pio run -e esp32dev_nixo
 ```
 
@@ -85,7 +85,7 @@ before subscribing. Command Center should publish with `retain=false`.
 Direct MQTT smoke test:
 
 ```bash
-mosquitto_pub -h jetson-go2-02.local -p 1883 \
+mosquitto_pub -h <BROKER_IP> -p 1883 \
   -t battlebang/nixo/nixo_go2_03/command \
   -m '{"schema_version":1,"command":"fire","nixo_id":"nixo_go2_03","parent_robot_id":"go2_03","enabled":true,"duration_ms":1000,"request_id":"direct-mqtt-smoke","ttl_ms":1000}' \
   -q 1
@@ -114,7 +114,7 @@ curl -X POST \
 Use an MQTT subscriber to confirm the backend publish:
 
 ```bash
-mosquitto_sub -h jetson-go2-02.local -p 1883 -q 1 -t 'battlebang/nixo/nixo_go2_03/command' -v
+mosquitto_sub -h <BROKER_IP> -p 1883 -q 1 -t 'battlebang/nixo/nixo_go2_03/command' -v
 ```
 
 The Command Center response and subscriber output prove broker publish. Physical fire still requires ESP serial or the

@@ -86,7 +86,7 @@ void setup() {
   lastMqttStatusMs = 0;
   resetPidState();
   clearPendingFireFlags();
-  enterIdleMode();
+  enterHoldMode();
 
   Serial.println("=== TURRET FIRMWARE READY ===");
   Serial.println("Serial input:");

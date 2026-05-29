@@ -10,6 +10,7 @@ namespace turret_fleet {
 class WifiManager {
  public:
   void begin(const RuntimeConfig& config);
+  void stop();
   void loop(const RuntimeConfig& config);
   bool connected() const;
   String ip() const;

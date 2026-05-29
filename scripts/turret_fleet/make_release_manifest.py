@@ -23,8 +23,8 @@ def main() -> int:
     parser.add_argument("--url", default="", help="HTTP URL reachable by ESP32 devices. Can be patched by command center later.")
     parser.add_argument("--job-id", default="")
     parser.add_argument("--channel", default="stable")
-    parser.add_argument("--app", default="battlebang-turret")
-    parser.add_argument("--hardware", default="esp32dev")
+    parser.add_argument("--app", default="battlebang-turret-fleet")
+    parser.add_argument("--hardware", default="esp32dev-turret-v2")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 

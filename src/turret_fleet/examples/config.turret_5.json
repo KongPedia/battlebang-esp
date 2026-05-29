@@ -1,8 +1,20 @@
 {
   "type": "config",
-  "schema": 1,
+  "schema": 2,
   "config_version": 1,
-  "turret_id": "turret_5",
+  "turret_id": "boss_1f_left",
+  "group": "boss",
+  "floor": 1,
+  "side": "left",
+  "coordinate_frame": {
+    "frame_id": "boss_stage_v1",
+    "unit": "cm",
+    "origin": "boss_stage_center_floor",
+    "x_axis": "stage_right",
+    "y_axis": "stage_forward",
+    "z_axis": "up",
+    "mqtt_target_unit": "m"
+  },
   "pose": {
     "x_cm": -170.0,
     "y_cm": 190.0,
@@ -10,16 +22,69 @@
     "default_target_z_cm": 70.0
   },
   "calibration": {
+    "yaw_zero_reference": "faces_frame_origin",
     "yaw_offset_deg": 0.0,
-    "pitch_offset_deg": 0.0
+    "pitch_offset_deg": 0.0,
+    "yaw_axis_offset_deg": 0.0,
+    "pitch_axis_offset_deg": 0.0,
+    "home_yaw_deg": 0.0,
+    "home_pitch_deg": 0.0
+  },
+  "fire": {
+    "hardware_enabled": true,
+    "esc_run_us": 1700,
+    "esc_stop_us": 1000,
+    "default_hold_ms": 500,
+    "min_hold_ms": 100,
+    "max_hold_ms": 60000,
+    "relay_step_delay_ms": 250
+  },
+  "motion": {
+    "yaw_stop_us": 1500,
+    "pitch_stop_us": 1500,
+    "limits": {
+      "yaw_min_deg": -75.0,
+      "yaw_max_deg": 75.0,
+      "pitch_min_deg": -75.0,
+      "pitch_max_deg": 75.0
+    },
+    "home": {
+      "yaw_deg": 0.0,
+      "pitch_deg": 0.0
+    },
+    "idle": {
+      "yaw_min_deg": -15.0,
+      "yaw_max_deg": 15.0,
+      "yaw_speed_deg_s": 8.0,
+      "pitch_min_deg": -4.0,
+      "pitch_max_deg": 0.0,
+      "pitch_speed_deg_s": 2.0
+    },
+    "dead": {
+      "pitch_deg": 12.0
+    }
   },
   "wifi": {
     "ssid": "YOUR_WIFI_SSID",
     "password": "YOUR_WIFI_PASSWORD"
   },
+  "network": {
+    "auto_start": true,
+    "start_delay_ms": 10000
+  },
   "mqtt": {
-    "host": "10.2.80.105",
+    "host": "COMMAND_CENTER_IP",
     "port": 1883,
     "root": "battlebang"
+  },
+  "ota": {
+    "command_center_controlled": true,
+    "auto_check_enabled": false,
+    "channel": "boss-demo",
+    "desired_build": 0,
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "local_mirror_url": "",
+    "check_interval_s": 300,
+    "apply_only_in_safe_state": true
   }
 }

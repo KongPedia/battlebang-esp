@@ -16,6 +16,14 @@ void WifiManager::begin(const RuntimeConfig& config) {
   loop(config);
 }
 
+void WifiManager::stop() {
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+  lastAttemptMs_ = 0;
+  warnedMissingConfig_ = false;
+  Serial.println("[fleet][wifi] stopped");
+}
+
 void WifiManager::loop(const RuntimeConfig& config) {
   if (connected()) return;
 
@@ -31,8 +39,7 @@ void WifiManager::loop(const RuntimeConfig& config) {
   if (lastAttemptMs_ != 0 && now - lastAttemptMs_ < kRetryIntervalMs) return;
   lastAttemptMs_ = now;
 
-  Serial.print("[fleet][wifi] connecting to ");
-  Serial.println(config.wifiSsid);
+  Serial.println("[fleet][wifi] connecting to configured SSID");
   WiFi.disconnect(false, false);
   if (config.wifiPassword.length() == 0) {
     WiFi.begin(config.wifiSsid.c_str());
