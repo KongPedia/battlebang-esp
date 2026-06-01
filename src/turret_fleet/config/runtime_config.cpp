@@ -12,6 +12,16 @@ namespace turret_fleet {
 namespace {
 
 const char* kNamespace = "bb_fleet";
+const size_t kRuntimeConfigJsonCapacity = 8192;
+const size_t kPatternPresetsJsonMaxLen = 4096;
+const uint8_t kPatternPresetMaxPoints = 6;
+const unsigned long kPatternPresetMinDwellMs = 100;
+const unsigned long kPatternPresetMaxDwellMs = 5000;
+const unsigned long kPatternPresetMinMoveTimeoutMs = 500;
+const unsigned long kPatternPresetMaxMoveTimeoutMs = 60000;
+const unsigned long kPatternPresetMaxFireMs = 5000;
+const unsigned long kPatternPresetMaxPhaseOffsetMs = 5000;
+const unsigned long kPatternPresetMaxLoopCount = 3;
 
 String getStringOr(JsonVariantConst value, const String& fallback) {
   if (value.isNull()) return fallback;
@@ -47,6 +57,145 @@ bool isValidMqttTargetUnit(const String& unit) {
          normalized == "cm" || normalized == "centimeter" || normalized == "centimeters";
 }
 
+bool isKnownPatternPresetId(const char* id) {
+  if (id == nullptr || id[0] == '\0') return false;
+  return strcmp(id, "lane_sweep") == 0 ||
+         strcmp(id, "two_point_bounce") == 0 ||
+         strcmp(id, "telegraph_column") == 0 ||
+         strcmp(id, "calibration_no_fire") == 0;
+}
+
+uint8_t minPointsForPatternPreset(const char* id) {
+  if (strcmp(id, "lane_sweep") == 0) return 2;
+  if (strcmp(id, "two_point_bounce") == 0) return 2;
+  return 1;
+}
+
+uint8_t maxPointsForPatternPreset(const char* id) {
+  if (strcmp(id, "lane_sweep") == 0) return 2;
+  if (strcmp(id, "two_point_bounce") == 0) return 2;
+  if (strcmp(id, "telegraph_column") == 0) return kPatternPresetMaxPoints;
+  return kPatternPresetMaxPoints;
+}
+
+bool isNumericJsonValue(JsonVariantConst value) {
+  return value.is<float>() || value.is<double>() || value.is<int>() ||
+         value.is<long>() || value.is<unsigned int>() || value.is<unsigned long>();
+}
+
+bool validateOptionalUnsigned(JsonObjectConst object,
+                              const char* key,
+                              unsigned long minValue,
+                              unsigned long maxValue,
+                              String& error) {
+  JsonVariantConst value = object[key];
+  if (value.isNull()) return true;
+  if (!value.is<unsigned long>() && !value.is<unsigned int>() &&
+      !value.is<long>() && !value.is<int>()) {
+    error = String("patterns.") + key + " must be an integer";
+    return false;
+  }
+  const long signedValue = value.as<long>();
+  if (signedValue < static_cast<long>(minValue) ||
+      static_cast<unsigned long>(signedValue) > maxValue) {
+    error = String("patterns.") + key + " out of safe range";
+    return false;
+  }
+  return true;
+}
+
+bool validatePatternPresetObject(const char* id,
+                                 JsonObjectConst preset,
+                                 const RuntimeConfig& config,
+                                 String& error) {
+  if (preset.isNull()) {
+    error = String("patterns.presets.") + id + " must be an object";
+    return false;
+  }
+
+  const uint8_t minPoints = minPointsForPatternPreset(id);
+  const uint8_t maxPoints = maxPointsForPatternPreset(id);
+  JsonArrayConst points = preset["points"].as<JsonArrayConst>();
+  if (points.isNull() || points.size() < minPoints || points.size() > maxPoints) {
+    error = String("patterns.presets.") + id + ".points must contain " +
+            String(minPoints) + ".." + String(maxPoints) + " point(s)";
+    return false;
+  }
+
+  for (JsonObjectConst point : points) {
+    if (point.isNull() || !point.containsKey("x") || !point.containsKey("y")) {
+      error = String("patterns.presets.") + id + ".points entries require x/y";
+      return false;
+    }
+    if (!isNumericJsonValue(point["x"]) || !isNumericJsonValue(point["y"]) ||
+        !isFiniteFloat(point["x"].as<float>()) || !isFiniteFloat(point["y"].as<float>())) {
+      error = String("patterns.presets.") + id + ".points x/y must be finite";
+      return false;
+    }
+    if (!point["z"].isNull() &&
+        (!isNumericJsonValue(point["z"]) || !isFiniteFloat(point["z"].as<float>()))) {
+      error = String("patterns.presets.") + id + ".points z must be finite";
+      return false;
+    }
+    const char* frame = point["frame_id"] | "";
+    if (frame[0] != '\0' && config.frameId != frame) {
+      error = String("patterns.presets.") + id + ".points frame_id mismatch";
+      return false;
+    }
+  }
+
+  if (!validateOptionalUnsigned(preset, "loop", 1, kPatternPresetMaxLoopCount, error) ||
+      !validateOptionalUnsigned(preset, "loops", 1, kPatternPresetMaxLoopCount, error) ||
+      !validateOptionalUnsigned(preset, "phase_offset_ms", 0, kPatternPresetMaxPhaseOffsetMs, error) ||
+      !validateOptionalUnsigned(preset, "move_timeout_ms", kPatternPresetMinMoveTimeoutMs, kPatternPresetMaxMoveTimeoutMs, error) ||
+      !validateOptionalUnsigned(preset, "dwell_ms", kPatternPresetMinDwellMs, kPatternPresetMaxDwellMs, error)) {
+    return false;
+  }
+
+  unsigned long maxFireMs = config.fireMaxHoldMs;
+  if (maxFireMs > kPatternPresetMaxFireMs) maxFireMs = kPatternPresetMaxFireMs;
+  if (!validateOptionalUnsigned(preset, "fire_ms", config.fireMinHoldMs, maxFireMs, error)) {
+    return false;
+  }
+
+  if (!preset["ping_pong"].isNull() && !preset["ping_pong"].is<bool>()) {
+    error = String("patterns.presets.") + id + ".ping_pong must be boolean";
+    return false;
+  }
+  if (!preset["random"].isNull() && !preset["random"].is<bool>()) {
+    error = String("patterns.presets.") + id + ".random must be boolean";
+    return false;
+  }
+
+  const char* returnTo = preset["return_to"] | "";
+  if (returnTo[0] != '\0' && strcmp(returnTo, "wait_command") != 0 && strcmp(returnTo, "idle") != 0) {
+    error = String("patterns.presets.") + id + ".return_to must be wait_command or idle";
+    return false;
+  }
+  return true;
+}
+
+bool validatePatternPresets(JsonObjectConst patterns, const RuntimeConfig& config, String& error) {
+  JsonObjectConst presets = patterns["presets"].as<JsonObjectConst>();
+  if (presets.isNull()) presets = patterns;
+  if (presets.isNull() || presets.size() == 0) {
+    error = "patterns.presets must contain at least one preset";
+    return false;
+  }
+
+  for (JsonPairConst pair : presets) {
+    const char* id = pair.key().c_str();
+    if (!isKnownPatternPresetId(id)) {
+      error = String("patterns.presets has unsupported pattern_id=") + id;
+      return false;
+    }
+    if (!validatePatternPresetObject(id, pair.value().as<JsonObjectConst>(), config, error)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 RuntimeConfig makeDefaultRuntimeConfig(const String& deviceId) {
@@ -62,7 +211,7 @@ bool mqttTargetsInMeters(const RuntimeConfig& config) {
 }
 
 bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& error) {
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(kRuntimeConfigJsonCapacity);
   DeserializationError err = deserializeJson(doc, json);
   if (err) {
     error = String("invalid json: ") + err.c_str();
@@ -240,6 +389,29 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
     next.otaApplyOnlyInSafeState = getBoolOr(ota["apply_only_in_safe_state"], next.otaApplyOnlyInSafeState);
   }
 
+  if (doc.containsKey("patterns")) {
+    JsonVariantConst patternsVariant = doc["patterns"];
+    if (patternsVariant.isNull()) {
+      next.patternPresetsJson = "";
+    } else {
+      JsonObjectConst patterns = patternsVariant.as<JsonObjectConst>();
+      if (patterns.isNull()) {
+        error = "patterns must be an object or null";
+        return false;
+      }
+      if (!validatePatternPresets(patterns, next, error)) {
+        return false;
+      }
+      String patternsJson;
+      serializeJson(patterns, patternsJson);
+      if (patternsJson.length() > kPatternPresetsJsonMaxLen) {
+        error = "patterns JSON is too large";
+        return false;
+      }
+      next.patternPresetsJson = patternsJson;
+    }
+  }
+
   if (next.turretId.length() > 0) next.configured = true;
 
   if (next.configured && next.turretId.length() == 0) {
@@ -334,7 +506,7 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
 }
 
 String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(kRuntimeConfigJsonCapacity);
   doc["type"] = "config";
   doc["schema"] = config.schema;
   doc["config_version"] = config.configVersion;
@@ -422,6 +594,10 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   mqtt["password"] = includeSecrets ? config.mqttPassword : "***";
   mqtt["root"] = config.mqttRoot;
 
+  if (config.patternPresetsJson.length() > 0) {
+    doc["patterns"] = serialized(config.patternPresetsJson.c_str());
+  }
+
   JsonObject ota = doc.createNestedObject("ota");
   ota["command_center_controlled"] = config.otaCommandCenterControlled;
   ota["auto_check_enabled"] = config.otaAutoCheckEnabled;
@@ -503,6 +679,7 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.mqttUsername = prefs.getString("mqtt_user", config.mqttUsername);
   config.mqttPassword = prefs.getString("mqtt_pass", config.mqttPassword);
   config.mqttRoot = prefs.getString("mqtt_root", config.mqttRoot);
+  config.patternPresetsJson = prefs.getString("pattern_json", config.patternPresetsJson);
   config.otaCommandCenterControlled = prefs.getBool("ota_cc", config.otaCommandCenterControlled);
   config.otaAutoCheckEnabled = prefs.getBool("ota_auto", config.otaAutoCheckEnabled);
   config.otaChannel = prefs.getString("ota_channel", config.otaChannel);
@@ -582,6 +759,7 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putString("mqtt_user", config.mqttUsername) >= 0;
   ok &= prefs.putString("mqtt_pass", config.mqttPassword) >= 0;
   ok &= prefs.putString("mqtt_root", config.mqttRoot) >= 0;
+  ok &= prefs.putString("pattern_json", config.patternPresetsJson) >= 0;
   ok &= prefs.putBool("ota_cc", config.otaCommandCenterControlled) > 0;
   ok &= prefs.putBool("ota_auto", config.otaAutoCheckEnabled) > 0;
   ok &= prefs.putString("ota_channel", config.otaChannel) >= 0;

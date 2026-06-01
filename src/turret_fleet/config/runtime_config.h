@@ -90,6 +90,12 @@ struct RuntimeConfig {
   String mqttPassword;
   String mqttRoot = "battlebang";
 
+  // Runtime-configurable high-level pattern presets. Stored as validated JSON
+  // so Command Center can update readable pattern coordinates/timings over the
+  // same MQTT config path as motion/fire/OTA without adding new firmware fields
+  // for every future pattern knob.
+  String patternPresetsJson;
+
   bool otaCommandCenterControlled = true;
   bool otaAutoCheckEnabled = false;
   String otaChannel = "boss-demo";
