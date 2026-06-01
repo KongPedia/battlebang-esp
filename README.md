@@ -7,7 +7,7 @@ ESP32 펌웨어 저장소입니다. Go2 피격 ESP, Nixo/game blaster, 터렛 �
 | `esp32dev`, `esp32dev_go2_*` | `src/go2/main.cpp` + `src/go2/**` | Go2-mounted hit sensor / ring LED firmware (BTB-671) |
 | `esp32dev_nixo` | `src/nIxo/main.cpp` | Go2-mounted Nixo/game blaster MQTT fire firmware (BTB-633) |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
-| `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Future fleet firmware path |
+| `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware with MQTT config + OTA |
 
 ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
 
@@ -62,8 +62,8 @@ python scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-21130
 
 ```bash
 GO2_ID=go2_05 \
-ESP_WIFI_SSID="kongstudios" \
-ESP_WIFI_PASSWORD="********" \
+ESP_WIFI_SSID="YOUR_WIFI_SSID" \
+ESP_WIFI_PASSWORD="YOUR_WIFI_PASSWORD" \
 ESP_MQTT_HOST="<command-center-or-broker-ip>" \
 pio run -e esp32dev_go2
 ```
@@ -106,6 +106,25 @@ pio run -e esp32dev_nixo -t upload --upload-port /dev/cu.usbserial-1130
 pio device monitor -p /dev/cu.usbserial-1130 -b 115200
 ```
 
+For `turret_fleet`, prefer the repo-local PlatformIO venv and helper:
+
+```bash
+python3 -m venv .venv-pio
+./.venv-pio/bin/python -m pip install -U platformio pyserial
+
+./.venv-pio/bin/pio run -e esp32dev_turret_fleet
+./bin/turret fleet-upload 2 /dev/cu.usbserial-120
+
+# MQTT_BROKER_HOST is the Command Center/MQTT broker, not the ESP device IP.
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
+```
+
+The fleet firmware is a single generic image. First provisioning over USB stores
+`turret_id`, Wi-Fi, MQTT, pose, calibration, motion/fire, and OTA policy in ESP
+NVS. After that, Command Center can update config and command `target`, `idle`,
+`dead`, `home`, `recover`, and OTA jobs over MQTT without reflashing.
+
 ---
 
 ## Arduino IDE path
@@ -133,5 +152,7 @@ The current sources are Arduino-style C++ (`Arduino.h`, FastLED, PubSubClient/Ar
   ```
 - Python tests:
   ```bash
-  python3 -m pytest tests/python
+  python3 -m venv .venv-turret-tests
+  ./.venv-turret-tests/bin/python -m pip install -r tests/python/requirements.txt
+  ./.venv-turret-tests/bin/python -m pytest tests/python/test_turret_fleet_contract.py -q
   ```

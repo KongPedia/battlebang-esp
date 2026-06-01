@@ -3,7 +3,7 @@
 Usage:
   pio run -e esp32dev_go2_05
   GO2_ID=go2_05 pio run -e esp32dev_go2
-  ESP_MQTT_HOST=10.2.80.10 pio run -e esp32dev_go2_05
+  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_05
 """
 
 from __future__ import annotations

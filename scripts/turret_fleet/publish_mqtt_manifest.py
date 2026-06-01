@@ -4,36 +4,31 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from mqtt_command import publish_mqtt
+
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Publish OTA manifest to MQTT. Requires paho-mqtt.")
+    parser = argparse.ArgumentParser(description="Publish OTA manifest to MQTT without external MQTT CLI/tools.")
     parser.add_argument("--host", required=True)
     parser.add_argument("--port", type=int, default=1883)
     parser.add_argument("--topic", default="battlebang/turrets/all/ota")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--username", default="")
     parser.add_argument("--password", default="")
-    parser.add_argument("--retain", action="store_true")
+    parser.add_argument("--timeout-s", type=float, default=5.0)
     args = parser.parse_args()
 
-    try:
-        import paho.mqtt.client as mqtt  # type: ignore
-    except ImportError as exc:
-        raise SystemExit("Install paho-mqtt first: python3 -m pip install paho-mqtt") from exc
-
     payload = args.manifest.read_text(encoding="utf-8")
-    try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    except AttributeError:
-        # paho-mqtt 1.x compatibility for laptops that have an older package.
-        client = mqtt.Client()
-    if args.username:
-        client.username_pw_set(args.username, args.password)
-    client.connect(args.host, args.port, keepalive=30)
-    info = client.publish(args.topic, payload=payload, qos=1, retain=args.retain)
-    info.wait_for_publish()
-    client.disconnect()
-    print(f"published {args.manifest} -> mqtt://{args.host}:{args.port}/{args.topic} retain={args.retain}")
+    publish_mqtt(
+        host=args.host,
+        port=args.port,
+        topic=args.topic,
+        payload=payload,
+        username=args.username or None,
+        password=args.password or None,
+        timeout_s=args.timeout_s,
+    )
+    print(f"published {args.manifest} -> mqtt://{args.host}:{args.port}/{args.topic}")
     return 0
 
 

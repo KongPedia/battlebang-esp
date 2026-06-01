@@ -41,7 +41,7 @@ z_target = 70.0
 | `y_turret_cm` | `470.0` | 터렛 y 기준 위치 |
 | `z_turret_cm` | `134.5` | 터렛 높이 |
 | `z_target_cm` | `70.0` | 기본 타겟 높이 |
-| `command_center_ip` | `192.168.0.10` | 이후 MQTT broker 주소 |
+| `command_center_ip` | `COMMAND_CENTER_IP_OR_DNS` | 이후 MQTT broker 주소 |
 | `mqtt_topic` 또는 템플릿 | `battlebang/turrets/{turret_id}/command` | 수신 토픽 |
 
 추가로 분리 후보:

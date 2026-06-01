@@ -7,11 +7,11 @@
 #endif
 
 #ifndef BB_TURRET_FLEET_APP_NAME
-#define BB_TURRET_FLEET_APP_NAME "battlebang-turret"
+#define BB_TURRET_FLEET_APP_NAME "battlebang-turret-fleet"
 #endif
 
 #ifndef BB_TURRET_FLEET_HARDWARE
-#define BB_TURRET_FLEET_HARDWARE "esp32dev"
+#define BB_TURRET_FLEET_HARDWARE "esp32dev-turret-v2"
 #endif
 
 #ifndef BB_TURRET_FLEET_VERSION
@@ -27,10 +27,10 @@
 #endif
 
 #ifndef BB_TURRET_FLEET_RELEASE_REPO
-#define BB_TURRET_FLEET_RELEASE_REPO "KongPedia/battlebang-firmware"
+#define BB_TURRET_FLEET_RELEASE_REPO "KongPedia/battlebang-esp"
 #endif
 
 #ifndef BB_TURRET_FLEET_LATEST_MANIFEST_URL
 #define BB_TURRET_FLEET_LATEST_MANIFEST_URL \
-  "https://github.com/KongPedia/battlebang-firmware/releases/latest/download/manifest.json"
+  "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json"
 #endif
