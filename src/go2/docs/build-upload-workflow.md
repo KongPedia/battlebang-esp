@@ -24,11 +24,13 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 
 커밋 가능한 non-secret 설정은 `src/go2/robots.json`에 둡니다.
 
-- `hp_max`
-- `piezo_damage_divisor`
-- `hit_threshold`
-- LED / piezo pin
+- `hit_cooldown_ms`
+- offline hit queue capacity / flush interval
+- LED pin / LED count / brightness
+- piezo DO pin (`TargetModule_HWsystem_test.cpp` 기준 GPIO 27)
 - MQTT topic prefix
+
+ESP에는 스코어/down 기준을 넣지 않습니다. 해당 정책은 Command Center config가 소유합니다.
 
 ## 3. 빌드만 검증
 

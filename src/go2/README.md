@@ -2,22 +2,27 @@
 
 Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 
-이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다.
+이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 발사/릴레이/서보 제어는 이 펌웨어에서 제거되었고, Go2의 발사는 `src/nIxo/` Nixo/game blaster 펌웨어가 담당합니다.
 
-터렛 펌웨어와 동일하게 Go2 펌웨어 진입점은 `src/go2/main.cpp`, 빌드 설정은 `src/go2/build_config.h`에 둡니다. 세부 문서는 `src/go2/docs/`에 있습니다.
+현재 Go2 ESP의 책임은 두 가지뿐입니다.
 
-발사/릴레이/서보 제어는 이 펌웨어에서 제거되었습니다. Go2의 발사는 `src/nIxo/` Nixo/game blaster 펌웨어가 담당합니다.
+1. 피에조 센서 DO 디지털 입력에서 valid hit가 발생하면 `hit=true` 이벤트를 Command Center에 publish
+2. Command Center가 내려준 `ring_display` 명령을 LED 링에 렌더링
 
-정상 MQTT 경로에서는 ESP가 HP/dead/down을 계산하거나 저장하지 않습니다. Command Center가 내려준 `ring_display` 명령을 렌더링만 하고, 로컬 HP/down은 Command Center/MQTT 미응답 fallback에서만 사용합니다. 단, Command Center reset API가 내려보내는 `reset_hit_state=true` 명령은 ESP의 fallback HP/down 상태도 함께 초기화합니다.
+ESP는 타격 세기, 로컬 스코어, 로컬 down 상태를 계산하거나 저장하지 않습니다. 난이도/스코어/down 기준과 LED fill 비율은 Command Center 설정과 정책이 소유합니다. MQTT가 끊긴 동안의 hit는 RAM queue에 잠시 보관했다가 재연결 후 원래 `firmware_ts_ms`와 함께 재전송합니다.
 
-현재 코드 구조는 아래 책임 기준으로 나눕니다.
+```text
+Piezo DO -> ESP hit_candidate(hit=true) -> Command Center scoring/down policy
+Command Center ring_display command -> ESP LED ring render
+```
+
+현재 코드 구조:
 
 ```text
 main.cpp   setup/loop runtime orchestration
-sensors/   piezo sensor sampling
-display/   ring_display 렌더링
+sensors/   piezo DO interrupt + cooldown/rearm gate
+display/   ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
-fallback/  Command Center/MQTT 미응답 시 로컬 보험
 ```
 
 - ESP → Command Center
@@ -70,16 +75,6 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 #define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
 ```
 
-예:
-
-```cpp
-#define ESP_WIFI_SSID "abcdefg"
-#define ESP_WIFI_PASSWORD "********"
-#define ESP_MQTT_HOST "192.168.123.1"
-#define ESP_MQTT_PORT 1883
-#define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
-```
-
 주의:
 
 - `src/go2/local_secrets.h`는 `.gitignore` 대상입니다.
@@ -97,25 +92,11 @@ ESP32를 PC에 USB로 연결한 뒤 아래 명령을 실행합니다.
 python3 scripts/go2_flash.py list-ports
 ```
 
-예시 출력:
-
-```text
-/dev/cu.debug-console        n/a         n/a
-/dev/cu.Bluetooth-Incoming-Port n/a      n/a
-/dev/cu.usbserial-21130      USB Serial  USB VID:PID=1A86:7523 LOCATION=2-1.1.3
-```
-
-여기서 ESP 포트는 보통 이런 형태입니다.
+ESP 포트 예:
 
 ```text
 /dev/cu.usbserial-21130
-```
-
-Windows라면 보통 이런 형태입니다.
-
-```text
 COM3
-COM4
 ```
 
 ---
@@ -133,13 +114,6 @@ COM4
 
 이 경우 `esp_03`에 올릴 펌웨어는 `go2_03`용으로 빌드해야 합니다.
 
-중요:
-
-```text
-esp_03 하드웨어에 go2_03용 firmware를 업로드한다
-= --target go2_03=/dev/cu.usbserial-xxxx
-```
-
 ---
 
 ## 5. Firmware upload
@@ -150,7 +124,7 @@ esp_03 하드웨어에 go2_03용 firmware를 업로드한다
 python3 scripts/go2_flash.py flash --target go2_03=/dev/cu.usbserial-21130
 ```
 
-업로드만 안 하고 빌드만 확인하려면:
+업로드 없이 빌드만 확인하려면:
 
 ```bash
 python3 scripts/go2_flash.py flash --target go2_03 --build-only
@@ -178,16 +152,7 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
 ```
 
-MQTT broker에서 확인할 topic:
-
-```text
-battlebang/hit/go2_03/events
-battlebang/hit/go2_03/ring_display/command
-```
-
-피에조 센서를 치면 ESP가 `hit_candidate`를 publish합니다.
-
-예:
+피에조 센서 DO 디지털 입력이 올라오면 ESP가 `hit_candidate`를 publish합니다.
 
 ```json
 {
@@ -196,8 +161,7 @@ battlebang/hit/go2_03/ring_display/command
   "robot_id": "go2_03",
   "sensor_id": "piezo_t1",
   "sequence": 1,
-  "peak": 4095,
-  "threshold": 3000,
+  "hit": true,
   "firmware_ts_ms": 12345
 }
 ```
@@ -210,14 +174,16 @@ battlebang/hit/go2_03/ring_display/command
 
 Go2별 non-secret profile입니다.
 
-예:
-
 ```json
 {
   "defaults": {
-    "hp_max": 100,
-    "piezo_damage_divisor": 100,
-    "hit_threshold": 3000,
+    "hit_cooldown_ms": 300,
+    "offline_hit_queue_capacity": 32,
+    "offline_hit_queue_flush_interval_ms": 50,
+    "led_pin": 4,
+    "num_leds": 40,
+    "led_brightness": 80,
+    "t1_do_pin": 27,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
@@ -245,36 +211,30 @@ Wi-Fi / MQTT broker secret입니다.
 
 ---
 
-## 8. Damage rule
+## 8. Hit scoring rule
 
-현재 피격 데미지는 임시 룰입니다.
+Go2 ESP는 `hit=true`만 보냅니다. Command Center는 accepted hit 개수를 원천 scoring unit으로 누적하고, 몇 번 맞으면 down인지와 LED fill 비율을 서버 config/policy로 계산합니다.
 
-```text
-damage = piezo_peak / piezo_damage_divisor
-```
+## 9. 통신 단절 시 hit queue
 
-기본값:
+MQTT 연결이 없거나 publish가 실패하면 ESP는 valid hit event를 RAM queue에 넣습니다. 재연결되면 queue 앞에서부터 다시 publish합니다. 이때 payload에는 원래 hit가 발생한 `firmware_ts_ms`와 `metadata.queued=true`, `metadata.queued_for_ms`가 포함됩니다.
 
-```text
-piezo_damage_divisor = 100
-```
+중요:
 
-즉 현재는 피에조 센서값 앞 두 자리만 데미지처럼 씁니다.
-
-```text
-peak=4000 -> damage=40
-peak=3500 -> damage=35
-```
+- queue는 로컬 판정이 아니라 transport 보관용입니다.
+- ESP는 queue를 flush할 뿐, score/down/LED fill을 계산하지 않습니다.
+- queue가 꽉 차면 오래된 hit부터 버리고 최신 hit를 보관합니다.
+- 리셋 명령(`reset_hit_state=true` 또는 로컬 `2`)은 센서 latch와 queue를 같이 비웁니다.
+- Command Center/MQTT가 내려주는 `ring_display`가 없으면 ESP는 로컬 점수 계산 없이 full idle ring을 표시합니다.
 
 주의:
 
-- 피에조 센서는 압력 센서가 아니므로 실제 타격 강도를 정확히 의미하지 않습니다.
-- 이 룰은 임시 게임룰입니다.
-- 최종 게임룰이 정해지면 `piezo_damage_divisor` 또는 데미지 계산식을 수정해야 합니다.
+- ESP debounce/cooldown은 센서 bounce를 줄이는 1차 필터입니다.
+- Command Center `hit_accept_cooldown_ms`가 중복 score 방지의 최종 기준입니다.
 
 ---
 
-## 9. 자주 나는 에러
+## 10. 자주 나는 에러
 
 ### `zsh: command not found: python`
 
@@ -286,21 +246,7 @@ python3 scripts/go2_flash.py list-ports
 
 ### `FileNotFoundError: No such file or directory: 'pio'`
 
-`pio`가 PATH에 없을 때 발생합니다.
-
-현재 `scripts/go2_flash.py`는 `pio`가 없으면 자동으로 `uvx platformio`를 사용합니다.
-
-그래도 안 되면 직접 PlatformIO를 설치합니다.
-
-```bash
-brew install platformio
-```
-
-또는:
-
-```bash
-pipx install platformio
-```
+`pio`가 PATH에 없을 때 발생합니다. 현재 `scripts/go2_flash.py`는 `pio`가 없으면 자동으로 `uvx platformio`를 사용합니다.
 
 ### 업로드 중 connecting에서 멈춤
 
@@ -309,34 +255,3 @@ pipx install platformio
 1. 업로드 명령 실행
 2. `Connecting...`가 뜨면 ESP32의 BOOT 버튼 누름
 3. 업로드가 시작되면 버튼에서 손 뗌
-
----
-
-## 10. 요약 명령어
-
-처음 받은 뒤:
-
-```bash
-git clone git@github.com:KongPedia/battlebang-esp.git
-cd battlebang-esp
-cp src/go2/local_secrets.example.h src/go2/local_secrets.h
-# src/go2/local_secrets.h 수정
-```
-
-ESP 포트 확인:
-
-```bash
-python3 scripts/go2_flash.py list-ports
-```
-
-`esp_03`에 `go2_03`용 펌웨어 업로드:
-
-```bash
-python3 scripts/go2_flash.py flash --target go2_03=/dev/cu.usbserial-21130
-```
-
-빌드만 확인:
-
-```bash
-python3 scripts/go2_flash.py flash --target go2_03 --build-only
-```

@@ -25,6 +25,7 @@ void HitMqttClient::tick(uint32_t now, bool remoteDisplayActive) {
   ensureMqttConnected(now);
   if (!mqttClient_.connected()) return;
   mqttClient_.loop();
+  flushOfflineQueue(now);
   publishHeartbeat(now, remoteDisplayActive);
 }
 
@@ -36,57 +37,92 @@ bool HitMqttClient::connected() {
   return mqttClient_.connected();
 }
 
-bool HitMqttClient::publishHitCandidate(int targetId, uint16_t peak, uint32_t sequence, uint32_t now) {
+bool HitMqttClient::publishHitCandidate(int targetId,
+                                        bool hit,
+                                        uint32_t sequence,
+                                        uint32_t firmwareTsMs,
+                                        bool queued,
+                                        uint32_t queuedForMs,
+                                        uint8_t queueDepth) {
   if (!mqttClient_.connected()) return false;
 
-  StaticJsonDocument<384> doc;
+  StaticJsonDocument<512> doc;
   doc["schema_version"] = 1;
   doc["event"] = "hit_candidate";
   doc["robot_id"] = ROBOT_ID;
   doc["sensor_id"] = targetIdToSensorId(targetId);
   doc["sequence"] = sequence;
-  doc["peak"] = peak;
-  doc["threshold"] = HIT_THRESHOLD;
-  doc["firmware_ts_ms"] = now;
+  doc["hit"] = hit;
+  doc["firmware_ts_ms"] = firmwareTsMs;
 
-  char buffer[384];
+  if (queued) {
+    doc["queued"] = true;
+    doc["queued_for_ms"] = queuedForMs;
+    JsonObject metadata = doc.createNestedObject("metadata");
+    metadata["queued"] = true;
+    metadata["queued_for_ms"] = queuedForMs;
+    metadata["queue_depth"] = queueDepth;
+    metadata["queue_dropped"] = offlineQueueDropped_;
+  }
+
+  char buffer[512];
   size_t size = serializeJson(doc, buffer, sizeof(buffer));
   bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
   if (ok) {
-    Serial.printf("[HIT] published candidate seq=%lu target=%d peak=%u topic=%s\n",
+    Serial.printf("[HIT] published candidate seq=%lu target=%d hit=%s queued=%s topic=%s\n",
                   (unsigned long)sequence,
                   targetId,
-                  peak,
+                  hit ? "true" : "false",
+                  queued ? "true" : "false",
                   eventTopic_);
   } else {
-    Serial.printf("[HIT] candidate publish failed seq=%lu target=%d peak=%u\n",
+    Serial.printf("[HIT] candidate publish failed seq=%lu target=%d hit=%s queued=%s\n",
                   (unsigned long)sequence,
                   targetId,
-                  peak);
+                  hit ? "true" : "false",
+                  queued ? "true" : "false");
   }
   return ok;
 }
 
-void HitMqttClient::startPending(int targetId, uint16_t peak, uint32_t sequence, uint32_t now) {
-  pending_.active = true;
-  pending_.targetId = targetId;
-  pending_.peak = peak;
-  pending_.sequence = sequence;
-  pending_.startedMs = now;
+void HitMqttClient::queueHitCandidate(int targetId, bool hit, uint32_t sequence, uint32_t firmwareTsMs) {
+  if (!hit) return;
+
+  if (offlineQueueCount_ >= OFFLINE_HIT_QUEUE_CAPACITY) {
+    QueuedHitCandidate dropped = offlineQueue_[offlineQueueHead_];
+    offlineQueueHead_ = (offlineQueueHead_ + 1) % OFFLINE_HIT_QUEUE_CAPACITY;
+    offlineQueueCount_--;
+    offlineQueueDropped_++;
+    Serial.printf("[HIT] offline queue full; dropped oldest seq=%lu target=%d dropped_total=%lu\n",
+                  (unsigned long)dropped.sequence,
+                  dropped.targetId,
+                  (unsigned long)offlineQueueDropped_);
+  }
+
+  uint8_t insertIndex = (offlineQueueHead_ + offlineQueueCount_) % OFFLINE_HIT_QUEUE_CAPACITY;
+  QueuedHitCandidate queued;
+  queued.targetId = targetId;
+  queued.hit = hit;
+  queued.sequence = sequence;
+  queued.firmwareTsMs = firmwareTsMs;
+  offlineQueue_[insertIndex] = queued;
+  offlineQueueCount_++;
+  Serial.printf("[HIT] queued offline candidate seq=%lu target=%d queue=%u/%u\n",
+                (unsigned long)sequence,
+                targetId,
+                offlineQueueCount_,
+                (unsigned int)OFFLINE_HIT_QUEUE_CAPACITY);
 }
 
-bool HitMqttClient::popTimedOutFallback(uint32_t now, PendingHitCandidate& out) {
-  if (!pending_.active) return false;
-  if (now - pending_.startedMs < AUTHORITY_FALLBACK_TIMEOUT_MS) return false;
-  return popPending(out);
+void HitMqttClient::clearOfflineQueue() {
+  offlineQueueHead_ = 0;
+  offlineQueueCount_ = 0;
+  offlineQueueDropped_ = 0;
+  lastOfflineQueueFlushMs_ = 0;
 }
 
-bool HitMqttClient::popSupersededFallback(PendingHitCandidate& out) {
-  return popPending(out);
-}
-
-void HitMqttClient::clearPending() {
-  pending_ = PendingHitCandidate{};
+uint8_t HitMqttClient::offlineQueueCount() const {
+  return offlineQueueCount_;
 }
 
 const char* HitMqttClient::eventTopic() const {
@@ -120,7 +156,6 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
     return;
   }
 
-  clearPending();
   RingDisplayUpdate update;
   update.fillRatio = doc["ring_fill_ratio"] | 1.0f;
   update.mode = String(doc["ring_display_mode"] | "idle");
@@ -167,11 +202,42 @@ void HitMqttClient::ensureMqttConnected(uint32_t now) {
   Serial.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", ringCommandTopic_);
 }
 
+void HitMqttClient::flushOfflineQueue(uint32_t now) {
+  if (offlineQueueCount_ == 0) return;
+  if (!mqttClient_.connected()) return;
+  if (now - lastOfflineQueueFlushMs_ < OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS) return;
+
+  QueuedHitCandidate candidate = offlineQueue_[offlineQueueHead_];
+  uint32_t queuedForMs = now - candidate.firmwareTsMs;
+  uint8_t queueDepthBeforePublish = offlineQueueCount_;
+  if (!publishHitCandidate(candidate.targetId,
+                           candidate.hit,
+                           candidate.sequence,
+                           candidate.firmwareTsMs,
+                           true,
+                           queuedForMs,
+                           queueDepthBeforePublish)) {
+    return;
+  }
+
+  popOfflineQueueHead();
+  lastOfflineQueueFlushMs_ = now;
+  Serial.printf("[HIT] flushed offline candidate seq=%lu remaining=%u\n",
+                (unsigned long)candidate.sequence,
+                offlineQueueCount_);
+}
+
+void HitMqttClient::popOfflineQueueHead() {
+  if (offlineQueueCount_ == 0) return;
+  offlineQueueHead_ = (offlineQueueHead_ + 1) % OFFLINE_HIT_QUEUE_CAPACITY;
+  offlineQueueCount_--;
+}
+
 void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   if (now - lastHeartbeatTxMs_ < HEARTBEAT_TX_PERIOD_MS) return;
   lastHeartbeatTxMs_ = now;
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   doc["schema_version"] = 1;
   doc["event"] = "heartbeat";
   doc["robot_id"] = ROBOT_ID;
@@ -179,8 +245,12 @@ void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   doc["sequence"] = ++heartbeatSequence_;
   doc["firmware_ts_ms"] = now;
   doc["mode"] = heartbeatMode(remoteDisplayActive);
+  JsonObject metadata = doc.createNestedObject("metadata");
+  metadata["offline_queue_count"] = offlineQueueCount_;
+  metadata["offline_queue_capacity"] = OFFLINE_HIT_QUEUE_CAPACITY;
+  metadata["offline_queue_dropped"] = offlineQueueDropped_;
 
-  char buffer[256];
+  char buffer[384];
   size_t size = serializeJson(doc, buffer, sizeof(buffer));
   mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
 }
@@ -188,14 +258,7 @@ void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
 const char* HitMqttClient::heartbeatMode(bool remoteDisplayActive) {
   if (remoteDisplayActive) return "direct";
   if (mqttClient_.connected()) return "mqtt_connected";
-  return "fallback";
-}
-
-bool HitMqttClient::popPending(PendingHitCandidate& out) {
-  if (!pending_.active) return false;
-  out = pending_;
-  clearPending();
-  return true;
+  return "mqtt_disconnected";
 }
 
 }  // namespace go2

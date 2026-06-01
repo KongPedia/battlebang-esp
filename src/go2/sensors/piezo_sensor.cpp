@@ -19,23 +19,6 @@ struct SensorGateState {
 SensorGateState t1Gate;
 SensorGateState t2Gate;
 
-uint16_t samplePiezoPeak(int analogPin, SystemTickFn systemTick, uint16_t initialPeak = 0) {
-  uint16_t peak = initialPeak;
-  if (POST_DELAY_MS) delay(POST_DELAY_MS);
-
-  uint32_t startUs = micros();
-  for (int i = 0; i < CAPTURE_SAMPLES; i++) {
-    uint32_t targetUs = startUs + (uint32_t)i * SAMPLE_INTERVAL_US;
-    while ((int32_t)(micros() - targetUs) < 0) {
-      if (systemTick != nullptr) systemTick();
-      yield();
-    }
-    uint16_t value = analogRead(analogPin);
-    if (value > peak) peak = value;
-  }
-  return peak;
-}
-
 void clearFlag(volatile bool& flag) {
   noInterrupts();
   flag = false;
@@ -50,18 +33,13 @@ bool popFlag(volatile bool& flag) {
   return pending;
 }
 
-void rearmWhenQuiet(volatile bool& flag, SensorGateState& gate, uint32_t now, int digitalPin, int analogPin) {
+void rearmWhenQuiet(volatile bool& flag, SensorGateState& gate, uint32_t now, int digitalPin) {
   if (gate.armed) return;
   if (now - gate.lastEventMs < HIT_COOLDOWN_MS) return;
   if (now - gate.lastRearmCheckMs < HIT_REARM_CHECK_MS) return;
   gate.lastRearmCheckMs = now;
 
-  // Treat the analog piezo input as the source of truth for re-arming. The
-  // digital comparator output can be absent, disconnected, or calibrated
-  // differently per sensor board. If we require DO=LOW here, a bad/stuck DO
-  // path can make both MQTT hit publishing and local fallback look dead.
-  (void)digitalPin;
-  bool quiet = analogRead(analogPin) < HIT_REARM_THRESHOLD;
+  bool quiet = digitalRead(digitalPin) == LOW;
   if (!quiet) {
     gate.quietStartedMs = 0;
     clearFlag(flag);
@@ -82,25 +60,20 @@ void rearmWhenQuiet(volatile bool& flag, SensorGateState& gate, uint32_t now, in
 }
 
 void handleSensor(volatile bool& flag, SensorGateState& gate, uint32_t now, int targetId, int digitalPin,
-                  int analogPin, SystemTickFn systemTick, HitCallback onHit) {
-  rearmWhenQuiet(flag, gate, now, digitalPin, analogPin);
+                  HitCallback onHit) {
+  rearmWhenQuiet(flag, gate, now, digitalPin);
 
   bool digitalTriggered = popFlag(flag);
-  uint16_t triggerPeak = analogRead(analogPin);
-  bool analogTriggered = triggerPeak > HIT_THRESHOLD;
-  if (!digitalTriggered && !analogTriggered) return;
+  if (!digitalTriggered) return;
   if (!gate.armed) return;
   if (now - gate.lastEventMs < HIT_COOLDOWN_MS) return;
-
-  uint16_t peak = samplePiezoPeak(analogPin, systemTick, triggerPeak);
-  if (peak <= HIT_THRESHOLD) return;
 
   gate.lastEventMs = now;
   gate.armed = false;
   gate.quietStartedMs = 0;
   gate.lastRearmCheckMs = now;
 
-  if (onHit != nullptr) onHit(targetId, peak);
+  if (onHit != nullptr) onHit(targetId, true);
 }
 
 }  // namespace
@@ -120,14 +93,12 @@ void IRAM_ATTR isrT2() {
 }
 
 void PiezoSensor::begin() {
-  analogReadResolution(12);
-  analogSetPinAttenuation(T1_AO, ADC_11db);
-  analogSetPinAttenuation(T2_AO, ADC_11db);
-
   pinMode(T1_DO, INPUT_PULLDOWN);
-  pinMode(T2_DO, INPUT_PULLDOWN);
   attachInterrupt(digitalPinToInterrupt(T1_DO), isrT1, RISING);
-  attachInterrupt(digitalPinToInterrupt(T2_DO), isrT2, RISING);
+  if (T2_DO >= 0) {
+    pinMode(T2_DO, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(T2_DO), isrT2, RISING);
+  }
 }
 
 void PiezoSensor::resetFlags() {
@@ -137,9 +108,11 @@ void PiezoSensor::resetFlags() {
   t2Gate = SensorGateState{};
 }
 
-void PiezoSensor::poll(uint32_t now, SystemTickFn systemTick, HitCallback onHit) {
-  handleSensor(t1Flag, t1Gate, now, 1, T1_DO, T1_AO, systemTick, onHit);
-  handleSensor(t2Flag, t2Gate, now, 2, T2_DO, T2_AO, systemTick, onHit);
+void PiezoSensor::poll(uint32_t now, HitCallback onHit) {
+  handleSensor(t1Flag, t1Gate, now, 1, T1_DO, onHit);
+  if (T2_DO >= 0) {
+    handleSensor(t2Flag, t2Gate, now, 2, T2_DO, onHit);
+  }
 }
 
 }  // namespace go2

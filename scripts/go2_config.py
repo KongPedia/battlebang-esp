@@ -76,19 +76,14 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "mqtt_topic_prefix": "BATTLEBANG_BUILD_MQTT_TOPIC_PREFIX",
     }
     int_profile_macros = {
-        "hp_max": "BATTLEBANG_BUILD_HP_MAX",
-        "piezo_damage_divisor": "BATTLEBANG_BUILD_PIEZO_DAMAGE_DIVISOR",
-        "hit_threshold": "BATTLEBANG_BUILD_HIT_THRESHOLD",
         "hit_cooldown_ms": "BATTLEBANG_BUILD_HIT_COOLDOWN_MS",
-        "hit_rearm_threshold": "BATTLEBANG_BUILD_HIT_REARM_THRESHOLD",
-        "authority_fallback_timeout_ms": "BATTLEBANG_BUILD_AUTHORITY_FALLBACK_TIMEOUT_MS",
+        "offline_hit_queue_capacity": "BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY",
+        "offline_hit_queue_flush_interval_ms": "BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS",
         "led_pin": "BATTLEBANG_BUILD_LED_PIN",
         "num_leds": "BATTLEBANG_BUILD_NUM_LEDS",
         "led_brightness": "BATTLEBANG_BUILD_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
-        "t1_ao_pin": "BATTLEBANG_BUILD_T1_AO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
-        "t2_ao_pin": "BATTLEBANG_BUILD_T2_AO_PIN",
     }
 
     for json_key, macro_name in string_profile_macros.items():
@@ -117,25 +112,17 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
     ]
     int_env_macros = [
         (("ESP_MQTT_PORT", "BATTLEBANG_MQTT_PORT"), "BATTLEBANG_BUILD_MQTT_PORT"),
-        (("BATTLEBANG_HP_MAX",), "BATTLEBANG_BUILD_HP_MAX"),
-        (
-            ("BATTLEBANG_PIEZO_DAMAGE_DIVISOR",),
-            "BATTLEBANG_BUILD_PIEZO_DAMAGE_DIVISOR",
-        ),
-        (("BATTLEBANG_HIT_THRESHOLD",), "BATTLEBANG_BUILD_HIT_THRESHOLD"),
         (("BATTLEBANG_HIT_COOLDOWN_MS",), "BATTLEBANG_BUILD_HIT_COOLDOWN_MS"),
-        (("BATTLEBANG_HIT_REARM_THRESHOLD",), "BATTLEBANG_BUILD_HIT_REARM_THRESHOLD"),
+        (("BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY",), "BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY"),
         (
-            ("BATTLEBANG_AUTHORITY_FALLBACK_TIMEOUT_MS",),
-            "BATTLEBANG_BUILD_AUTHORITY_FALLBACK_TIMEOUT_MS",
+            ("BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS",),
+            "BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS",
         ),
         (("BATTLEBANG_LED_PIN",), "BATTLEBANG_BUILD_LED_PIN"),
         (("BATTLEBANG_NUM_LEDS",), "BATTLEBANG_BUILD_NUM_LEDS"),
         (("BATTLEBANG_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
-        (("BATTLEBANG_T1_AO_PIN",), "BATTLEBANG_BUILD_T1_AO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
-        (("BATTLEBANG_T2_AO_PIN",), "BATTLEBANG_BUILD_T2_AO_PIN"),
     ]
 
     for env_names, macro_name in string_env_macros:
@@ -192,7 +179,7 @@ env.Append(CPPDEFINES=defines)
 print(
     "[go2_config] "
     f"{PIO_ENV}: robot_id={robot_id} "
-    f"hit_threshold={profile.get('hit_threshold', 'default')} "
-    f"hp_max={profile.get('hp_max', 'default')} "
+    f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
+    f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "
     f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')}"
 )

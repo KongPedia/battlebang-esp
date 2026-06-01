@@ -4,21 +4,19 @@ Go2 등에 장착되는 ESP32 피격/LED 보드용 문서입니다. 터렛 펌�
 
 - `build-upload-workflow.md`: 로컬 secrets 생성, robot id 선택, 빌드/업로드 흐름
 - `mqtt-hit-contract.md`: Command Center와 주고받는 MQTT topic/payload 계약
-- `fallback-behavior.md`: Command Center 연결이 없을 때 ESP 로컬 fallback 동작
 
 주요 코드 위치:
 
 ```text
 src/go2/
 ├─ main.cpp                         # setup/loop runtime orchestration
-├─ build_config.h                   # 핀, HP, MQTT topic, build-time macro
+├─ build_config.h                   # 핀, MQTT topic, build-time macro
 ├─ robots.json                      # Go2별 non-secret profile
 ├─ local_secrets.example.h          # gitignore local secret template
-├─ sensors/                         # piezo sampling / hit candidate detection
-├─ display/                         # ring_display command renderer + fallback LED
-├─ mqtt/                            # MQTT hit candidate / heartbeat / display command
-└─ fallback/                        # Command Center/MQTT 미응답 시 로컬 fallback 상태
+├─ sensors/                         # piezo DO interrupt / hit candidate detection
+├─ display/                         # ring_display command renderer
+└─ mqtt/                            # MQTT hit candidate / heartbeat / display command
 ```
 
-정상 경로의 HP/down 판정은 Command Center가 소유합니다. ESP는 `ring_display` 명령을 렌더링만 하고, 로컬 HP/down은 fallback 경로에서만 사용합니다.
+피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 `hit=true` 이벤트를 보내고 `ring_display` 명령을 렌더링만 합니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다.
 발사/릴레이/서보 제어는 Go2 피격 ESP에서 제거했고 `src/nIxo/` 펌웨어가 담당합니다.

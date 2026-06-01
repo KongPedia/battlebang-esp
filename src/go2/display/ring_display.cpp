@@ -9,7 +9,7 @@ void RingDisplay::begin() {
   dirty_ = true;
 }
 
-void RingDisplay::tick(uint32_t now, int hp, bool dead) {
+void RingDisplay::tick(uint32_t now) {
   if (now - lastBlinkMs_ >= LED_BLINK_MS) {
     lastBlinkMs_ = now;
     blinkOn_ = !blinkOn_;
@@ -21,31 +21,12 @@ void RingDisplay::tick(uint32_t now, int hp, bool dead) {
   if (remoteActive_) {
     renderRemote(now);
   } else {
-    renderLocal(now, hp, dead);
+    renderFullIdle();
   }
   showTick(now);
 }
 
 void RingDisplay::markDirty() {
-  dirty_ = true;
-}
-
-void RingDisplay::clearDamageBlink() {
-  for (int i = 0; i < NUM_LEDS; i++) blinkMask_[i] = false;
-  dirty_ = true;
-}
-
-void RingDisplay::applyDamageBlink(int oldHp, int newHp) {
-  clearDamageBlink();
-  if (newHp <= 0) return;
-
-  int oldLit = constrain((long)oldHp * NUM_LEDS / HP_MAX, 0L, (long)NUM_LEDS);
-  int newLit = constrain((long)newHp * NUM_LEDS / HP_MAX, 0L, (long)NUM_LEDS);
-  if (newLit < oldLit) {
-    for (int i = newLit; i < oldLit; i++) {
-      if (i >= 0 && i < NUM_LEDS) blinkMask_[i] = true;
-    }
-  }
   dirty_ = true;
 }
 
@@ -64,39 +45,12 @@ void RingDisplay::clearRemoteDisplay() {
   remoteDown_ = false;
   remoteFillRatio_ = 1.0f;
   remoteMode_ = "idle";
+  remoteExpiresMs_ = 0;
   dirty_ = true;
 }
 
 bool RingDisplay::remoteDisplayActive() const {
   return remoteActive_;
-}
-
-int RingDisplay::hpToBand(int hpVal) {
-  if (hpVal <= 0) return -1;
-  return (hpVal - 1) / HP_PER_LAP;
-}
-
-int RingDisplay::hpToLapHp(int hpVal) {
-  if (hpVal <= 0) return 0;
-  int r = hpVal % HP_PER_LAP;
-  return (r == 0) ? HP_PER_LAP : r;
-}
-
-int RingDisplay::lapHpToLit(int lapHp) {
-  lapHp = constrain(lapHp, 0, HP_PER_LAP);
-  return (long)lapHp * NUM_LEDS / HP_PER_LAP;
-}
-
-CRGB RingDisplay::bandColor(int band) {
-  if (band >= 2) return CRGB::Green;
-  if (band == 1) return CRGB::Yellow;
-  if (band == 0) return CRGB::Red;
-  return CRGB::Black;
-}
-
-CRGB RingDisplay::nextBandColor(int band) {
-  if (band <= 0) return CRGB::Black;
-  return bandColor(band - 1);
 }
 
 bool RingDisplay::remoteExpired(uint32_t now) const {
@@ -107,9 +61,8 @@ void RingDisplay::handleRemoteExpiry(uint32_t now) {
   if (!remoteExpired(now)) return;
 
   if (remoteDown_ || remoteMode_ == "down") {
-    // Down is a Command Center display command, not ESP-owned HP state.
-    // Keep it latched until Command Center sends a non-down display command
-    // or local reset clears the remote display.
+    // Down is a Command Center display command. Keep it latched until the
+    // server sends a non-down command or a local reset clears the display.
     remoteExpiresMs_ = 0;
     dirty_ = true;
     return;
@@ -122,23 +75,22 @@ void RingDisplay::handleRemoteExpiry(uint32_t now) {
     return;
   }
 
-  remoteActive_ = false;
-  dirty_ = true;
+  clearRemoteDisplay();
 }
 
 void RingDisplay::renderRemote(uint32_t now) {
   if (remoteMode_ == "disabled") {
-    for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Black;
+    renderBlank();
     return;
   }
 
   if (remoteDown_ || remoteMode_ == "down") {
-    if (now - lastDeadBlinkMs_ >= LED_DEAD_BLINK_MS) {
-      lastDeadBlinkMs_ = now;
-      deadOn_ = !deadOn_;
+    if (now - lastDownBlinkMs_ >= LED_DEAD_BLINK_MS) {
+      lastDownBlinkMs_ = now;
+      downBlinkOn_ = !downBlinkOn_;
       dirty_ = true;
     }
-    for (int i = 0; i < NUM_LEDS; i++) leds_[i] = deadOn_ ? CRGB::Red : CRGB::Black;
+    for (int i = 0; i < NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
     return;
   }
 
@@ -146,42 +98,19 @@ void RingDisplay::renderRemote(uint32_t now) {
   CRGB fillColor = CRGB::Green;
   if (remoteMode_ == "hit_flash") {
     fillColor = blinkOn_ ? CRGB::White : CRGB::Red;
-  } else if (remoteMode_ == "active") {
-    fillColor = CRGB::Green;
   } else if (remoteMode_ == "stale") {
     fillColor = CRGB::Orange;
-  } else if (remoteMode_ == "idle") {
-    fillColor = CRGB::Green;
   }
 
   for (int i = 0; i < NUM_LEDS; i++) leds_[i] = (i < lit) ? fillColor : CRGB::Black;
 }
 
-void RingDisplay::renderLocal(uint32_t now, int hp, bool dead) {
-  if (dead) {
-    if (now - lastDeadBlinkMs_ >= LED_DEAD_BLINK_MS) {
-      lastDeadBlinkMs_ = now;
-      deadOn_ = !deadOn_;
-      dirty_ = true;
-    }
-    for (int i = 0; i < NUM_LEDS; i++) leds_[i] = deadOn_ ? CRGB::Red : CRGB::Black;
-    return;
-  }
+void RingDisplay::renderFullIdle() {
+  for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Green;
+}
 
-  float ratio = constrain((float)hp / (float)HP_MAX, 0.0f, 1.0f);
-  int lit = constrain((int)(ratio * NUM_LEDS + 0.5f), 0, NUM_LEDS);
-  CRGB base = CRGB::Red;
-  if (ratio > 0.66f) {
-    base = CRGB::Green;
-  } else if (ratio > 0.33f) {
-    base = CRGB::Yellow;
-  }
-
-  for (int i = 0; i < NUM_LEDS; i++) {
-    if (i < lit) leds_[i] = base;
-    else if (blinkMask_[i]) leds_[i] = blinkOn_ ? CRGB::White : CRGB::Black;
-    else leds_[i] = CRGB::Black;
-  }
+void RingDisplay::renderBlank() {
+  for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Black;
 }
 
 void RingDisplay::showTick(uint32_t now) {

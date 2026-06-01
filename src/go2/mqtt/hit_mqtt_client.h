@@ -9,20 +9,19 @@
 
 namespace go2 {
 
-struct PendingHitCandidate {
-  bool active = false;
-  int targetId = 0;
-  uint16_t peak = 0;
-  uint32_t sequence = 0;
-  uint32_t startedMs = 0;
-};
-
 struct RingDisplayUpdate {
   float fillRatio = 1.0f;
   String mode = "idle";
   bool down = false;
   uint32_t ttlMs = 1000;
   bool resetHitState = false;
+};
+
+struct QueuedHitCandidate {
+  int targetId = 0;
+  bool hit = false;
+  uint32_t sequence = 0;
+  uint32_t firmwareTsMs = 0;
 };
 
 using RingDisplayHandler = void (*)(const RingDisplayUpdate& update);
@@ -33,11 +32,16 @@ class HitMqttClient {
   void tick(uint32_t now, bool remoteDisplayActive);
   bool configured() const;
   bool connected();
-  bool publishHitCandidate(int targetId, uint16_t peak, uint32_t sequence, uint32_t now);
-  void startPending(int targetId, uint16_t peak, uint32_t sequence, uint32_t now);
-  bool popTimedOutFallback(uint32_t now, PendingHitCandidate& out);
-  bool popSupersededFallback(PendingHitCandidate& out);
-  void clearPending();
+  bool publishHitCandidate(int targetId,
+                           bool hit,
+                           uint32_t sequence,
+                           uint32_t firmwareTsMs,
+                           bool queued = false,
+                           uint32_t queuedForMs = 0,
+                           uint8_t queueDepth = 0);
+  void queueHitCandidate(int targetId, bool hit, uint32_t sequence, uint32_t firmwareTsMs);
+  void clearOfflineQueue();
+  uint8_t offlineQueueCount() const;
   const char* eventTopic() const;
   const char* ringCommandTopic() const;
 
@@ -45,7 +49,11 @@ class HitMqttClient {
   WiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
   RingDisplayHandler ringHandler_ = nullptr;
-  PendingHitCandidate pending_;
+  QueuedHitCandidate offlineQueue_[OFFLINE_HIT_QUEUE_CAPACITY] = {};
+  uint8_t offlineQueueHead_ = 0;
+  uint8_t offlineQueueCount_ = 0;
+  uint32_t offlineQueueDropped_ = 0;
+  uint32_t lastOfflineQueueFlushMs_ = 0;
   char eventTopic_[128] = {0};
   char ringCommandTopic_[160] = {0};
   char clientId_[96] = {0};
@@ -59,9 +67,10 @@ class HitMqttClient {
   void handleMqttMessage(char* topic, byte* payload, unsigned int length);
   void ensureWiFiConnected(uint32_t now);
   void ensureMqttConnected(uint32_t now);
+  void flushOfflineQueue(uint32_t now);
+  void popOfflineQueueHead();
   void publishHeartbeat(uint32_t now, bool remoteDisplayActive);
   const char* heartbeatMode(bool remoteDisplayActive);
-  bool popPending(PendingHitCandidate& out);
 };
 
 }  // namespace go2

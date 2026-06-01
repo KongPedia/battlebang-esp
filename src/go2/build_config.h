@@ -5,8 +5,7 @@
 #if __has_include("local_secrets.h") && !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
 #include "local_secrets.h"
 #elif __has_include("../local_secrets.h") && !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
-// Legacy path used before Go2 adopted the turret-style per-module config.
-// Keep this fallback so existing operator laptops do not break immediately.
+// Compatibility include path used by older local operator setups.
 #include "../local_secrets.h"
 #endif
 
@@ -69,34 +68,19 @@
 #define BATTLEBANG_MQTT_TOPIC_PREFIX BATTLEBANG_BUILD_MQTT_TOPIC_PREFIX
 #endif
 
-#ifdef BATTLEBANG_BUILD_HP_MAX
-#undef BATTLEBANG_HP_MAX
-#define BATTLEBANG_HP_MAX BATTLEBANG_BUILD_HP_MAX
-#endif
-
-#ifdef BATTLEBANG_BUILD_PIEZO_DAMAGE_DIVISOR
-#undef BATTLEBANG_PIEZO_DAMAGE_DIVISOR
-#define BATTLEBANG_PIEZO_DAMAGE_DIVISOR BATTLEBANG_BUILD_PIEZO_DAMAGE_DIVISOR
-#endif
-
-#ifdef BATTLEBANG_BUILD_HIT_THRESHOLD
-#undef BATTLEBANG_HIT_THRESHOLD
-#define BATTLEBANG_HIT_THRESHOLD BATTLEBANG_BUILD_HIT_THRESHOLD
-#endif
-
 #ifdef BATTLEBANG_BUILD_HIT_COOLDOWN_MS
 #undef BATTLEBANG_HIT_COOLDOWN_MS
 #define BATTLEBANG_HIT_COOLDOWN_MS BATTLEBANG_BUILD_HIT_COOLDOWN_MS
 #endif
 
-#ifdef BATTLEBANG_BUILD_HIT_REARM_THRESHOLD
-#undef BATTLEBANG_HIT_REARM_THRESHOLD
-#define BATTLEBANG_HIT_REARM_THRESHOLD BATTLEBANG_BUILD_HIT_REARM_THRESHOLD
+#ifdef BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY
+#undef BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY
+#define BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY
 #endif
 
-#ifdef BATTLEBANG_BUILD_AUTHORITY_FALLBACK_TIMEOUT_MS
-#undef BATTLEBANG_AUTHORITY_FALLBACK_TIMEOUT_MS
-#define BATTLEBANG_AUTHORITY_FALLBACK_TIMEOUT_MS BATTLEBANG_BUILD_AUTHORITY_FALLBACK_TIMEOUT_MS
+#ifdef BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
+#undef BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
+#define BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
 #endif
 
 #ifdef BATTLEBANG_BUILD_LED_PIN
@@ -119,19 +103,9 @@
 #define BATTLEBANG_T1_DO_PIN BATTLEBANG_BUILD_T1_DO_PIN
 #endif
 
-#ifdef BATTLEBANG_BUILD_T1_AO_PIN
-#undef BATTLEBANG_T1_AO_PIN
-#define BATTLEBANG_T1_AO_PIN BATTLEBANG_BUILD_T1_AO_PIN
-#endif
-
 #ifdef BATTLEBANG_BUILD_T2_DO_PIN
 #undef BATTLEBANG_T2_DO_PIN
 #define BATTLEBANG_T2_DO_PIN BATTLEBANG_BUILD_T2_DO_PIN
-#endif
-
-#ifdef BATTLEBANG_BUILD_T2_AO_PIN
-#undef BATTLEBANG_T2_AO_PIN
-#define BATTLEBANG_T2_AO_PIN BATTLEBANG_BUILD_T2_AO_PIN
 #endif
 
 #ifndef BATTLEBANG_ROBOT_ID
@@ -158,32 +132,16 @@
 #define BATTLEBANG_MQTT_TOPIC_PREFIX "battlebang/hit"
 #endif
 
-#ifndef BATTLEBANG_HP_MAX
-#define BATTLEBANG_HP_MAX 100
-#endif
-
-#ifndef BATTLEBANG_PIEZO_DAMAGE_DIVISOR
-// Temporary game-rule mapping for local fallback damage.
-// The piezo ADC peak is not a calibrated force value yet. Until the final
-// game rule is decided, use the first two digits of the peak as damage:
-//   peak=4000 -> damage=40, peak=3500 -> damage=35.
-#define BATTLEBANG_PIEZO_DAMAGE_DIVISOR 100
-#endif
-
-#ifndef BATTLEBANG_HIT_THRESHOLD
-#define BATTLEBANG_HIT_THRESHOLD 3000
-#endif
-
 #ifndef BATTLEBANG_HIT_COOLDOWN_MS
-#define BATTLEBANG_HIT_COOLDOWN_MS 1500
+#define BATTLEBANG_HIT_COOLDOWN_MS 300
 #endif
 
-#ifndef BATTLEBANG_HIT_REARM_THRESHOLD
-#define BATTLEBANG_HIT_REARM_THRESHOLD 1500
+#ifndef BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY
+#define BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY 32
 #endif
 
-#ifndef BATTLEBANG_AUTHORITY_FALLBACK_TIMEOUT_MS
-#define BATTLEBANG_AUTHORITY_FALLBACK_TIMEOUT_MS 600
+#ifndef BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
+#define BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS 50
 #endif
 
 #ifndef BATTLEBANG_LED_PIN
@@ -195,23 +153,15 @@
 #endif
 
 #ifndef BATTLEBANG_LED_BRIGHTNESS
-#define BATTLEBANG_LED_BRIGHTNESS 60
+#define BATTLEBANG_LED_BRIGHTNESS 80
 #endif
 
 #ifndef BATTLEBANG_T1_DO_PIN
-#define BATTLEBANG_T1_DO_PIN 25
-#endif
-
-#ifndef BATTLEBANG_T1_AO_PIN
-#define BATTLEBANG_T1_AO_PIN 34
+#define BATTLEBANG_T1_DO_PIN 27
 #endif
 
 #ifndef BATTLEBANG_T2_DO_PIN
-#define BATTLEBANG_T2_DO_PIN 26
-#endif
-
-#ifndef BATTLEBANG_T2_AO_PIN
-#define BATTLEBANG_T2_AO_PIN 35
+#define BATTLEBANG_T2_DO_PIN -1
 #endif
 
 namespace go2 {
@@ -222,11 +172,7 @@ static constexpr int UART_RX_PIN = 16;
 static constexpr int UART_TX_PIN = 17;
 static constexpr uint32_t UART_BAUD = 115200;
 
-static constexpr char CMD_RESET_HP = '2';
-
-static constexpr int HP_MAX = BATTLEBANG_HP_MAX;
-static constexpr int HP_PER_LAP = HP_MAX;
-static constexpr int PIEZO_DAMAGE_DIVISOR = BATTLEBANG_PIEZO_DAMAGE_DIVISOR;
+static constexpr char CMD_RESET_HIT_DISPLAY = '2';
 
 static constexpr int LED_PIN = BATTLEBANG_LED_PIN;
 static constexpr int NUM_LEDS = BATTLEBANG_NUM_LEDS;
@@ -237,20 +183,18 @@ static constexpr uint32_t LED_SHOW_PERIOD_MS = 16;
 static constexpr uint32_t LED_BLINK_MS = 250;
 static constexpr uint32_t LED_DEAD_BLINK_MS = 300;
 
-static constexpr int T1_DO = BATTLEBANG_T1_DO_PIN;
-static constexpr int T1_AO = BATTLEBANG_T1_AO_PIN;
+static constexpr int PIEZO_DO_PIN = BATTLEBANG_T1_DO_PIN;
+static constexpr int T1_DO = PIEZO_DO_PIN;
 static constexpr int T2_DO = BATTLEBANG_T2_DO_PIN;
-static constexpr int T2_AO = BATTLEBANG_T2_AO_PIN;
 static constexpr uint32_t ISR_DEBOUNCE_US = 20000;
 static constexpr uint32_t HIT_COOLDOWN_MS = BATTLEBANG_HIT_COOLDOWN_MS;
 static constexpr uint32_t HIT_REARM_STABLE_MS = 300;
 static constexpr uint32_t HIT_REARM_CHECK_MS = 50;
-static constexpr uint16_t HIT_REARM_THRESHOLD = BATTLEBANG_HIT_REARM_THRESHOLD;
-static constexpr uint32_t POST_DELAY_MS = 0;
-static constexpr uint32_t SAMPLE_INTERVAL_US = 1000;
-static constexpr int CAPTURE_SAMPLES = 200;
-static constexpr uint16_t HIT_THRESHOLD = BATTLEBANG_HIT_THRESHOLD;
+static constexpr int OFFLINE_HIT_QUEUE_CAPACITY = BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY;
+static constexpr uint32_t OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS = BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS;
 
+static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0, "offline hit queue capacity must be positive");
+static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255, "offline hit queue capacity must fit uint8_t counters");
 
 static constexpr const char* ROBOT_ID = BATTLEBANG_ROBOT_ID;
 static constexpr const char* WIFI_SSID = BATTLEBANG_WIFI_SSID;
@@ -261,17 +205,7 @@ static constexpr const char* MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
-static constexpr uint32_t AUTHORITY_FALLBACK_TIMEOUT_MS = BATTLEBANG_AUTHORITY_FALLBACK_TIMEOUT_MS;
 static constexpr uint16_t MQTT_BUFFER_SIZE = 768;
-
-inline int peakToDamage(uint16_t peak) {
-  // TODO(game-rule): replace this temporary peak/100 rule once damage
-  // balancing is finalized. For now 4000 is treated as 40 damage.
-  int damage = peak / PIEZO_DAMAGE_DIVISOR;
-  if (damage < 1) return 1;
-  if (damage > HP_MAX) return HP_MAX;
-  return damage;
-}
 
 inline const char* targetIdToSensorId(int targetId) {
   return (targetId == 1) ? "piezo_t1" : "piezo_t2";

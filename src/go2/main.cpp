@@ -3,7 +3,6 @@
 
 #include "go2/mqtt/hit_mqtt_client.h"
 #include "go2/build_config.h"
-#include "go2/fallback/offline_hit_fallback.h"
 #include "go2/sensors/piezo_sensor.h"
 #include "go2/display/ring_display.h"
 
@@ -13,13 +12,10 @@ BluetoothSerial SerialBT;
 HardwareSerial& JetsonSerial = Serial2;
 
 RingDisplay ringDisplay;
-OfflineHitFallback offlineFallback;
 PiezoSensor piezoSensor;
 HitMqttClient hitMqtt;
 
 uint32_t hitSequence = 0;
-uint32_t lastHpTxMs = 0;
-constexpr uint32_t HP_TX_PERIOD_MS = 100;
 
 static char normalizeCommandChar(char c) {
   if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
@@ -31,53 +27,31 @@ static bool isIgnoredCommandChar(char c) {
 }
 
 static void resetAll() {
-  offlineFallback.reset(ringDisplay);
   piezoSensor.resetFlags();
-  hitMqtt.clearPending();
-  Serial.println("[RESET] OK");
-  if (SerialBT.hasClient()) SerialBT.println("[RESET] OK");
+  hitMqtt.clearOfflineQueue();
+  ringDisplay.clearRemoteDisplay();
+  ringDisplay.markDirty();
+  Serial.println("[RESET] hit/display state cleared");
+  if (SerialBT.hasClient()) SerialBT.println("[RESET] hit/display state cleared");
 }
 
-static void applyPendingFallback(const PendingHitCandidate& pending, const char* reason) {
-  Serial.printf("[FALLBACK] authority timeout %s seq=%lu target=%d peak=%u\n",
-                reason,
-                (unsigned long)pending.sequence,
-                pending.targetId,
-                pending.peak);
-  offlineFallback.applyDamage(peakToDamage(pending.peak), ringDisplay);
-}
-
-static void drainTimedOutAuthorityFallback(uint32_t now) {
-  PendingHitCandidate pending;
-  if (hitMqtt.popTimedOutFallback(now, pending)) {
-    applyPendingFallback(pending, "timeout");
-  }
-}
-
-static void handleTargetHit(int targetId, uint16_t peak) {
-  if (offlineFallback.down() && !hitMqtt.connected()) return;
-  if (peak <= HIT_THRESHOLD) return;
+static void handleTargetHit(int targetId, bool hit) {
+  if (!hit) return;
 
   uint32_t now = millis();
-  drainTimedOutAuthorityFallback(now);
-
-  PendingHitCandidate pending;
-  if (hitMqtt.popSupersededFallback(pending)) {
-    applyPendingFallback(pending, "superseded");
-  }
-
   uint32_t sequence = ++hitSequence;
-  if (hitMqtt.publishHitCandidate(targetId, peak, sequence, now)) {
-    hitMqtt.startPending(targetId, peak, sequence, now);
+  if (hitMqtt.offlineQueueCount() > 0) {
+    hitMqtt.queueHitCandidate(targetId, hit, sequence, now);
     return;
   }
-
-  offlineFallback.applyDamage(peakToDamage(peak), ringDisplay);
+  if (!hitMqtt.publishHitCandidate(targetId, hit, sequence, now)) {
+    hitMqtt.queueHitCandidate(targetId, hit, sequence, now);
+  }
 }
 
 static void handleCommandChar(char c) {
   c = normalizeCommandChar(c);
-  if (c == CMD_RESET_HP) {
+  if (c == CMD_RESET_HIT_DISPLAY) {
     resetAll();
     return;
   }
@@ -107,20 +81,14 @@ static void pollCommands() {
   }
 }
 
-static void systemTickLite() {
-  uint32_t now = millis();
-  pollCommands();
-  hitMqtt.tick(now, ringDisplay.remoteDisplayActive());
-  ringDisplay.tick(now, offlineFallback.hp(), offlineFallback.down());
-}
-
 static void onRingDisplayUpdate(const RingDisplayUpdate& update) {
   uint32_t now = millis();
   if (update.resetHitState) {
-    offlineFallback.reset(ringDisplay);
     piezoSensor.resetFlags();
-    Serial.println("[RESET] MQTT hit state reset");
-    if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT hit state reset");
+    hitMqtt.clearOfflineQueue();
+    ringDisplay.clearRemoteDisplay();
+    Serial.println("[RESET] MQTT hit/display state reset");
+    if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT hit/display state reset");
   }
   ringDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
@@ -134,21 +102,18 @@ void setup() {
 
   ringDisplay.begin();
   piezoSensor.begin();
-  offlineFallback.begin(JetsonSerial);
   hitMqtt.begin(onRingDisplayUpdate);
 
   ringDisplay.markDirty();
-  ringDisplay.tick(millis(), offlineFallback.hp(), offlineFallback.down());
+  ringDisplay.tick(millis());
 
-  Serial.printf("[PIN] UART2 RX=%d TX=%d | LED=%d | T1_DO=%d T1_AO=%d | T2_DO=%d T2_AO=%d\n",
+  Serial.printf("[PIN] UART2 RX=%d TX=%d | LED=%d | PIEZO_DO=%d\n",
                 UART_RX_PIN,
                 UART_TX_PIN,
                 LED_PIN,
-                T1_DO,
-                T1_AO,
-                T2_DO,
-                T2_AO);
-  Serial.printf("USB/BT/Jetson CMD: '%c'=reset HP/recovery. Fire is handled by Nixo firmware.\n", CMD_RESET_HP);
+                PIEZO_DO_PIN);
+  Serial.printf("USB/BT/Jetson CMD: '%c'=reset hit/display state. Fire is handled by Nixo firmware.\n",
+                CMD_RESET_HIT_DISPLAY);
   Serial.print("Bluetooth name: ");
   Serial.println(BT_NAME);
   Serial.printf("[CC] robot_id=%s mqtt=%s broker=%s:%u event_topic=%s ring_topic=%s\n",
@@ -164,16 +129,8 @@ void loop() {
   uint32_t now = millis();
 
   hitMqtt.tick(now, ringDisplay.remoteDisplayActive());
-  drainTimedOutAuthorityFallback(now);
-
   pollCommands();
-  ringDisplay.tick(now, offlineFallback.hp(), offlineFallback.down());
-
-  if (now - lastHpTxMs >= HP_TX_PERIOD_MS) {
-    lastHpTxMs = now;
-    offlineFallback.sendHpToJetson();
-  }
-
-  piezoSensor.poll(now, systemTickLite, handleTargetHit);
+  ringDisplay.tick(now);
+  piezoSensor.poll(now, handleTargetHit);
   delay(1);
 }

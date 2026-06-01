@@ -6,14 +6,13 @@
 
 namespace go2 {
 
-using SystemTickFn = void (*)();
-using HitCallback = void (*)(int targetId, uint16_t peak);
+using HitCallback = void (*)(int targetId, bool hit);
 
 class PiezoSensor {
  public:
   void begin();
   void resetFlags();
-  void poll(uint32_t now, SystemTickFn systemTick, HitCallback onHit);
+  void poll(uint32_t now, HitCallback onHit);
 };
 
 }  // namespace go2
