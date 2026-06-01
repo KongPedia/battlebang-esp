@@ -183,7 +183,9 @@ src/turret_fleet/
     local-dev.md
   examples/
     config.boss_turret.json
-    pattern.sweep_lr.json
+    pattern.lane_sweep.json
+    pattern.two_point_bounce.json
+    pattern.telegraph_column.json
     ota-manifest.example.json
 ```
 
@@ -213,8 +215,8 @@ Payload:
     "frame_id": "boss_stage_v1",
     "unit": "cm",
     "origin": "boss_stage_center_floor",
-    "x_axis": "stage_right",
-    "y_axis": "stage_forward",
+    "x_axis": "stage_forward",
+    "y_axis": "stage_right",
     "z_axis": "up",
     "mqtt_target_unit": "m"
   },
@@ -312,7 +314,7 @@ This is a blocking contract for the fleet rewrite because the current field prob
 2. **Unit boundary is explicit**: MQTT/Command Center target and pattern points use meters by default (`mqtt_target_unit: "m"`) to stay compatible with the current MQTT docs. ESP internally converts to centimeters before using the copied `src/turret` ballistic/aim solver.
 3. **Pose is in the canonical frame**: each turret stores `pose.x_cm/y_cm/z_cm` in the same frame, plus boss metadata (`floor`, `side`, `group`). No per-turret coordinate macros are allowed in the fleet binary.
 4. **Yaw/local zero is calibrated, not implicit**: current `src/turret` yaw math effectively assumes a calibrated mechanical/software zero. Fleet config makes this explicit through `calibration.yaw_axis_offset_deg` / `pitch_axis_offset_deg` for local `aim 0,0`, `motion.home` for boot HOME, and `yaw_offset_deg` / `pitch_offset_deg` only after world-coordinate solving. Do not silently assume every physical mount faces the same origin until direct local calibration proves it.
-5. **Target and pattern share one solver**: `target`, `sweep_lr`, `sweep_vertical`, `point_burst`, and `calibration_no_fire` all pass through the same frame validation, unit conversion, yaw/pitch solve, limits, and PID path.
+5. **Target and pattern share one solver**: `target`, BTB-726 player patterns (`lane_sweep`, `two_point_bounce`, `telegraph_column`), and operator-only `calibration_no_fire` all pass through the same frame validation, unit conversion, yaw/pitch solve, limits, and PID path.
 6. **Frame mismatch is a command error**: inbound `target`/`pattern` payloads may include `frame_id`; if it is present and does not match the configured frame, reject the command and publish an error/ACK. If absent, default to the configured frame and include that frame in status.
 7. **Alignment observability is mandatory**: target/pattern status must include the input target, converted cm target, `frame_id`, turret pose, solved yaw/pitch, clamped yaw/pitch, yaw/pitch offsets, pitch validity/reachability, and aim-reached/error fields so Command Center can see why two turrets disagree.
 8. **No-fire calibration before live fire**: each physical turret must pass `calibration_no_fire` over at least three known points (center/left/right or equivalent floor markers) before enabling live fire. The same world point should produce physically consistent aim across all four turrets after offsets are applied.
@@ -336,7 +338,7 @@ New ESP devices do not have Wi-Fi/MQTT credentials, so the first step is not OTA
 Then send serial provisioning config. The implementation may accept both `config {json}` and `provision {json}` as aliases, but the effect is the same: validate, persist to NVS, apply safe fields, connect Wi-Fi/MQTT, and publish status.
 
 ```text
-config {"type":"config","schema":2,"config_version":1,"turret_id":"boss_1f_left","group":"boss","floor":1,"side":"left","coordinate_frame":{"frame_id":"boss_stage_v1","unit":"cm","origin":"boss_stage_center_floor","x_axis":"stage_right","y_axis":"stage_forward","z_axis":"up","mqtt_target_unit":"m"},"pose":{"x_cm":-170,"y_cm":190,"z_cm":134.5,"default_target_z_cm":70},"calibration":{"yaw_zero_reference":"faces_frame_origin","yaw_offset_deg":0,"pitch_offset_deg":0,"yaw_axis_offset_deg":0,"pitch_axis_offset_deg":0,"home_yaw_deg":0,"home_pitch_deg":0},"motion":{"home":{"yaw_deg":0,"pitch_deg":0},"limits":{"yaw_min_deg":-75,"yaw_max_deg":75,"pitch_min_deg":-75,"pitch_max_deg":75},"yaw_stop_us":1500,"pitch_stop_us":1500},"wifi":{"ssid":"...","password":"..."},"mqtt":{"host":"<COMMAND_CENTER_IP>","port":1883,"root":"battlebang"},"ota":{"command_center_controlled":true,"auto_check_enabled":false,"channel":"boss-demo","desired_build":1,"apply_only_in_safe_state":true}}
+config {"type":"config","schema":2,"config_version":1,"turret_id":"boss_1f_left","group":"boss","floor":1,"side":"left","coordinate_frame":{"frame_id":"boss_stage_v1","unit":"cm","origin":"boss_stage_center_floor","x_axis":"stage_forward","y_axis":"stage_right","z_axis":"up","mqtt_target_unit":"m"},"pose":{"x_cm":-170,"y_cm":190,"z_cm":134.5,"default_target_z_cm":70},"calibration":{"yaw_zero_reference":"faces_frame_origin","yaw_offset_deg":0,"pitch_offset_deg":0,"yaw_axis_offset_deg":0,"pitch_axis_offset_deg":0,"home_yaw_deg":0,"home_pitch_deg":0},"motion":{"home":{"yaw_deg":0,"pitch_deg":0},"limits":{"yaw_min_deg":-75,"yaw_max_deg":75,"pitch_min_deg":-75,"pitch_max_deg":75},"yaw_stop_us":1500,"pitch_stop_us":1500},"wifi":{"ssid":"...","password":"..."},"mqtt":{"host":"<COMMAND_CENTER_IP>","port":1883,"root":"battlebang"},"ota":{"command_center_controlled":true,"auto_check_enabled":false,"channel":"boss-demo","desired_build":1,"apply_only_in_safe_state":true}}
 ```
 
 Provisioning acceptance:
@@ -371,46 +373,55 @@ Semantics:
 - `idle`: explicit operator idle; may enable configured idle sweep.
 - `dead`: highest-priority interrupt; safe-off and reject fire/pattern.
 
-### New pattern command
+### New pattern command — BTB-726 readable MVP
+
+BTB-726 narrows the player-facing attack catalog to three readable patterns. Older
+BTB-721 candidates such as `sweep_vertical`, `point_burst`, and `telegraph_fire`
+are deferred unless a future ticket re-expands the catalog. `calibration_no_fire`
+remains an operator-only no-fire utility, not a player attack pattern.
 
 ```json
 {
   "command": "pattern",
   "command_id": "boss-phase-1-0007",
-  "pattern_id": "sweep_lr",
-  "pattern_instance_id": "boss-phase-1-left-right",
+  "pattern_id": "two_point_bounce",
+  "pattern_instance_id": "boss-phase-1-left-a-b",
   "frame_id": "boss_stage_v1",
-  "ttl_ms": 3000,
+  "ttl_ms": 180000,
   "params": {
-    "loop": 3,
+    "loop": 2,
     "phase_offset_ms": 0,
-    "move_timeout_ms": 2500,
-    "dwell_ms": 400,
-    "fire_ms": 700,
+    "move_timeout_ms": 60000,
+    "dwell_ms": 1000,
+    "fire_ms": 1000,
     "return_to": "wait_command",
     "points": [
-      {"x": 1.2, "y": -0.6, "z": 0.7},
-      {"x": 1.2, "y": 0.6, "z": 0.7}
+      {"x": 0.0, "y": 0.75, "z": -0.6},
+      {"x": 0.0, "y": -0.5, "z": -0.6}
     ]
   }
 }
 ```
 
-Required pattern IDs:
+Coordinates/timings may also be delivered as normal runtime config:
+`patterns.presets.{pattern_id}`. When a `pattern` command omits
+`params.points`, ESP merges the stored preset first and then applies any
+per-command overrides, so Command Center can tune `turret_2` pattern coordinates
+over MQTT without changing firmware.
 
-1. `sweep_lr`: left/right world-coordinate sweep with optional fire at endpoints.
-2. `sweep_vertical`: fixed x/y target with target-z / pitch-limited vertical sweep.
-3. `point_burst`: 1/2/3 target points, dwell, optional fire at each point.
-4. `telegraph_fire`: aim/dwell/visible delay/fire for predictable demo-safe attacks.
-5. `calibration_no_fire`: move through points with no relay/ESC fire.
+Player-facing pattern IDs:
+
+1. `lane_sweep`: one turret or a Command Center-orchestrated vertical pair sweeps between two world points, defaults to one narrow ping-pong round trip, and starts one fire window per moving leg capped by `fire_ms`. Yaw endpoint arrival cuts fire early; otherwise fire is not refreshed beyond that cap. After safe-off, the endpoint dwell runs before the next leg starts.
+2. `two_point_bounce`: one turret alternates A/B with a default two round trips and fires after dwell at each point.
+3. `telegraph_column`: same-side 1F/2F pair choreography compiled by Command Center into per-turret commands; each ESP can randomly choose one configured candidate point, then uses visible aim-only dwell before fire.
 
 Safety:
 
 - Pattern engine internally uses the same frame validation, unit conversion, aim solver, and PID as `target`.
 - Fire steps call the same `relay_fire` state machine as `fire`.
-- `dead` interrupts all patterns.
-- New `pattern` with a different `pattern_instance_id` replaces the previous active pattern after safe-off.
-- `target` during active pattern either interrupts pattern or is rejected; choose one policy and report it in status. Recommended: reject unless `interrupt=true`.
+- `dead` and `hold` interrupt active patterns and force fire safe-off.
+- New `pattern` while fire outputs are active is rejected for the MVP.
+- `target` during active pattern is rejected unless `interrupt=true`, then the pattern is cleared before applying the target.
 
 ## OTA Plan
 
@@ -477,7 +488,7 @@ mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command 
 mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m '{"command":"fire","duration_ms":1000}'
 
 # 7. Run a pattern
-mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m @src/turret_fleet/examples/pattern.sweep_lr.json
+mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m @src/turret_fleet/examples/pattern.two_point_bounce.json
 
 # 8. Command Center triggers OTA manifest/job over MQTT
 mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/ota -m @src/turret_fleet/examples/ota-manifest.example.json
@@ -508,7 +519,7 @@ Acceptance:
 
 - `pio run -e esp32dev_turret_fleet` succeeds.
 - Boot log starts at `WAIT_COMMAND`, then normal power-up reports a no-fire local `HOME` before MQTT dependency, never `IDLE`.
-- No relay/ESC/motion output is attached unless a command requires it.
+- ESC signal output on GPIO25 is attached at boot with STOP/low-throttle for BLDC ESC initialization; relay and motion outputs remain lazy/safe-off until a command requires them.
 
 ### Phase 2 - Port hardware, PID, target, and fire
 
@@ -560,7 +571,7 @@ Acceptance:
 ### Phase 5 - Pattern engine
 
 - Implement pattern parser and validation.
-- Implement `sweep_lr`, `sweep_vertical`, `point_burst`, `telegraph_fire`, `calibration_no_fire`.
+- Implement BTB-726 player-facing `lane_sweep`, `two_point_bounce`, and `telegraph_column`; keep `calibration_no_fire` as operator-only no-fire utility.
 - Patterns are world-coordinate based by default in the configured `frame_id`; raw angle override is maintenance-only.
 - Pattern points use the same target schema/unit conversion as `target`; `calibration_no_fire` is the required alignment check before live fire.
 - Add loop, dwell, fire duration, move timeout, phase offset, return-to-state.

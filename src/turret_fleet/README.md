@@ -33,9 +33,9 @@ local `HOME` aim (`motion.home`, default `yaw=0,pitch=0`) on normal power-up
 before waiting for MQTT, and then forces Wi-Fi/MQTT startup.
 OTA/brownout/fire-reset boots inhibit automatic HOME until Command Center sends
 an explicit command.
-Production tracking is clamped to a runtime-configurable 150° envelope (default
-`yaw=-75..75`, `pitch=-75..75`) and blocked when raw feedback is outside that
-calibrated envelope/deadzone guard. It
+Production tracking keeps `motion.limits` as the outer calibrated
+envelope/deadzone guard (validation allows at most 150° total), while normal
+target/aim/pattern setpoints are clamped to the inner 80% command envelope. It
 accepts runtime config, validates coordinate frames, computes target yaw/pitch
 with the current `src/turret` solver convention, and tracks explicit
 fire/pattern state without boot-time fire.
@@ -46,7 +46,9 @@ fire/pattern state without boot-time fire.
 src/turret_fleet/
   app/        firmware identity/version metadata
   config/     RuntimeConfig + NVS/Preferences storage
-  control/    target/aim/idle/dead/fire control and motion feedback
+  control/    hardware executor for target/aim/idle/dead/fire and motion feedback
+    patterns/ pure pattern-plan compiler; no servo/relay side effects
+  profiles/   non-secret per-turret runtime profiles for NVS provisioning
   mqtt/       topic builder + MQTT config/command/OTA bus
   net/        Wi-Fi manager
   ota/        OTA manifest validation + HTTP OTA apply
@@ -72,11 +74,14 @@ cp src/turret_fleet/.env.turret_fleet.example src/turret_fleet/.env.turret_fleet
 `fleet-upload` flashes the one generic `esp32dev_turret_fleet` image, then sends
 the selected turret's runtime config over USB serial. The ESP stores it in NVS,
 so future config changes can arrive via MQTT without per-turret rebuilds.
+By default the helper overlays `src/turret_fleet/profiles/<turret>.json` and
+`src/turret_fleet/pattern_presets/<turret>.json` onto the dotenv-derived
+Wi-Fi/MQTT secrets before provisioning.
 
 Manual equivalent after flashing the generic firmware:
 
 ```text
-provision {"type":"provision","schema":2,"config_version":1,"turret_id":"boss_1f_left","group":"boss","floor":1,"side":"left","coordinate_frame":{"frame_id":"boss_stage_v1","unit":"cm","origin":"boss_stage_center_floor","x_axis":"stage_right","y_axis":"stage_forward","z_axis":"up","mqtt_target_unit":"m"},"pose":{"x_cm":-170,"y_cm":190,"z_cm":134.5,"default_target_z_cm":70},"calibration":{"yaw_zero_reference":"faces_frame_origin","yaw_offset_deg":0,"pitch_offset_deg":0,"yaw_axis_offset_deg":0,"pitch_axis_offset_deg":0,"home_yaw_deg":0,"home_pitch_deg":0},"motion":{"limits":{"yaw_min_deg":-75,"yaw_max_deg":75,"pitch_min_deg":-75,"pitch_max_deg":75},"home":{"yaw_deg":0,"pitch_deg":0},"yaw_stop_us":1500,"pitch_stop_us":1500},"wifi":{"ssid":"YOUR_SSID","password":"YOUR_PASSWORD"},"mqtt":{"host":"<COMMAND_CENTER_IP>","port":1883,"root":"battlebang"},"ota":{"command_center_controlled":true,"auto_check_enabled":false,"channel":"boss-demo","apply_only_in_safe_state":true}}
+provision {"type":"provision","schema":2,"config_version":1,"turret_id":"boss_1f_left","group":"boss","floor":1,"side":"left","coordinate_frame":{"frame_id":"boss_stage_v1","unit":"cm","origin":"boss_stage_center_floor","x_axis":"stage_forward","y_axis":"stage_right","z_axis":"up","mqtt_target_unit":"m"},"pose":{"x_cm":-170,"y_cm":190,"z_cm":134.5,"default_target_z_cm":70},"calibration":{"yaw_zero_reference":"faces_frame_origin","yaw_offset_deg":0,"pitch_offset_deg":0,"yaw_axis_offset_deg":0,"pitch_axis_offset_deg":0,"home_yaw_deg":0,"home_pitch_deg":0},"motion":{"limits":{"yaw_min_deg":-75,"yaw_max_deg":75,"pitch_min_deg":-75,"pitch_max_deg":75},"home":{"yaw_deg":0,"pitch_deg":0},"yaw_stop_us":1500,"pitch_stop_us":1500},"wifi":{"ssid":"YOUR_SSID","password":"YOUR_PASSWORD"},"mqtt":{"host":"<COMMAND_CENTER_IP>","port":1883,"root":"battlebang"},"ota":{"command_center_controlled":true,"auto_check_enabled":false,"channel":"boss-demo","apply_only_in_safe_state":true}}
 ```
 
 Useful commands:
@@ -135,6 +140,31 @@ export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
 ./bin/turret fleet-mqtt turret_2 target -1 1 2
 ./bin/turret fleet-mqtt turret_2 target 1 -1 3
 
+# readable pattern presets; z is negative here so turret_2 pitches down.
+# First persist the coordinates/timings in NVS through the normal config topic,
+# then pattern commands can stay high-level and omit points.
+./bin/turret fleet-mqtt turret_2 config \
+  --profile-file src/turret_fleet/profiles/turret_2.json \
+  --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+./bin/turret fleet-mqtt turret_2 pattern lane_sweep --frame-id boss_stage_v1
+./bin/turret fleet-mqtt turret_2 pattern two_point_bounce --frame-id boss_stage_v1
+./bin/turret fleet-mqtt turret_2 pattern telegraph_column --frame-id boss_stage_v1
+
+# telegraph_column picks one configured point at random by default. Override a
+# single run with --point-index, or patch src/turret_fleet/pattern_presets/*.json
+# and resend the config command above to persist a new random candidate list.
+./bin/turret fleet-mqtt turret_2 pattern telegraph_column \
+  --frame-id boss_stage_v1 --point-index 1
+
+# live E2E check; add --allow-live-fire only when the range is clear.
+./bin/turret fleet-e2e turret_2 --host "$MQTT_BROKER_HOST" \
+  --allow-live-fire --json-report .omx/logs/turret_2-e2e.json
+
+# Command payload params still override the configured preset for one-off tuning.
+./bin/turret fleet-mqtt turret_2 pattern two_point_bounce \
+  --frame-id boss_stage_v1 --point 0 0.75 -0.6 --point 0 -0.5 -0.6 \
+  --loop 2 --dwell-ms 1000 --fire-ms 2000
+
 # direct local yaw/pitch debug, bypassing target coordinate solve
 ./bin/turret fleet-mqtt turret_2 aim 0 10
 ./bin/turret fleet-mqtt turret_2 aim -10 10
@@ -172,9 +202,10 @@ Software calibration is split into two layers:
 - `motion.home.yaw_deg` / `motion.home.pitch_deg`: the boot local home target.
   Default is `0,0`; this assumes the local sensor zero has already been
   calibrated to the turret's physical front/level pose.
-- `motion.limits`: local yaw/pitch command envelope. Default is 150° total
-  (`-75..75`) so normal `HOME`, `target`, `idle`, and `dead` motion does not
-  enter the observed yaw feedback deadzone/rail region.
+- `motion.limits`: outer local yaw/pitch safety/deadzone envelope. Normal
+  `target`, `aim`, `pattern`, `HOME`, `idle`, and `dead` setpoints are clamped
+  to the inner 80% command envelope derived around `motion.home`, leaving margin
+  before the observed yaw feedback deadzone/rail region.
 - `yaw_stop_us` / `pitch_stop_us`: per-axis continuous-servo neutral PWM.
   Use these when `hold`/`WAIT_COMMAND` still creeps after outputs are stopped.
 - `yaw_offset_deg` / `pitch_offset_deg`: world target-solver correction. Use
@@ -190,8 +221,9 @@ Use both, but for different layers:
 
 - Command Center should clamp UI/operator intent to each turret's configured safe
   envelope before publishing commands.
-- ESP clamps ordinary target/aim/home/idle/dead setpoints to `motion.limits` so a
-  valid world target outside the reachable area becomes the nearest safe aim.
+- ESP clamps ordinary target/aim/pattern/home/idle/dead setpoints to the inner
+  80% command envelope derived from `motion.limits` so a valid world target
+  outside the reachable area becomes the nearest safe aim with deadzone margin.
 - ESP rejects invalid or unsafe states instead of pretending they are okay:
   frame mismatch, malformed config, config envelopes wider than validation
   allows, firing while unconfigured/dead/locked out, and brownout/fire-reset lockout.
