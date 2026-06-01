@@ -12,9 +12,15 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TURRETS_JSON = PROJECT_ROOT / "src" / "turret" / "turrets.json"
+DEFAULT_PROFILE_DIR = PROJECT_ROOT / "src" / "turret_fleet" / "profiles"
+DEFAULT_PATTERN_PRESETS_DIR = PROJECT_ROOT / "src" / "turret_fleet" / "pattern_presets"
 DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "turret_fleet" / ".env.turret_fleet"
 DEFAULT_PIO = PROJECT_ROOT / ".venv-pio" / "bin" / "pio"
 DEFAULT_PYTHON = PROJECT_ROOT / ".venv-pio" / "bin" / "python"
+SERIAL_WRITE_CHUNK_BYTES = 96
+SERIAL_WRITE_CHUNK_DELAY_S = 0.02
+SERIAL_BOOT_SETTLE_S = 4.0
+SERIAL_PROVISION_RETRIES = 3
 
 
 class ProvisionError(RuntimeError):
@@ -90,6 +96,40 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
+def project_path(path: str | Path) -> Path:
+    resolved = Path(path)
+    if resolved.is_absolute():
+        return resolved
+    return PROJECT_ROOT / resolved
+
+
+def load_profile_file(path: Path) -> dict[str, Any]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ProvisionError(f"cannot read turret profile file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ProvisionError(f"invalid turret profile JSON {path}: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise ProvisionError("turret profile file must contain a JSON object")
+    return doc
+
+
+def load_patterns_file(path: Path) -> dict[str, Any]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ProvisionError(f"cannot read pattern presets file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ProvisionError(f"invalid pattern presets JSON {path}: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise ProvisionError("pattern presets file must contain a JSON object")
+    patterns = doc.get("patterns", doc)
+    if not isinstance(patterns, dict):
+        raise ProvisionError("pattern presets file must contain a patterns object")
+    return patterns
+
+
 def load_turret_table() -> dict[str, Any]:
     return json.loads(TURRETS_JSON.read_text(encoding="utf-8"))
 
@@ -102,7 +142,33 @@ def normalize_turret_id(raw: str) -> str:
     raise ProvisionError(f"invalid turret id {raw!r}; use turret_2 or 2")
 
 
-def build_config(turret_id: str, env: dict[str, str], include_secrets: bool = True) -> dict[str, Any]:
+def select_profile_file(turret_id: str, env: dict[str, str], explicit: Path | None) -> Path | None:
+    if explicit is not None:
+        return project_path(explicit)
+    env_path = env_first(env, "TURRET_FLEET_PROFILE_FILE", "TURRET_FLEET_CONFIG_FILE")
+    if env_path:
+        return project_path(env_path)
+    default_path = DEFAULT_PROFILE_DIR / f"{turret_id}.json"
+    return default_path if default_path.exists() else None
+
+
+def select_pattern_presets_file(turret_id: str, env: dict[str, str], explicit: Path | None) -> Path | None:
+    if explicit is not None:
+        return project_path(explicit)
+    env_path = env_first(env, "TURRET_FLEET_PATTERN_PRESETS_FILE")
+    if env_path:
+        return project_path(env_path)
+    default_path = DEFAULT_PATTERN_PRESETS_DIR / f"{turret_id}.json"
+    return default_path if default_path.exists() else None
+
+
+def build_config(
+    turret_id: str,
+    env: dict[str, str],
+    include_secrets: bool = True,
+    profile_file: Path | None = None,
+    pattern_presets_file: Path | None = None,
+) -> dict[str, Any]:
     turret_id = normalize_turret_id(turret_id)
     table = load_turret_table()
     entry = table.get("turrets", {}).get(turret_id)
@@ -154,8 +220,8 @@ def build_config(turret_id: str, env: dict[str, str], include_secrets: bool = Tr
             "frame_id": env_first(env, "TURRET_FLEET_FRAME_ID", default="boss_stage_v1"),
             "unit": "cm",
             "origin": env_first(env, "TURRET_FLEET_FRAME_ORIGIN", default="boss_stage_center_floor"),
-            "x_axis": env_first(env, "TURRET_FLEET_FRAME_X_AXIS", default="stage_right"),
-            "y_axis": env_first(env, "TURRET_FLEET_FRAME_Y_AXIS", default="stage_forward"),
+            "x_axis": env_first(env, "TURRET_FLEET_FRAME_X_AXIS", default="stage_forward"),
+            "y_axis": env_first(env, "TURRET_FLEET_FRAME_Y_AXIS", default="stage_right"),
             "z_axis": "up",
             "mqtt_target_unit": env_first(env, "TURRET_FLEET_MQTT_TARGET_UNIT", default="m"),
         },
@@ -246,6 +312,28 @@ def build_config(turret_id: str, env: dict[str, str], include_secrets: bool = Tr
     else:
         doc["wifi"] = {"ssid": wifi_ssid, "password": "***"}
 
+    selected_profile_file = select_profile_file(turret_id, env, profile_file)
+    if selected_profile_file is not None:
+        overlay = load_profile_file(selected_profile_file)
+        overlay_turret_id = overlay.get("turret_id")
+        if overlay_turret_id is not None and normalize_turret_id(str(overlay_turret_id)) != turret_id:
+            raise ProvisionError(
+                f"turret profile file {selected_profile_file} is for {overlay_turret_id}, not {turret_id}"
+            )
+        doc = deep_merge(doc, overlay)
+
+    selected_pattern_presets_file = select_pattern_presets_file(turret_id, env, pattern_presets_file)
+    if selected_pattern_presets_file is not None:
+        doc["patterns"] = load_patterns_file(selected_pattern_presets_file)
+
+    # Provision payloads must always identify the selected physical target and
+    # carry a fresh/enforced config_version, even when overlaid from reusable
+    # non-secret turret profile files.
+    doc["type"] = "provision"
+    doc["configured"] = True
+    doc["turret_id"] = turret_id
+    doc["config_version"] = config_version
+
     return doc
 
 
@@ -281,6 +369,23 @@ def auto_detect_port(pio_bin: str) -> str:
     raise ProvisionError(f"multiple USB serial ports detected: {', '.join(ports)}")
 
 
+def write_serial_line(ser: Any, line: str) -> None:
+    """Write a command slowly enough for ESP32 serial provisioning.
+
+    Full provision payloads include Wi-Fi/MQTT/profile/pattern JSON and can be
+    several kilobytes long.  A single host-side write can overrun the ESP32
+    UART RX buffer while the firmware is also booting Wi-Fi/MQTT, which leaves
+    the device with a truncated JSON line and a misleading InvalidInput parse
+    error.  Chunking keeps first-boot USB provisioning deterministic without
+    changing the firmware protocol.
+    """
+    data = (line + "\n").encode("utf-8")
+    for offset in range(0, len(data), SERIAL_WRITE_CHUNK_BYTES):
+        ser.write(data[offset : offset + SERIAL_WRITE_CHUNK_BYTES])
+        ser.flush()
+        time.sleep(SERIAL_WRITE_CHUNK_DELAY_S)
+
+
 def provision_serial(port: str, doc: dict[str, Any], timeout_s: float) -> dict[str, Any] | None:
     try:
         import serial  # type: ignore
@@ -291,26 +396,61 @@ def provision_serial(port: str, doc: dict[str, Any], timeout_s: float) -> dict[s
     status: dict[str, Any] | None = None
     deadline = time.time() + timeout_s
     with serial.Serial(port, 115200, timeout=0.2) as ser:
-        time.sleep(1.0)
-        ser.write((f"provision {payload}\n").encode("utf-8"))
-        ser.flush()
-        while time.time() < deadline:
+        # After esptool hard-resets the ESP32, firmware setup prints boot
+        # config/status/help and starts Wi-Fi before the main loop begins
+        # draining serial commands.  Sending the full provision line too early
+        # can overflow the UART RX buffer and produce a misleading
+        # "InvalidInput" JSON parse error.  Wait for the shell banner when it
+        # is visible; otherwise fall back to a conservative settle delay for
+        # already-running devices.
+        settle_deadline = time.time() + SERIAL_BOOT_SETTLE_S
+        while time.time() < settle_deadline:
             line = ser.readline().decode("utf-8", "replace").strip()
-            if not line:
-                continue
-            if "config rejected" in line:
-                raise ProvisionError(line)
-            if "config applied saved=" in line:
-                print(f"[fleet_provision] {line}")
+            if "[fleet] serial commands:" in line:
                 break
-            if line.startswith("{"):
-                try:
-                    status = json.loads(line)
-                except json.JSONDecodeError:
-                    pass
+        last_rejection = ""
+        applied = False
+        for attempt in range(1, SERIAL_PROVISION_RETRIES + 1):
+            retry_after_truncated_json = False
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            write_serial_line(ser, f"provision {payload}")
+            attempt_deadline = min(deadline, time.time() + max(2.0, timeout_s / SERIAL_PROVISION_RETRIES))
+            while time.time() < attempt_deadline:
+                line = ser.readline().decode("utf-8", "replace").strip()
+                if not line:
+                    continue
+                if "config rejected" in line:
+                    last_rejection = line
+                    if "InvalidInput" in line and attempt < SERIAL_PROVISION_RETRIES:
+                        print(
+                            f"[fleet_provision] retrying serial provision after truncated JSON "
+                            f"(attempt {attempt}/{SERIAL_PROVISION_RETRIES})"
+                        )
+                        time.sleep(0.5)
+                        retry_after_truncated_json = True
+                        break
+                    raise ProvisionError(line)
+                if "config applied saved=" in line:
+                    print(f"[fleet_provision] {line}")
+                    last_rejection = ""
+                    applied = True
+                    break
+                if line.startswith("{"):
+                    try:
+                        status = json.loads(line)
+                    except json.JSONDecodeError:
+                        pass
+            if applied:
+                break
+            if retry_after_truncated_json:
+                continue
+            if time.time() >= deadline:
+                break
+        if last_rejection:
+            raise ProvisionError(last_rejection)
 
-        ser.write(b"show-status\n")
-        ser.flush()
+        write_serial_line(ser, "show-status")
         final_deadline = time.time() + 3.0
         while time.time() < final_deadline:
             line = ser.readline().decode("utf-8", "replace").strip()
@@ -327,7 +467,13 @@ def provision_serial(port: str, doc: dict[str, Any], timeout_s: float) -> dict[s
 
 def cmd_build_config(args: argparse.Namespace) -> int:
     env = merged_env(args.env_file)
-    doc = build_config(args.turret, env, include_secrets=args.include_secrets)
+    doc = build_config(
+        args.turret,
+        env,
+        include_secrets=args.include_secrets,
+        profile_file=args.profile_file,
+        pattern_presets_file=args.patterns_file,
+    )
     if args.mask and args.include_secrets:
         doc = mask_config(doc)
     print(json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True))
@@ -336,7 +482,13 @@ def cmd_build_config(args: argparse.Namespace) -> int:
 
 def cmd_provision(args: argparse.Namespace) -> int:
     env = merged_env(args.env_file)
-    doc = build_config(args.turret, env, include_secrets=True)
+    doc = build_config(
+        args.turret,
+        env,
+        include_secrets=True,
+        profile_file=args.profile_file,
+        pattern_presets_file=args.patterns_file,
+    )
     port = args.port or auto_detect_port(args.pio)
     print(f"[fleet_provision] turret={doc['turret_id']} port={port} config_version={doc['config_version']}")
     print("[fleet_provision] payload:", json.dumps(mask_config(doc), ensure_ascii=False, sort_keys=True))
@@ -365,6 +517,9 @@ def build_parser() -> argparse.ArgumentParser:
     build = sub.add_parser("build-config", help="Print fleet runtime provision JSON for a turret")
     build.add_argument("turret")
     build.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    build.add_argument("--profile-file", dest="profile_file", type=Path, help="non-secret turret runtime profile; defaults to src/turret_fleet/profiles/<turret>.json")
+    build.add_argument("--config-file", dest="profile_file", type=Path, help=argparse.SUPPRESS)
+    build.add_argument("--patterns-file", type=Path, help="pattern preset JSON; defaults to src/turret_fleet/pattern_presets/<turret>.json")
     build.add_argument("--include-secrets", action="store_true")
     build.add_argument("--mask", action="store_true", default=True)
     build.set_defaults(func=cmd_build_config)
@@ -372,6 +527,9 @@ def build_parser() -> argparse.ArgumentParser:
     provision = sub.add_parser("provision", help="Send provision JSON to an already-flashed ESP over USB serial")
     provision.add_argument("turret")
     provision.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    provision.add_argument("--profile-file", dest="profile_file", type=Path, help="non-secret turret runtime profile; defaults to src/turret_fleet/profiles/<turret>.json")
+    provision.add_argument("--config-file", dest="profile_file", type=Path, help=argparse.SUPPRESS)
+    provision.add_argument("--patterns-file", type=Path, help="pattern preset JSON; defaults to src/turret_fleet/pattern_presets/<turret>.json")
     provision.add_argument("--port")
     provision.add_argument("--timeout", type=float, default=10.0)
     provision.add_argument("--dry-run", action="store_true")

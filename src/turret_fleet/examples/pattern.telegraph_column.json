@@ -1,0 +1,34 @@
+{
+  "command": "pattern",
+  "command_id": "example-telegraph-column-001",
+  "pattern_id": "telegraph_column",
+  "pattern_instance_id": "example-telegraph-column-readable-point",
+  "frame_id": "boss_stage_v1",
+  "ttl_ms": 120000,
+  "params": {
+    "loop": 1,
+    "phase_offset_ms": 0,
+    "move_timeout_ms": 10000,
+    "dwell_ms": 1000,
+    "fire_ms": 1000,
+    "return_to": "wait_command",
+    "points": [
+      {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -0.6
+      },
+      {
+        "x": 0.0,
+        "y": 0.5,
+        "z": -0.6
+      },
+      {
+        "x": 0.0,
+        "y": -0.5,
+        "z": -0.6
+      }
+    ],
+    "random": true
+  }
+}

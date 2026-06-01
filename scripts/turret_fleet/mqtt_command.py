@@ -58,6 +58,26 @@ def env_first(env: dict[str, str], *keys: str, default: str | None = None) -> st
     return default
 
 
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base or {})
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def merge_object(doc: dict[str, Any], key: str, patch: dict[str, Any]) -> None:
+    if not patch:
+        return
+    existing = doc.get(key)
+    if isinstance(existing, dict):
+        doc[key] = deep_merge(existing, patch)
+    else:
+        doc[key] = patch
+
+
 def parse_bool_text(value: str) -> bool:
     normalized = value.strip().lower()
     if normalized in {"1", "true", "yes", "y", "on", "enable", "enabled"}:
@@ -86,6 +106,33 @@ def topic_for(root: str, turret_id: str, suffix: str) -> str:
 
 def config_version(value: int | None) -> int:
     return int(value if value is not None else time.time())
+
+
+def load_patterns_file(path: Path) -> dict[str, Any]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise MqttCommandError(f"cannot read patterns file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise MqttCommandError(f"invalid patterns JSON {path}: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise MqttCommandError("--patterns-file must contain a JSON object")
+    patterns = doc.get("patterns", doc)
+    if not isinstance(patterns, dict):
+        raise MqttCommandError("--patterns-file must contain a patterns object")
+    return patterns
+
+
+def load_profile_file(path: Path) -> dict[str, Any]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise MqttCommandError(f"cannot read profile file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise MqttCommandError(f"invalid profile JSON {path}: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise MqttCommandError("--profile-file must contain a JSON object")
+    return doc
 
 
 def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
@@ -143,6 +190,44 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
             "duration_ms": args.duration_ms,
         }
 
+    if action == "pattern":
+        command_id = args.command_id or make_command_id(action)
+        params: dict[str, Any] = {}
+        if args.point:
+            params["points"] = [
+                {"x": point[0], "y": point[1], "z": point[2]}
+                for point in args.point
+            ]
+        optional_values = {
+            "loop": args.loop,
+            "phase_offset_ms": args.phase_offset_ms,
+            "move_timeout_ms": args.move_timeout_ms,
+            "dwell_ms": args.dwell_ms,
+            "fire_ms": args.fire_ms,
+            "return_to": args.return_to,
+            "point_index": args.point_index,
+        }
+        for key, value in optional_values.items():
+            if value is not None:
+                params[key] = value
+        if args.ping_pong is not None:
+            params["ping_pong"] = args.ping_pong
+        if args.random is not None:
+            params["random"] = args.random
+
+        payload = {
+            "command": "pattern",
+            "command_id": command_id,
+            "pattern_id": args.pattern_id,
+            "pattern_instance_id": args.instance_id or f"{args.pattern_id}-{command_id}",
+            "params": params,
+        }
+        if args.frame_id:
+            payload["frame_id"] = args.frame_id
+        if args.ttl_ms is not None:
+            payload["ttl_ms"] = args.ttl_ms
+        return "command", payload
+
     if action in {"update", "ota-update"}:
         doc: dict[str, Any] = {
             "type": "config",
@@ -162,11 +247,18 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
         return "config", doc
 
     if action == "config":
-        doc: dict[str, Any] = {
-            "type": "config",
-            "schema": 2,
-            "config_version": config_version(args.config_version),
-        }
+        target_turret_id = normalize_turret_id(args.turret_id)
+        config_touched = args.profile_file is not None or args.patterns_file is not None
+        doc: dict[str, Any] = load_profile_file(Path(args.profile_file)) if args.profile_file is not None else {}
+        file_turret_id = doc.get("turret_id")
+        if file_turret_id is not None and normalize_turret_id(str(file_turret_id)) != target_turret_id:
+            raise MqttCommandError(f"--profile-file is for {file_turret_id}, not {target_turret_id}")
+        doc["type"] = "config"
+        doc["schema"] = doc.get("schema", 2)
+        doc["configured"] = doc.get("configured", True)
+        doc["turret_id"] = target_turret_id
+        doc["config_version"] = config_version(args.config_version)
+
         calibration: dict[str, Any] = {}
         if args.yaw_offset_deg is not None:
             calibration["yaw_offset_deg"] = args.yaw_offset_deg
@@ -177,7 +269,8 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
         if args.pitch_axis_offset_deg is not None:
             calibration["pitch_axis_offset_deg"] = args.pitch_axis_offset_deg
         if calibration:
-            doc["calibration"] = calibration
+            merge_object(doc, "calibration", calibration)
+            config_touched = True
 
         motion: dict[str, Any] = {}
         if args.yaw_stop_us is not None:
@@ -238,7 +331,8 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
         if args.dead_pitch_deg is not None:
             motion["dead"] = {"pitch_deg": args.dead_pitch_deg}
         if motion:
-            doc["motion"] = motion
+            merge_object(doc, "motion", motion)
+            config_touched = True
 
         fire: dict[str, Any] = {}
         if args.fire_default_hold_ms is not None:
@@ -250,7 +344,8 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
         if args.fire_relay_step_delay_ms is not None:
             fire["relay_step_delay_ms"] = args.fire_relay_step_delay_ms
         if fire:
-            doc["fire"] = fire
+            merge_object(doc, "fire", fire)
+            config_touched = True
 
         network: dict[str, Any] = {}
         if args.network_auto_start is not None:
@@ -258,7 +353,8 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
         if args.network_start_delay_ms is not None:
             network["start_delay_ms"] = args.network_start_delay_ms
         if network:
-            doc["network"] = network
+            merge_object(doc, "network", network)
+            config_touched = True
 
         ota: dict[str, Any] = {}
         if args.ota_command_center_controlled is not None:
@@ -278,10 +374,15 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
         if args.ota_apply_only_in_safe_state is not None:
             ota["apply_only_in_safe_state"] = args.ota_apply_only_in_safe_state
         if ota:
-            doc["ota"] = ota
+            merge_object(doc, "ota", ota)
+            config_touched = True
 
-        if len(doc) == 3:
-            raise MqttCommandError("config action needs at least one --*-deg/--fire/--idle/--network/--ota option")
+        if args.patterns_file is not None:
+            doc["patterns"] = load_patterns_file(Path(args.patterns_file))
+            config_touched = True
+
+        if not config_touched:
+            raise MqttCommandError("config action needs --profile-file or at least one --*-deg/--fire/--idle/--network/--ota/--patterns-file option")
         return "config", doc
 
     raise MqttCommandError(f"unsupported action: {action}")
@@ -458,6 +559,30 @@ def build_parser() -> argparse.ArgumentParser:
     fire.add_argument("--duration-ms", type=int, default=500)
     fire.add_argument("--id", dest="command_id")
 
+    pattern = sub.add_parser("pattern", help="publish a readable high-level pattern command")
+    pattern.add_argument("pattern_id", choices=["lane_sweep", "two_point_bounce", "telegraph_column", "calibration_no_fire"])
+    pattern.add_argument("--point", nargs=3, type=float, action="append", metavar=("X", "Y", "Z"),
+                         help="repeatable world point; omit to use the ESP's configured pattern preset")
+    pattern.add_argument("--frame-id")
+    pattern.add_argument("--id", dest="command_id")
+    pattern.add_argument("--instance-id")
+    pattern.add_argument("--ttl-ms", type=int, default=3000)
+    pattern.add_argument("--loop", type=int)
+    pattern.add_argument("--phase-offset-ms", type=int)
+    pattern.add_argument("--move-timeout-ms", type=int)
+    pattern.add_argument("--dwell-ms", type=int)
+    pattern.add_argument("--fire-ms", type=int)
+    pattern.add_argument("--return-to", choices=["wait_command", "idle"], default="wait_command")
+    pattern.add_argument("--point-index", type=int, help="telegraph_column preset point index to use instead of random selection")
+    ping_pong_group = pattern.add_mutually_exclusive_group()
+    ping_pong_group.add_argument("--ping-pong", dest="ping_pong", action="store_true")
+    ping_pong_group.add_argument("--one-way", dest="ping_pong", action="store_false")
+    pattern.set_defaults(ping_pong=None)
+    random_group = pattern.add_mutually_exclusive_group()
+    random_group.add_argument("--random", dest="random", action="store_true", help="telegraph_column picks one configured point at random")
+    random_group.add_argument("--no-random", dest="random", action="store_false", help="telegraph_column visits configured points in order")
+    pattern.set_defaults(random=None)
+
     update = sub.add_parser(
         "update",
         aliases=["ota-update"],
@@ -473,6 +598,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     cfg = sub.add_parser("config", help="publish a partial runtime config patch saved to ESP NVS")
     cfg.add_argument("--config-version", type=int)
+    cfg.add_argument("--profile-file", dest="profile_file", type=Path, help="turret runtime profile JSON to publish as an NVS config update")
+    cfg.add_argument("--config-file", dest="profile_file", type=Path, help=argparse.SUPPRESS)
     cfg.add_argument("--yaw-offset-deg", type=float, help="world target-solver yaw correction")
     cfg.add_argument("--pitch-offset-deg", type=float, help="world target-solver pitch correction")
     cfg.add_argument("--yaw-axis-offset-deg", type=float, help="local yaw sensor zero correction for aim/motion")
@@ -515,6 +642,7 @@ def build_parser() -> argparse.ArgumentParser:
     cfg.add_argument("--ota-local-mirror-url")
     cfg.add_argument("--ota-check-interval-s", type=int)
     cfg.add_argument("--ota-apply-only-in-safe-state", type=parse_bool_text)
+    cfg.add_argument("--patterns-file", type=Path, help="JSON file containing patterns.presets for runtime pattern coordinates")
     return parser
 
 
