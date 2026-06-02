@@ -201,6 +201,10 @@ def build_config(
     pitch_stop_us = int(env_first(env, "TURRET_FLEET_PITCH_STOP_US", default="1500") or "1500")
     servo_max_delta_us = int(env_first(env, "TURRET_FLEET_SERVO_MAX_DELTA_US", default="220") or "220")
     yaw_min_drive_us = int(env_first(env, "TURRET_FLEET_YAW_MIN_DRIVE_US", default="150") or "150")
+    yaw_plus_max_delta_us = int(env_first(env, "TURRET_FLEET_YAW_PLUS_MAX_DELTA_US", default="0") or "0")
+    yaw_minus_max_delta_us = int(env_first(env, "TURRET_FLEET_YAW_MINUS_MAX_DELTA_US", default="0") or "0")
+    yaw_plus_min_drive_us = int(env_first(env, "TURRET_FLEET_YAW_PLUS_MIN_DRIVE_US", default="0") or "0")
+    yaw_minus_min_drive_us = int(env_first(env, "TURRET_FLEET_YAW_MINUS_MIN_DRIVE_US", default="0") or "0")
     pitch_min_drive_us = int(env_first(env, "TURRET_FLEET_PITCH_MIN_DRIVE_US", default="80") or "80")
     servo_attach_settle_ms = int(env_first(env, "TURRET_FLEET_SERVO_ATTACH_SETTLE_MS", default="350") or "350")
     axis_switch_cooldown_ms = int(env_first(env, "TURRET_FLEET_AXIS_SWITCH_COOLDOWN_MS", default="800") or "800")
@@ -243,6 +247,10 @@ def build_config(
             "pitch_stop_us": pitch_stop_us,
             "servo_max_delta_us": servo_max_delta_us,
             "yaw_min_drive_us": yaw_min_drive_us,
+            "yaw_plus_max_delta_us": yaw_plus_max_delta_us,
+            "yaw_minus_max_delta_us": yaw_minus_max_delta_us,
+            "yaw_plus_min_drive_us": yaw_plus_min_drive_us,
+            "yaw_minus_min_drive_us": yaw_minus_min_drive_us,
             "pitch_min_drive_us": pitch_min_drive_us,
             "servo_attach_settle_ms": servo_attach_settle_ms,
             "axis_switch_cooldown_ms": axis_switch_cooldown_ms,

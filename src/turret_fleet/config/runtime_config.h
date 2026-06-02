@@ -65,6 +65,14 @@ struct RuntimeConfig {
   uint16_t yawMaxDeltaUs = 20;
   uint16_t pitchMaxDeltaUs = 20;
   uint16_t yawMinDriveUs = 20;
+  // Optional yaw direction overrides. 0 means "fall back to the symmetric
+  // yawMaxDeltaUs/yawMinDriveUs values". Names are PWM-relative, not
+  // clockwise/counter-clockwise, because motor orientation can differ per
+  // turret: plus is yawStopUs + delta, minus is yawStopUs - delta.
+  uint16_t yawPlusMaxDeltaUs = 0;
+  uint16_t yawMinusMaxDeltaUs = 0;
+  uint16_t yawPlusMinDriveUs = 0;
+  uint16_t yawMinusMinDriveUs = 0;
   uint16_t pitchMinDriveUs = 20;
   uint16_t servoAttachSettleMs = 350;
   uint16_t axisSwitchCooldownMs = 800;

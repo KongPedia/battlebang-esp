@@ -81,6 +81,8 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     assert "Keep false while power/servo brownout" not in env_example
     assert "TURRET_FLEET_YAW_STOP_US=1500" in env_example
     assert "TURRET_FLEET_PITCH_STOP_US=1500" in env_example
+    assert "TURRET_FLEET_YAW_PLUS_MAX_DELTA_US=0" in env_example
+    assert "TURRET_FLEET_YAW_MINUS_MAX_DELTA_US=0" in env_example
     assert "TURRET_FLEET_AXIS_SWITCH_COOLDOWN_MS=800" in env_example
     assert "def build_config" in provision
     assert "normalize_turret_id" in provision
@@ -88,6 +90,7 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     assert "TURRET_FLEET_MQTT_HOST" in provision
     assert 'default="true"' in provision
     assert '"yaw_stop_us": yaw_stop_us' in provision
+    assert '"yaw_plus_max_delta_us": yaw_plus_max_delta_us' in provision
     assert "def write_serial_line" in provision
     assert "SERIAL_WRITE_CHUNK_BYTES = 96" in provision
     assert "SERIAL_BOOT_SETTLE_S = 4.0" in provision
@@ -200,6 +203,10 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
         'motionConfig["servo_max_delta_us"]',
         'motionConfig["yaw_max_delta_us"]',
         'motionConfig["pitch_max_delta_us"]',
+        'motionConfig["yaw_plus_max_delta_us"]',
+        'motionConfig["yaw_minus_max_delta_us"]',
+        'motionConfig["yaw_plus_min_drive_us"]',
+        'motionConfig["yaw_minus_min_drive_us"]',
         'motionConfig["axis_switch_cooldown_ms"]',
         'motionConfig["command_envelope_ratio"]',
         'motionConfig["yaw_command_min_deg"]',
@@ -335,6 +342,9 @@ def test_pitch_deadband_is_tighter_than_aim_reached_tolerance() -> None:
 
     assert "const float kPitchDeadbandPseudo = 10.0f;" in control
     assert "const float kAimReachedToleranceDeg = 3.0f;" in control
+    assert "const unsigned long kAimStableBeforeCompleteMs = 300;" in control
+    assert 'const bool finiteAimMode = mode_ == "HOME" || mode_ == "TARGET";' in control
+    assert "mode_ = \"WAIT_COMMAND\";" in control
     assert "fabs(pitchFinal - pitchCurrentDeg_) <= kAimReachedToleranceDeg" in control
 
 
@@ -393,6 +403,10 @@ def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
     assert "kSoftLimitRescueDeltaUs" in control
     assert "yaw_invert_motor" in control
     assert "leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg)" in control
+    assert "Seed the intermediate setpoint immediately" in control
+    assert "yawTargetDeg_ = leadToward(yawCurrentDeg_, yawGoalDeg_, kTargetYawLeadDeg);" in control
+    assert "pitchTargetDeg_ = leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg);" in control
+    assert "targetSlewActive_ = fabs(yawTargetDeg_ - yawGoalDeg_) > 0.01f ||" in control
     assert "config_.pitchMaxDeg" in control
     assert "targetSlewActive_" in control
     assert "pitch safety guard" in control
@@ -1283,6 +1297,34 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert '"recover"' in helper
 
 
+def test_yaw_drive_can_be_tuned_asymmetrically_per_pwm_direction() -> None:
+    config_h = read("src/turret_fleet/config/runtime_config.h")
+    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    helper = read("scripts/turret_fleet/mqtt_command.py")
+
+    for field in [
+        "yawPlusMaxDeltaUs",
+        "yawMinusMaxDeltaUs",
+        "yawPlusMinDriveUs",
+        "yawMinusMinDriveUs",
+    ]:
+        assert field in config_h
+    for key in [
+        'motion["yaw_plus_max_delta_us"]',
+        'motion["yaw_minus_max_delta_us"]',
+        'motion["yaw_plus_min_drive_us"]',
+        'motion["yaw_minus_min_drive_us"]',
+    ]:
+        assert key in config_cpp
+    assert "plusPwmDirection = output < 0.0f" in control
+    assert "stopUs + delta" in control
+    assert "config_.yawPlusMaxDeltaUs > 0" in control
+    assert "config_.yawMinusMaxDeltaUs > 0" in control
+    assert '"--yaw-plus-max-delta-us"' in helper
+    assert '"--yaw-minus-min-drive-us"' in helper
+
+
 def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
     main = read("src/turret_fleet/main.cpp")
     mqtt = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
@@ -1398,6 +1440,8 @@ def test_fleet_allows_only_inward_yaw_recovery_from_soft_limit() -> None:
     assert "yawLowOutside && clampedYawDeg_ > yawCurrentDeg_" in control
     assert "yawHighOutside && clampedYawDeg_ < yawCurrentDeg_" in control
     assert "yaw inward recovery tracking allowed" in control
+    assert "bootHomeInwardRecoveryAllowed" in control
+    assert "boot home yaw inward recovery enabled" in control
     assert "motionSafetyInhibited_ = !motionInsideSoftWindow();" in control
 
 
@@ -1475,6 +1519,14 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
         "220",
         "--yaw-max-delta-us",
         "60",
+        "--yaw-plus-max-delta-us",
+        "90",
+        "--yaw-minus-max-delta-us",
+        "50",
+        "--yaw-plus-min-drive-us",
+        "70",
+        "--yaw-minus-min-drive-us",
+        "35",
         "--pitch-max-delta-us",
         "40",
         "--yaw-min-deg",
@@ -1502,6 +1554,10 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
     assert payload["motion"]["axis_switch_cooldown_ms"] == 800
     assert payload["motion"]["servo_max_delta_us"] == 220
     assert payload["motion"]["yaw_max_delta_us"] == 60
+    assert payload["motion"]["yaw_plus_max_delta_us"] == 90
+    assert payload["motion"]["yaw_minus_max_delta_us"] == 50
+    assert payload["motion"]["yaw_plus_min_drive_us"] == 70
+    assert payload["motion"]["yaw_minus_min_drive_us"] == 35
     assert payload["motion"]["pitch_max_delta_us"] == 40
     assert payload["motion"]["limits"] == {"yaw_min_deg": -75.0, "yaw_max_deg": 75.0}
     assert payload["motion"]["home"] == {"yaw_deg": 0.0, "pitch_deg": 0.0}

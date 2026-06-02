@@ -54,6 +54,7 @@ const float kKd = 0.03f;
 const float kYawDeadbandPseudo = 10.0f;
 const float kPitchDeadbandPseudo = 10.0f;
 const float kAimReachedToleranceDeg = 3.0f;
+const unsigned long kAimStableBeforeCompleteMs = 300;
 const float kAxisLockReleaseDeg = 5.0f;
 const float kAxisSwitchHysteresisDeg = 3.0f;
 const float kPitchUpPriorityBelowDeg = -35.0f;
@@ -94,7 +95,10 @@ const int kSoftRecoverMaxSteps = 12;
 const int kSoftRecoverMinProgressRaw = 4;
 const int kYawStableSpanRaw = 450;
 const int kPitchStableSpanRaw = 180;
-const int kTrackingYawMaxDeltaUs = 140;
+// turret_4's yaw stage needs more breakaway torque than the original bench
+// cap allowed. Runtime config still controls the normal value, but tracking
+// must not silently clamp a configured 240..320us yaw drive back to 140us.
+const int kTrackingYawMaxDeltaUs = 320;
 const int kTrackingPitchMaxDeltaUs = 160;
 const unsigned long kJogAttachSettleMs = 40;
 const unsigned long kJogStopMs = 20;
@@ -289,7 +293,12 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
   patternState_ = "IDLE";
   resetPidState();
 
-  const bool trackInitialHome = motionAllowed && bootProbeSafe && ensureMotionSafetyForTracking("BOOT_HOME(home_0_0)");
+  const bool bootHomeInwardRecoveryAllowed =
+      motionAllowed && !bootProbeSafe && yawInwardRecoveryAllowed();
+  const bool trackInitialHome =
+      motionAllowed &&
+      (bootProbeSafe || bootHomeInwardRecoveryAllowed) &&
+      ensureMotionSafetyForTracking("BOOT_HOME(home_0_0)");
   if (trackInitialHome) {
     setTrackedTarget(clampedYawDeg_, clampedPitchDeg_);
     mode_ = "HOME";
@@ -317,6 +326,8 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
     lastError_ = "boot home motion inhibited after brownout/fire reset";
     Serial.print("[fleet][motion] ");
     Serial.println(lastError_);
+  } else if (trackInitialHome && bootHomeInwardRecoveryAllowed) {
+    Serial.println("[fleet][motion] boot home yaw inward recovery enabled");
   } else if (!bootProbeSafe && yawTrackingSuppressed_) {
     lastError_ = "boot home yaw inhibited: yaw outside calibrated 150deg safe envelope";
     Serial.print("[fleet][motion] ");
@@ -1267,9 +1278,14 @@ void TurretControl::setTrackedTarget(float yawDeg, float pitchDeg) {
   yawTrackingSuppressed_ = false;
   yawGoalDeg_ = clampYawCommand(yawDeg);
   pitchGoalDeg_ = clampPitchCommand(pitchDeg);
-  yawTargetDeg_ = yawCurrentDeg_;
-  pitchTargetDeg_ = pitchCurrentDeg_;
-  targetSlewActive_ = true;
+  // Seed the intermediate setpoint immediately. Pattern MOVE steps are
+  // started after the loop's normal motion-slew update, so leaving the target
+  // equal to the current feedback for the first cycle can make the pattern
+  // look "in progress" while the motor sees no error and never starts.
+  yawTargetDeg_ = leadToward(yawCurrentDeg_, yawGoalDeg_, kTargetYawLeadDeg);
+  pitchTargetDeg_ = leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg);
+  targetSlewActive_ = fabs(yawTargetDeg_ - yawGoalDeg_) > 0.01f ||
+                      fabs(pitchTargetDeg_ - pitchGoalDeg_) > 0.01f;
   lockedMotionAxis_ = 'N';
 }
 
@@ -1278,8 +1294,8 @@ void TurretControl::setPitchOnlyTrackedTarget(float pitchDeg) {
   yawGoalDeg_ = yawCurrentDeg_;
   yawTargetDeg_ = yawCurrentDeg_;
   pitchGoalDeg_ = clampPitchCommand(pitchDeg);
-  pitchTargetDeg_ = pitchCurrentDeg_;
-  targetSlewActive_ = true;
+  pitchTargetDeg_ = leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg);
+  targetSlewActive_ = fabs(pitchTargetDeg_ - pitchGoalDeg_) > 0.01f;
   lockedMotionAxis_ = 'N';
   yawIntegralPseudo_ = 0.0f;
   yawPrevErrorPseudo_ = 0.0f;
@@ -1410,6 +1426,10 @@ void TurretControl::runPidAxis(Servo& servo,
                                float deadband,
                                float maxDeltaUs,
                                float minDriveUs,
+                               float plusMaxDeltaUs,
+                               float plusMinDriveUs,
+                               float minusMaxDeltaUs,
+                               float minusMinDriveUs,
                                bool invertMotor,
                                int stopUs,
                                float& prevErrorPseudo,
@@ -1430,13 +1450,24 @@ void TurretControl::runPidAxis(Servo& servo,
   integralPseudo = clampf(integralPseudo, -((adcPerDeg == kYawAdcPerDeg) ? kYawILimit : kPitchILimit),
                           ((adcPerDeg == kYawAdcPerDeg) ? kYawILimit : kPitchILimit));
   float output = kKp * errorPseudo + kKi * integralPseudo + kKd * (errorPseudo - prevErrorPseudo);
-  output = clampf(output, -maxDeltaUs, maxDeltaUs);
   prevErrorPseudo = errorPseudo;
 
-  if (fabs(output) < minDriveUs) {
-    output = output >= 0.0f ? minDriveUs : -minDriveUs;
-  }
   if (invertMotor) output = -output;
+
+  // output < 0 maps to stopUs + delta because commandUs = stopUs - output.
+  // Direction overrides are PWM-relative so each turret can compensate for
+  // asymmetric yaw load without guessing clockwise/counter-clockwise labels.
+  const bool plusPwmDirection = output < 0.0f;
+  float directionalMaxDeltaUs = plusPwmDirection ? plusMaxDeltaUs : minusMaxDeltaUs;
+  float directionalMinDriveUs = plusPwmDirection ? plusMinDriveUs : minusMinDriveUs;
+  if (directionalMaxDeltaUs <= 0.0f) directionalMaxDeltaUs = maxDeltaUs;
+  if (directionalMinDriveUs <= 0.0f) directionalMinDriveUs = minDriveUs;
+  if (directionalMinDriveUs > directionalMaxDeltaUs) directionalMinDriveUs = directionalMaxDeltaUs;
+
+  output = clampf(output, -directionalMaxDeltaUs, directionalMaxDeltaUs);
+  if (fabs(output) < directionalMinDriveUs) {
+    output = plusPwmDirection ? -directionalMinDriveUs : directionalMinDriveUs;
+  }
 
   const int commandUs = clampi(static_cast<int>(stopUs - output), 1000, 2000);
   servo.writeMicroseconds(commandUs);
@@ -1867,13 +1898,37 @@ void TurretControl::loop() {
             if (yawOutsideSoft && yawMaxDeltaInt > kSoftLimitRescueDeltaUs) {
               yawMaxDeltaInt = kSoftLimitRescueDeltaUs;
             }
+            int yawPlusMaxDeltaInt = config_.yawPlusMaxDeltaUs > 0
+                                        ? config_.yawPlusMaxDeltaUs
+                                        : yawMaxDeltaInt;
+            int yawMinusMaxDeltaInt = config_.yawMinusMaxDeltaUs > 0
+                                         ? config_.yawMinusMaxDeltaUs
+                                         : yawMaxDeltaInt;
+            if (yawPlusMaxDeltaInt > kTrackingYawMaxDeltaUs) yawPlusMaxDeltaInt = kTrackingYawMaxDeltaUs;
+            if (yawMinusMaxDeltaInt > kTrackingYawMaxDeltaUs) yawMinusMaxDeltaInt = kTrackingYawMaxDeltaUs;
+            if (yawOutsideSoft && yawPlusMaxDeltaInt > kSoftLimitRescueDeltaUs) {
+              yawPlusMaxDeltaInt = kSoftLimitRescueDeltaUs;
+            }
+            if (yawOutsideSoft && yawMinusMaxDeltaInt > kSoftLimitRescueDeltaUs) {
+              yawMinusMaxDeltaInt = kSoftLimitRescueDeltaUs;
+            }
             const int yawMinDriveInt = config_.yawMinDriveUs > yawMaxDeltaInt
                                          ? yawMaxDeltaInt
                                          : config_.yawMinDriveUs;
+            int yawPlusMinDriveInt = config_.yawPlusMinDriveUs > 0
+                                        ? config_.yawPlusMinDriveUs
+                                        : yawMinDriveInt;
+            int yawMinusMinDriveInt = config_.yawMinusMinDriveUs > 0
+                                         ? config_.yawMinusMinDriveUs
+                                         : yawMinDriveInt;
+            if (yawPlusMinDriveInt > yawPlusMaxDeltaInt) yawPlusMinDriveInt = yawPlusMaxDeltaInt;
+            if (yawMinusMinDriveInt > yawMinusMaxDeltaInt) yawMinusMinDriveInt = yawMinusMaxDeltaInt;
             const float yawMaxDeltaUs = static_cast<float>(yawMaxDeltaInt);
             const float yawMinDriveUs = static_cast<float>(yawMinDriveInt);
             runPidAxis(yawServo_, yawCurrentDeg_, yawTargetDeg_, kYawAdcPerDeg,
                        kYawDeadbandPseudo, yawMaxDeltaUs, yawMinDriveUs,
+                       static_cast<float>(yawPlusMaxDeltaInt), static_cast<float>(yawPlusMinDriveInt),
+                       static_cast<float>(yawMinusMaxDeltaInt), static_cast<float>(yawMinusMinDriveInt),
                        yawInvertMotor_, config_.yawStopUs,
                        yawPrevErrorPseudo_, yawIntegralPseudo_, yawLastCommandUs_);
           }
@@ -1909,6 +1964,8 @@ void TurretControl::loop() {
             const float pitchMinDriveUs = static_cast<float>(pitchMinDriveInt);
             runPidAxis(pitchServo_, pitchCurrentDeg_, pitchTargetDeg_, kPitchAdcPerDeg,
                        kPitchDeadbandPseudo, pitchMaxDeltaUs, pitchMinDriveUs,
+                       pitchMaxDeltaUs, pitchMinDriveUs,
+                       pitchMaxDeltaUs, pitchMinDriveUs,
                        pitchInvertMotor_, config_.pitchStopUs,
                        pitchPrevErrorPseudo_, pitchIntegralPseudo_, pitchLastCommandUs_);
           }
@@ -1921,8 +1978,18 @@ void TurretControl::loop() {
     }
   }
 
-  if (mode_ == "TARGET" && aimReached()) {
+  const bool finiteAimMode = mode_ == "HOME" || mode_ == "TARGET";
+  if (finiteAimMode && aimReached()) {
     if (aimReachedSinceMs_ == 0) aimReachedSinceMs_ = now;
+    if (now - aimReachedSinceMs_ >= kAimStableBeforeCompleteMs) {
+      stopMotionOutputs();
+      resetPidState();
+      selectedMotionAxis_ = 'N';
+      lockedMotionAxis_ = 'N';
+      targetSlewActive_ = false;
+      mode_ = "WAIT_COMMAND";
+      lastError_ = "";
+    }
   } else {
     aimReachedSinceMs_ = 0;
   }
@@ -3241,6 +3308,10 @@ void TurretControl::appendStatus(JsonObject doc) const {
   motionConfig["yaw_max_delta_us"] = config_.yawMaxDeltaUs;
   motionConfig["pitch_max_delta_us"] = config_.pitchMaxDeltaUs;
   motionConfig["yaw_min_drive_us"] = config_.yawMinDriveUs;
+  motionConfig["yaw_plus_max_delta_us"] = config_.yawPlusMaxDeltaUs;
+  motionConfig["yaw_minus_max_delta_us"] = config_.yawMinusMaxDeltaUs;
+  motionConfig["yaw_plus_min_drive_us"] = config_.yawPlusMinDriveUs;
+  motionConfig["yaw_minus_min_drive_us"] = config_.yawMinusMinDriveUs;
   motionConfig["pitch_min_drive_us"] = config_.pitchMinDriveUs;
   motionConfig["servo_attach_settle_ms"] = config_.servoAttachSettleMs;
   motionConfig["axis_switch_cooldown_ms"] = config_.axisSwitchCooldownMs;

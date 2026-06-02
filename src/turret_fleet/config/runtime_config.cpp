@@ -306,6 +306,10 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
     next.yawMaxDeltaUs = motion["yaw_max_delta_us"] | next.yawMaxDeltaUs;
     next.pitchMaxDeltaUs = motion["pitch_max_delta_us"] | next.pitchMaxDeltaUs;
     next.yawMinDriveUs = motion["yaw_min_drive_us"] | next.yawMinDriveUs;
+    next.yawPlusMaxDeltaUs = motion["yaw_plus_max_delta_us"] | next.yawPlusMaxDeltaUs;
+    next.yawMinusMaxDeltaUs = motion["yaw_minus_max_delta_us"] | next.yawMinusMaxDeltaUs;
+    next.yawPlusMinDriveUs = motion["yaw_plus_min_drive_us"] | next.yawPlusMinDriveUs;
+    next.yawMinusMinDriveUs = motion["yaw_minus_min_drive_us"] | next.yawMinusMinDriveUs;
     next.pitchMinDriveUs = motion["pitch_min_drive_us"] | next.pitchMinDriveUs;
     next.servoAttachSettleMs = motion["servo_attach_settle_ms"] | next.servoAttachSettleMs;
     next.axisSwitchCooldownMs = motion["axis_switch_cooldown_ms"] | next.axisSwitchCooldownMs;
@@ -323,6 +327,10 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
       next.yawMaxDeltaUs = servo["yaw_max_delta_us"] | next.yawMaxDeltaUs;
       next.pitchMaxDeltaUs = servo["pitch_max_delta_us"] | next.pitchMaxDeltaUs;
       next.yawMinDriveUs = servo["yaw_min_drive_us"] | next.yawMinDriveUs;
+      next.yawPlusMaxDeltaUs = servo["yaw_plus_max_delta_us"] | next.yawPlusMaxDeltaUs;
+      next.yawMinusMaxDeltaUs = servo["yaw_minus_max_delta_us"] | next.yawMinusMaxDeltaUs;
+      next.yawPlusMinDriveUs = servo["yaw_plus_min_drive_us"] | next.yawPlusMinDriveUs;
+      next.yawMinusMinDriveUs = servo["yaw_minus_min_drive_us"] | next.yawMinusMinDriveUs;
       next.pitchMinDriveUs = servo["pitch_min_drive_us"] | next.pitchMinDriveUs;
       next.servoAttachSettleMs = servo["attach_settle_ms"] | next.servoAttachSettleMs;
       next.axisSwitchCooldownMs = servo["axis_switch_cooldown_ms"] | next.axisSwitchCooldownMs;
@@ -556,6 +564,10 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   motion["yaw_max_delta_us"] = config.yawMaxDeltaUs;
   motion["pitch_max_delta_us"] = config.pitchMaxDeltaUs;
   motion["yaw_min_drive_us"] = config.yawMinDriveUs;
+  motion["yaw_plus_max_delta_us"] = config.yawPlusMaxDeltaUs;
+  motion["yaw_minus_max_delta_us"] = config.yawMinusMaxDeltaUs;
+  motion["yaw_plus_min_drive_us"] = config.yawPlusMinDriveUs;
+  motion["yaw_minus_min_drive_us"] = config.yawMinusMinDriveUs;
   motion["pitch_min_drive_us"] = config.pitchMinDriveUs;
   motion["servo_attach_settle_ms"] = config.servoAttachSettleMs;
   motion["axis_switch_cooldown_ms"] = config.axisSwitchCooldownMs;

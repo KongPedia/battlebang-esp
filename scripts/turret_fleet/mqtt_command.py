@@ -285,6 +285,14 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
             motion["pitch_max_delta_us"] = args.pitch_max_delta_us
         if args.yaw_min_drive_us is not None:
             motion["yaw_min_drive_us"] = args.yaw_min_drive_us
+        if args.yaw_plus_max_delta_us is not None:
+            motion["yaw_plus_max_delta_us"] = args.yaw_plus_max_delta_us
+        if args.yaw_minus_max_delta_us is not None:
+            motion["yaw_minus_max_delta_us"] = args.yaw_minus_max_delta_us
+        if args.yaw_plus_min_drive_us is not None:
+            motion["yaw_plus_min_drive_us"] = args.yaw_plus_min_drive_us
+        if args.yaw_minus_min_drive_us is not None:
+            motion["yaw_minus_min_drive_us"] = args.yaw_minus_min_drive_us
         if args.pitch_min_drive_us is not None:
             motion["pitch_min_drive_us"] = args.pitch_min_drive_us
         if args.servo_attach_settle_ms is not None:
@@ -611,6 +619,10 @@ def build_parser() -> argparse.ArgumentParser:
     cfg.add_argument("--yaw-max-delta-us", type=int, help="max yaw PWM delta from stop for closed-loop drive")
     cfg.add_argument("--pitch-max-delta-us", type=int, help="max pitch PWM delta from stop for closed-loop drive")
     cfg.add_argument("--yaw-min-drive-us", type=int, help="minimum yaw PWM delta once outside deadband")
+    cfg.add_argument("--yaw-plus-max-delta-us", type=int, help="optional max yaw PWM delta for yaw_stop_us + delta direction")
+    cfg.add_argument("--yaw-minus-max-delta-us", type=int, help="optional max yaw PWM delta for yaw_stop_us - delta direction")
+    cfg.add_argument("--yaw-plus-min-drive-us", type=int, help="optional minimum yaw PWM delta for yaw_stop_us + delta direction")
+    cfg.add_argument("--yaw-minus-min-drive-us", type=int, help="optional minimum yaw PWM delta for yaw_stop_us - delta direction")
     cfg.add_argument("--pitch-min-drive-us", type=int, help="minimum pitch PWM delta once outside deadband")
     cfg.add_argument("--servo-attach-settle-ms", type=int, help="hold neutral PWM after attaching an axis before driving")
     cfg.add_argument("--axis-switch-cooldown-ms", type=int, help="dead time after detaching one axis before attaching the other")
