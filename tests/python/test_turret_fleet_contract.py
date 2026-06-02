@@ -384,7 +384,7 @@ def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
     assert "soft-window recovery" in control
     assert "motionReadingsStableInSoftWindow" in control
     assert "feedback stability source=" in control
-    assert "kTrackingYawMaxDeltaUs" in control
+    assert "const int kTrackingYawMaxDeltaUs = 450;" in control
     assert "kYawSoftRecoverDeltaUs" in control
     assert "kPitchSoftRecoverDeltaUs" in control
     assert "kYawSoftRecoverDriveMs" in control
@@ -551,7 +551,7 @@ def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> 
     assert set(presets) == set(examples)
     assert not (ROOT / "src/turret_fleet/examples/config.patterns.turret_2.json").exists()
     expected_move_timeout_ms = {
-        "lane_sweep": 10000,
+        "lane_sweep": 20000,
         "two_point_bounce": 60000,
         "telegraph_column": 10000,
     }
@@ -560,14 +560,14 @@ def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> 
         for point in preset["points"]:
             assert point["x"] == 0.0
     assert presets["lane_sweep"]["dwell_ms"] == 500
-    assert presets["lane_sweep"]["fire_ms"] == 1000
+    assert presets["lane_sweep"]["fire_ms"] == 2000
     assert presets["two_point_bounce"]["dwell_ms"] == 1000
-    assert presets["two_point_bounce"]["fire_ms"] == 1000
+    assert presets["two_point_bounce"]["fire_ms"] == 1500
     assert presets["telegraph_column"]["dwell_ms"] == 1000
-    assert presets["telegraph_column"]["fire_ms"] == 1000
+    assert presets["telegraph_column"]["fire_ms"] == 1500
     assert presets["lane_sweep"]["points"] == [
-        {"x": 0.0, "y": 1.0, "z": -0.6},
-        {"x": 0.0, "y": -0.75, "z": -0.6},
+        {"x": 0.0, "y": 2.0, "z": -1.6},
+        {"x": 0.0, "y": -2.0, "z": -1.6},
     ]
     assert presets["lane_sweep"]["loop"] == 1
     assert presets["two_point_bounce"]["points"] == [
@@ -594,9 +594,9 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         config = json.loads(read(f"src/turret_fleet/profiles/{turret_id}.json"))
         presets = json.loads(read(f"src/turret_fleet/pattern_presets/{turret_id}.json"))
         expected_limits = {
-            "yaw_min_deg": -55.0,
-            "yaw_max_deg": 35.0,
-            "pitch_min_deg": -80.0 if turret_id == "turret_3" else -45.0,
+            "yaw_min_deg": -50.0,
+            "yaw_max_deg": 50.0,
+            "pitch_min_deg": -60.0,
             "pitch_max_deg": 70.0,
         }
 
@@ -613,16 +613,40 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         assert config["motion"]["home"] == {"yaw_deg": 0.0, "pitch_deg": 0.0}
         assert config["motion"]["axis_divergence_guard_ms"] == 3000
         assert config["motion"]["axis_divergence_margin_deg"] == 10.0
+        assert config["motion"]["pitch_max_delta_us"] == 140
+        assert config["motion"]["pitch_min_drive_us"] == 90
+        for key in (
+            "yaw_plus_max_delta_us",
+            "yaw_minus_max_delta_us",
+            "yaw_plus_min_drive_us",
+            "yaw_minus_min_drive_us",
+        ):
+            assert key in config["motion"]
+        if layout["side"].endswith("right"):
+            assert config["motion"]["yaw_plus_max_delta_us"] == 420
+            assert config["motion"]["yaw_minus_max_delta_us"] == 420
+            assert config["motion"]["yaw_plus_min_drive_us"] == 400
+            assert config["motion"]["yaw_minus_min_drive_us"] == 400
+        else:
+            assert config["motion"]["yaw_plus_max_delta_us"] == config["motion"]["yaw_max_delta_us"]
+            assert config["motion"]["yaw_minus_max_delta_us"] == config["motion"]["yaw_max_delta_us"]
+            assert config["motion"]["yaw_plus_min_drive_us"] == config["motion"]["yaw_min_drive_us"]
+            assert config["motion"]["yaw_minus_min_drive_us"] == config["motion"]["yaw_min_drive_us"]
         assert "wifi" not in config
         assert "host" not in config.get("mqtt", {})
         assert "password" not in config.get("mqtt", {})
         assert set(presets["presets"]) == {"lane_sweep", "two_point_bounce", "telegraph_column"}
-        for preset in presets["presets"].values():
-            assert 100 <= preset["fire_ms"] <= 5000
+        for preset_id, preset in presets["presets"].items():
+            assert preset["fire_ms"] == (2000 if preset_id == "lane_sweep" else 1500)
             for point in preset["points"]:
                 assert point["x"] == 0.0
-        if turret_id == "turret_3":
-            assert [point["z"] for point in presets["presets"]["lane_sweep"]["points"]] == [-2.6, -2.6]
+        assert presets["presets"]["lane_sweep"]["move_timeout_ms"] == 20000
+        assert presets["presets"]["lane_sweep"]["dwell_ms"] == 500
+        assert presets["presets"]["lane_sweep"]["fire_ms"] == 2000
+        assert presets["presets"]["lane_sweep"]["points"] == [
+            {"x": 0.0, "y": 2.0, "z": -1.6},
+            {"x": 0.0, "y": -2.0, "z": -1.6},
+        ]
 
 
 def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
@@ -1129,9 +1153,23 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
         "z_cm": 134.5,
         "default_target_z_cm": 70.0,
     }
+    assert full_payload["motion"]["pitch_max_delta_us"] == 140
+    assert full_payload["motion"]["pitch_min_drive_us"] == 90
+    assert full_payload["motion"]["limits"] == {
+        "yaw_min_deg": -50.0,
+        "yaw_max_deg": 50.0,
+        "pitch_min_deg": -60.0,
+        "pitch_max_deg": 70.0,
+    }
+    assert full_payload["motion"]["yaw_plus_max_delta_us"] == 420
+    assert full_payload["motion"]["yaw_minus_max_delta_us"] == 420
+    assert full_payload["motion"]["yaw_plus_min_drive_us"] == 400
+    assert full_payload["motion"]["yaw_minus_min_drive_us"] == 400
+    assert full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] == 500
+    assert full_payload["patterns"]["presets"]["lane_sweep"]["fire_ms"] == 2000
     assert full_payload["patterns"]["presets"]["lane_sweep"]["points"] == [
-        {"x": 0.0, "y": 1.0, "z": -0.6},
-        {"x": 0.0, "y": -0.75, "z": -0.6},
+        {"x": 0.0, "y": 2.0, "z": -1.6},
+        {"x": 0.0, "y": -2.0, "z": -1.6},
     ]
     assert full_payload["patterns"]["presets"]["telegraph_column"]["random"] is True
     assert full_payload["patterns"]["presets"]["telegraph_column"]["points"] == [
@@ -1182,9 +1220,9 @@ def test_fleet_provision_auto_loads_per_turret_config_and_patterns(tmp_path: Pat
         "default_target_z_cm": 70.0,
     }
     assert payload["motion"]["limits"] == {
-        "yaw_min_deg": -55.0,
-        "yaw_max_deg": 35.0,
-        "pitch_min_deg": -45.0,
+        "yaw_min_deg": -50.0,
+        "yaw_max_deg": 50.0,
+        "pitch_min_deg": -60.0,
         "pitch_max_deg": 70.0,
     }
     assert payload["wifi"] == {"ssid": "TEST_WIFI", "password": "***"}
@@ -1293,6 +1331,8 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "command rejected after brownout lockout" in control
     assert "fire rejected after brownout lockout" in control
     assert "recover rejected: feedback outside stable soft window" in control
+    assert "brownout recover soft-window recovery requested" in control
+    assert "recoverMotionSoftWindow(source)" in control
     assert 'motion["brownout_lockout"] = brownoutLockoutActive_;' in control
     assert '"recover"' in helper
 
@@ -1317,6 +1357,9 @@ def test_yaw_drive_can_be_tuned_asymmetrically_per_pwm_direction() -> None:
         'motion["yaw_minus_min_drive_us"]',
     ]:
         assert key in config_cpp
+    assert "kMotionYawDeltaMaxUs = 450" in config_cpp
+    assert "effectiveYawPlusMaxDeltaUs" in config_cpp
+    assert "invalidOptionalYawMinDrive(next.yawPlusMinDriveUs, effectiveYawPlusMaxDeltaUs)" in config_cpp
     assert "plusPwmDirection = output < 0.0f" in control
     assert "stopUs + delta" in control
     assert "config_.yawPlusMaxDeltaUs > 0" in control

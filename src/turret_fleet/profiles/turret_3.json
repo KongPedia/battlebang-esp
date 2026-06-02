@@ -33,18 +33,18 @@
     "yaw_stop_us": 1500,
     "pitch_stop_us": 1500,
     "servo_max_delta_us": 220,
-    "yaw_max_delta_us": 160,
-    "pitch_max_delta_us": 200,
-    "yaw_min_drive_us": 120,
-    "pitch_min_drive_us": 130,
+    "yaw_max_delta_us": 220,
+    "pitch_max_delta_us": 140,
+    "yaw_min_drive_us": 160,
+    "pitch_min_drive_us": 90,
     "servo_attach_settle_ms": 200,
     "axis_switch_cooldown_ms": 500,
     "axis_divergence_guard_ms": 3000,
     "axis_divergence_margin_deg": 10.0,
     "limits": {
-      "yaw_min_deg": -55.0,
-      "yaw_max_deg": 35.0,
-      "pitch_min_deg": -80.0,
+      "yaw_min_deg": -50.0,
+      "yaw_max_deg": 50.0,
+      "pitch_min_deg": -60.0,
       "pitch_max_deg": 70.0
     },
     "home": {
@@ -61,7 +61,11 @@
     },
     "dead": {
       "pitch_deg": 45.0
-    }
+    },
+    "yaw_plus_max_delta_us": 220,
+    "yaw_minus_max_delta_us": 220,
+    "yaw_plus_min_drive_us": 160,
+    "yaw_minus_min_drive_us": 160
   },
   "fire": {
     "esc_run_us": 1700,

@@ -97,8 +97,8 @@ const int kYawStableSpanRaw = 450;
 const int kPitchStableSpanRaw = 180;
 // turret_4's yaw stage needs more breakaway torque than the original bench
 // cap allowed. Runtime config still controls the normal value, but tracking
-// must not silently clamp a configured 240..320us yaw drive back to 140us.
-const int kTrackingYawMaxDeltaUs = 320;
+// must not silently clamp a configured 1900us-class yaw drive back to 1800us.
+const int kTrackingYawMaxDeltaUs = 450;
 const int kTrackingPitchMaxDeltaUs = 160;
 const unsigned long kJogAttachSettleMs = 40;
 const unsigned long kJogStopMs = 20;
@@ -726,6 +726,18 @@ bool TurretControl::clearBrownoutLockoutIfSafe(const char* source) {
     Serial.print("[fleet][safety] recover ignored; brownout lockout already clear from ");
     Serial.println(source);
     return true;
+  }
+
+  if (!motionInsideSoftWindow()) {
+    Serial.print("[fleet][safety] brownout recover soft-window recovery requested by ");
+    Serial.print(source);
+    Serial.print(" yaw_raw=");
+    Serial.print(yawRawCurrent_);
+    Serial.print(" pitch_raw=");
+    Serial.println(pitchRawCurrent_);
+    recoverMotionSoftWindow(source);
+    stopMotionOutputs();
+    updateCurrentAngles();
   }
 
   if (!motionInsideSoftWindow() || !motionReadingsStableInSoftWindow(source)) {

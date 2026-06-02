@@ -22,6 +22,9 @@ const unsigned long kPatternPresetMaxMoveTimeoutMs = 60000;
 const unsigned long kPatternPresetMaxFireMs = 5000;
 const unsigned long kPatternPresetMaxPhaseOffsetMs = 5000;
 const unsigned long kPatternPresetMaxLoopCount = 3;
+const uint16_t kMotionServoDeltaMinUs = 20;
+const uint16_t kMotionServoDeltaMaxUs = 400;
+const uint16_t kMotionYawDeltaMaxUs = 450;
 
 String getStringOr(JsonVariantConst value, const String& fallback) {
   if (value.isNull()) return fallback;
@@ -102,6 +105,14 @@ bool validateOptionalUnsigned(JsonObjectConst object,
     return false;
   }
   return true;
+}
+
+bool invalidOptionalYawDelta(uint16_t value) {
+  return value != 0 && (value < kMotionServoDeltaMinUs || value > kMotionYawDeltaMaxUs);
+}
+
+bool invalidOptionalYawMinDrive(uint16_t minDrive, uint16_t maxDelta) {
+  return minDrive != 0 && (minDrive < kMotionServoDeltaMinUs || minDrive > maxDelta);
 }
 
 bool validatePatternPresetObject(const char* id,
@@ -471,11 +482,22 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
     error = "motion servo stop pulse widths must be 1400..1600us";
     return false;
   }
-  if (next.servoMaxDeltaUs < 20 || next.servoMaxDeltaUs > 400 ||
-      next.yawMaxDeltaUs < 20 || next.yawMaxDeltaUs > 400 ||
-      next.pitchMaxDeltaUs < 20 || next.pitchMaxDeltaUs > 400 ||
+  const uint16_t effectiveYawPlusMaxDeltaUs =
+      next.yawPlusMaxDeltaUs > 0 ? next.yawPlusMaxDeltaUs : next.yawMaxDeltaUs;
+  const uint16_t effectiveYawMinusMaxDeltaUs =
+      next.yawMinusMaxDeltaUs > 0 ? next.yawMinusMaxDeltaUs : next.yawMaxDeltaUs;
+  if (next.servoMaxDeltaUs < kMotionServoDeltaMinUs ||
+      next.servoMaxDeltaUs > kMotionServoDeltaMaxUs ||
+      next.yawMaxDeltaUs < kMotionServoDeltaMinUs ||
+      next.yawMaxDeltaUs > kMotionYawDeltaMaxUs ||
+      next.pitchMaxDeltaUs < kMotionServoDeltaMinUs ||
+      next.pitchMaxDeltaUs > kMotionServoDeltaMaxUs ||
       next.yawMinDriveUs > next.yawMaxDeltaUs ||
       next.pitchMinDriveUs > next.pitchMaxDeltaUs ||
+      invalidOptionalYawDelta(next.yawPlusMaxDeltaUs) ||
+      invalidOptionalYawDelta(next.yawMinusMaxDeltaUs) ||
+      invalidOptionalYawMinDrive(next.yawPlusMinDriveUs, effectiveYawPlusMaxDeltaUs) ||
+      invalidOptionalYawMinDrive(next.yawMinusMinDriveUs, effectiveYawMinusMaxDeltaUs) ||
       next.servoAttachSettleMs > 3000 ||
       next.axisSwitchCooldownMs > 5000 ||
       next.axisDivergenceGuardMs > 10000 ||
