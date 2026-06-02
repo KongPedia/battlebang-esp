@@ -5,19 +5,19 @@
       "ping_pong": true,
       "phase_offset_ms": 0,
       "move_timeout_ms": 20000,
-      "dwell_ms": 500,
+      "dwell_ms": 2000,
       "fire_ms": 2000,
       "return_to": "wait_command",
       "points": [
         {
           "x": 0.0,
           "y": 2.0,
-          "z": -1.6
+          "z": -1.5
         },
         {
           "x": 0.0,
           "y": -2.0,
-          "z": -1.6
+          "z": -1.5
         }
       ]
     },

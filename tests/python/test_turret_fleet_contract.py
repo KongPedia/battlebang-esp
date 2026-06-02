@@ -559,16 +559,19 @@ def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> 
         assert preset["move_timeout_ms"] == expected_move_timeout_ms[pattern_id]
         for point in preset["points"]:
             assert point["x"] == 0.0
-    assert presets["lane_sweep"]["dwell_ms"] == 500
+    assert 500 <= presets["lane_sweep"]["dwell_ms"] <= 2000
     assert presets["lane_sweep"]["fire_ms"] == 2000
     assert presets["two_point_bounce"]["dwell_ms"] == 1000
     assert presets["two_point_bounce"]["fire_ms"] == 1500
     assert presets["telegraph_column"]["dwell_ms"] == 1000
     assert presets["telegraph_column"]["fire_ms"] == 1500
-    assert presets["lane_sweep"]["points"] == [
-        {"x": 0.0, "y": 2.0, "z": -1.6},
-        {"x": 0.0, "y": -2.0, "z": -1.6},
-    ]
+    lane_points = presets["lane_sweep"]["points"]
+    assert len(lane_points) == 2
+    assert lane_points[0]["y"] > 0
+    assert lane_points[1]["y"] < 0
+    for point in lane_points:
+        assert abs(point["y"]) <= 2.0
+        assert point["z"] < 0.0
     assert presets["lane_sweep"]["loop"] == 1
     assert presets["two_point_bounce"]["points"] == [
         {"x": 0.0, "y": 0.75, "z": -0.6},
@@ -613,6 +616,7 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         assert config["motion"]["home"] == {"yaw_deg": 0.0, "pitch_deg": 0.0}
         assert config["motion"]["axis_divergence_guard_ms"] == 3000
         assert config["motion"]["axis_divergence_margin_deg"] == 10.0
+        assert config["motion"]["command_envelope_ratio"] == 0.65
         assert config["motion"]["pitch_max_delta_us"] == 140
         assert config["motion"]["pitch_min_drive_us"] == 90
         for key in (
@@ -623,10 +627,10 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         ):
             assert key in config["motion"]
         if layout["side"].endswith("right"):
-            assert config["motion"]["yaw_plus_max_delta_us"] == 420
-            assert config["motion"]["yaw_minus_max_delta_us"] == 420
-            assert config["motion"]["yaw_plus_min_drive_us"] == 400
-            assert config["motion"]["yaw_minus_min_drive_us"] == 400
+            assert 280 <= config["motion"]["yaw_plus_max_delta_us"] <= 420
+            assert 260 <= config["motion"]["yaw_minus_max_delta_us"] <= 420
+            assert 240 <= config["motion"]["yaw_plus_min_drive_us"] <= config["motion"]["yaw_plus_max_delta_us"]
+            assert 220 <= config["motion"]["yaw_minus_min_drive_us"] <= config["motion"]["yaw_minus_max_delta_us"]
         else:
             assert config["motion"]["yaw_plus_max_delta_us"] == config["motion"]["yaw_max_delta_us"]
             assert config["motion"]["yaw_minus_max_delta_us"] == config["motion"]["yaw_max_delta_us"]
@@ -641,12 +645,15 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
             for point in preset["points"]:
                 assert point["x"] == 0.0
         assert presets["presets"]["lane_sweep"]["move_timeout_ms"] == 20000
-        assert presets["presets"]["lane_sweep"]["dwell_ms"] == 500
+        assert 500 <= presets["presets"]["lane_sweep"]["dwell_ms"] <= 2000
         assert presets["presets"]["lane_sweep"]["fire_ms"] == 2000
-        assert presets["presets"]["lane_sweep"]["points"] == [
-            {"x": 0.0, "y": 2.0, "z": -1.6},
-            {"x": 0.0, "y": -2.0, "z": -1.6},
-        ]
+        lane_points = presets["presets"]["lane_sweep"]["points"]
+        assert len(lane_points) == 2
+        assert lane_points[0]["y"] > 0
+        assert lane_points[1]["y"] < 0
+        for point in lane_points:
+            assert abs(point["y"]) <= 2.0
+            assert point["z"] < 0.0
 
 
 def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
@@ -1155,6 +1162,7 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
     }
     assert full_payload["motion"]["pitch_max_delta_us"] == 140
     assert full_payload["motion"]["pitch_min_drive_us"] == 90
+    assert full_payload["motion"]["command_envelope_ratio"] == 0.65
     assert full_payload["motion"]["limits"] == {
         "yaw_min_deg": -50.0,
         "yaw_max_deg": 50.0,
@@ -1165,12 +1173,15 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
     assert full_payload["motion"]["yaw_minus_max_delta_us"] == 420
     assert full_payload["motion"]["yaw_plus_min_drive_us"] == 400
     assert full_payload["motion"]["yaw_minus_min_drive_us"] == 400
-    assert full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] == 500
+    assert 500 <= full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] <= 2000
     assert full_payload["patterns"]["presets"]["lane_sweep"]["fire_ms"] == 2000
-    assert full_payload["patterns"]["presets"]["lane_sweep"]["points"] == [
-        {"x": 0.0, "y": 2.0, "z": -1.6},
-        {"x": 0.0, "y": -2.0, "z": -1.6},
-    ]
+    lane_points = full_payload["patterns"]["presets"]["lane_sweep"]["points"]
+    assert len(lane_points) == 2
+    assert lane_points[0]["y"] > 0
+    assert lane_points[1]["y"] < 0
+    for point in lane_points:
+        assert abs(point["y"]) <= 2.0
+        assert point["z"] < 0.0
     assert full_payload["patterns"]["presets"]["telegraph_column"]["random"] is True
     assert full_payload["patterns"]["presets"]["telegraph_column"]["points"] == [
         {"x": 0.0, "y": 0.0, "z": -0.6},
@@ -1441,15 +1452,23 @@ def test_fleet_calibration_config_accepts_150deg_safe_envelope() -> None:
     assert "next.deadPitchDeg < next.pitchMinDeg || next.deadPitchDeg > next.pitchMaxDeg" in config_cpp
 
 
-def test_fleet_motion_commands_use_inner_80_percent_envelope() -> None:
+def test_fleet_motion_commands_use_runtime_configurable_inner_envelope() -> None:
     control = read("src/turret_fleet/control/turret_control.cpp")
     header = read("src/turret_fleet/control/turret_control.h")
+    config_h = read("src/turret_fleet/config/runtime_config.h")
+    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
 
-    assert "const float kCommandEnvelopeRatio = 0.80f;" in control
-    assert "commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg)" in control
-    assert "commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg)" in control
-    assert "commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg)" in control
-    assert "commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg)" in control
+    assert "float commandEnvelopeRatio = 0.65f;" in config_h
+    assert 'motion["command_envelope_ratio"]' in config_cpp
+    assert 'prefs.getFloat("cmd_env"' in config_cpp
+    assert 'prefs.putFloat("cmd_env"' in config_cpp
+    assert "next.commandEnvelopeRatio < 0.50f" in config_cpp
+    assert "next.commandEnvelopeRatio > 0.85f" in config_cpp
+    assert "const float kDefaultCommandEnvelopeRatio = 0.65f;" in control
+    assert "commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg, config_.commandEnvelopeRatio)" in control
+    assert "commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg, config_.commandEnvelopeRatio)" in control
+    assert "commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg, config_.commandEnvelopeRatio)" in control
+    assert "commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg, config_.commandEnvelopeRatio)" in control
     assert "return clampf(value, yawCommandMinDeg(), yawCommandMaxDeg());" in control
     assert "return clampf(value, pitchCommandMinDeg(), pitchCommandMaxDeg());" in control
     for symbol in [

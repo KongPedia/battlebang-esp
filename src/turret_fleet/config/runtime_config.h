@@ -78,6 +78,10 @@ struct RuntimeConfig {
   uint16_t axisSwitchCooldownMs = 800;
   uint16_t axisDivergenceGuardMs = 3000;
   float axisDivergenceMarginDeg = 20.0f;
+  // Inner command envelope ratio relative to configured motion limits.
+  // Keep commands away from the physical/sensor soft edge so offline hardware
+  // inertia and feedback lag do not turn a valid setpoint into an overshoot.
+  float commandEnvelopeRatio = 0.65f;
 
   uint16_t fireEscRunUs = 1700;
   uint16_t fireEscStopUs = 1000;

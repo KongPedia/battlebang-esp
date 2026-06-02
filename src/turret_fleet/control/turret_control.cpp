@@ -43,7 +43,7 @@ const float kPitchMaxDeg = 90.0f;
 // The local origin is treated as calibrated, then target/idle/dead/home commands
 // are clamped to a 150-degree total software envelope by default.
 const bool kUnsafeManualCalibrationMode = false;
-const float kCommandEnvelopeRatio = 0.80f;
+const float kDefaultCommandEnvelopeRatio = 0.65f;
 const float kYawSoftMinDeg = -75.0f;
 const float kYawSoftMaxDeg = 75.0f;
 const float kPitchSoftMinDeg = -75.0f;
@@ -119,8 +119,8 @@ int clampi(int value, int lo, int hi) {
   return value;
 }
 
-float commandEnvelopeEdge(float outerDeg, float homeDeg) {
-  return homeDeg + (outerDeg - homeDeg) * kCommandEnvelopeRatio;
+float commandEnvelopeEdge(float outerDeg, float homeDeg, float ratio) {
+  return homeDeg + (outerDeg - homeDeg) * ratio;
 }
 
 float leadToward(float current, float goal, float maxLeadDeg) {
@@ -2071,26 +2071,26 @@ float TurretControl::targetUnitToCm(float value) const {
 }
 
 float TurretControl::yawCommandMinDeg() const {
-  const float a = commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg);
-  const float b = commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg);
+  const float a = commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
   return a < b ? a : b;
 }
 
 float TurretControl::yawCommandMaxDeg() const {
-  const float a = commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg);
-  const float b = commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg);
+  const float a = commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
   return a > b ? a : b;
 }
 
 float TurretControl::pitchCommandMinDeg() const {
-  const float a = commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg);
-  const float b = commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg);
+  const float a = commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
   return a < b ? a : b;
 }
 
 float TurretControl::pitchCommandMaxDeg() const {
-  const float a = commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg);
-  const float b = commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg);
+  const float a = commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
   return a > b ? a : b;
 }
 
@@ -3334,7 +3334,7 @@ void TurretControl::appendStatus(JsonObject doc) const {
   motionConfig["yaw_continuous_feedback"] = kYawContinuousFeedback;
   motionConfig["home_yaw_deg"] = config_.homeYawDeg;
   motionConfig["home_pitch_deg"] = config_.homePitchDeg;
-  motionConfig["command_envelope_ratio"] = kCommandEnvelopeRatio;
+  motionConfig["command_envelope_ratio"] = config_.commandEnvelopeRatio;
   motionConfig["yaw_command_min_deg"] = yawCommandMinDeg();
   motionConfig["yaw_command_max_deg"] = yawCommandMaxDeg();
   motionConfig["pitch_command_min_deg"] = pitchCommandMinDeg();

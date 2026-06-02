@@ -65,7 +65,8 @@
     "yaw_plus_max_delta_us": 220,
     "yaw_minus_max_delta_us": 220,
     "yaw_plus_min_drive_us": 160,
-    "yaw_minus_min_drive_us": 160
+    "yaw_minus_min_drive_us": 160,
+    "command_envelope_ratio": 0.65
   },
   "fire": {
     "esc_run_us": 1700,

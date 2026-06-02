@@ -33,7 +33,7 @@
     "yaw_stop_us": 1500,
     "pitch_stop_us": 1500,
     "servo_max_delta_us": 220,
-    "yaw_max_delta_us": 420,
+    "yaw_max_delta_us": 320,
     "pitch_max_delta_us": 140,
     "yaw_min_drive_us": 300,
     "pitch_min_drive_us": 90,
@@ -65,7 +65,8 @@
     "yaw_plus_max_delta_us": 420,
     "yaw_minus_max_delta_us": 420,
     "yaw_plus_min_drive_us": 400,
-    "yaw_minus_min_drive_us": 400
+    "yaw_minus_min_drive_us": 400,
+    "command_envelope_ratio": 0.65
   },
   "fire": {
     "esc_run_us": 1700,

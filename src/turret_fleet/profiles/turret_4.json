@@ -36,10 +36,10 @@
     "yaw_max_delta_us": 420,
     "pitch_max_delta_us": 140,
     "yaw_min_drive_us": 300,
-    "yaw_plus_max_delta_us": 420,
-    "yaw_minus_max_delta_us": 420,
-    "yaw_plus_min_drive_us": 400,
-    "yaw_minus_min_drive_us": 400,
+    "yaw_plus_max_delta_us": 400,
+    "yaw_minus_max_delta_us": 280,
+    "yaw_plus_min_drive_us": 360,
+    "yaw_minus_min_drive_us": 260,
     "pitch_min_drive_us": 90,
     "servo_attach_settle_ms": 200,
     "axis_switch_cooldown_ms": 500,
@@ -65,7 +65,8 @@
     },
     "dead": {
       "pitch_deg": 45.0
-    }
+    },
+    "command_envelope_ratio": 0.65
   },
   "fire": {
     "esc_run_us": 1700,

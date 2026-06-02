@@ -326,6 +326,7 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
     next.axisSwitchCooldownMs = motion["axis_switch_cooldown_ms"] | next.axisSwitchCooldownMs;
     next.axisDivergenceGuardMs = motion["axis_divergence_guard_ms"] | next.axisDivergenceGuardMs;
     next.axisDivergenceMarginDeg = getFloatOr(motion["axis_divergence_margin_deg"], next.axisDivergenceMarginDeg);
+    next.commandEnvelopeRatio = getFloatOr(motion["command_envelope_ratio"], next.commandEnvelopeRatio);
     JsonObjectConst servo = motion["servo"].as<JsonObjectConst>();
     if (!servo.isNull()) {
       next.yawStopUs = servo["yaw_stop_us"] | next.yawStopUs;
@@ -347,6 +348,7 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
       next.axisSwitchCooldownMs = servo["axis_switch_cooldown_ms"] | next.axisSwitchCooldownMs;
       next.axisDivergenceGuardMs = servo["axis_divergence_guard_ms"] | next.axisDivergenceGuardMs;
       next.axisDivergenceMarginDeg = getFloatOr(servo["axis_divergence_margin_deg"], next.axisDivergenceMarginDeg);
+      next.commandEnvelopeRatio = getFloatOr(servo["command_envelope_ratio"], next.commandEnvelopeRatio);
     }
     JsonObjectConst limits = motion["limits"].as<JsonObjectConst>();
     if (!limits.isNull()) {
@@ -455,7 +457,8 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
       !isFiniteFloat(next.idleYawMinDeg) || !isFiniteFloat(next.idleYawMaxDeg) ||
       !isFiniteFloat(next.idleYawSpeedDegS) || !isFiniteFloat(next.idlePitchMinDeg) ||
       !isFiniteFloat(next.idlePitchMaxDeg) || !isFiniteFloat(next.idlePitchSpeedDegS) ||
-      !isFiniteFloat(next.axisDivergenceMarginDeg)) {
+      !isFiniteFloat(next.axisDivergenceMarginDeg) ||
+      !isFiniteFloat(next.commandEnvelopeRatio)) {
     error = "config contains non-finite numeric value";
     return false;
   }
@@ -502,7 +505,9 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
       next.axisSwitchCooldownMs > 5000 ||
       next.axisDivergenceGuardMs > 10000 ||
       next.axisDivergenceMarginDeg < 1.0f ||
-      next.axisDivergenceMarginDeg > 60.0f) {
+      next.axisDivergenceMarginDeg > 60.0f ||
+      next.commandEnvelopeRatio < 0.50f ||
+      next.commandEnvelopeRatio > 0.85f) {
     error = "motion servo tuning out of safe range";
     return false;
   }
@@ -595,6 +600,7 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   motion["axis_switch_cooldown_ms"] = config.axisSwitchCooldownMs;
   motion["axis_divergence_guard_ms"] = config.axisDivergenceGuardMs;
   motion["axis_divergence_margin_deg"] = config.axisDivergenceMarginDeg;
+  motion["command_envelope_ratio"] = config.commandEnvelopeRatio;
   JsonObject limits = motion.createNestedObject("limits");
   limits["yaw_min_deg"] = config.yawMinDeg;
   limits["yaw_max_deg"] = config.yawMaxDeg;
@@ -704,6 +710,7 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.axisSwitchCooldownMs = prefs.getUShort("axis_cool", config.axisSwitchCooldownMs);
   config.axisDivergenceGuardMs = prefs.getUShort("axis_guard", config.axisDivergenceGuardMs);
   config.axisDivergenceMarginDeg = prefs.getFloat("axis_margin", config.axisDivergenceMarginDeg);
+  config.commandEnvelopeRatio = prefs.getFloat("cmd_env", config.commandEnvelopeRatio);
   config.wifiSsid = prefs.getString("wifi_ssid", config.wifiSsid);
   config.wifiPassword = prefs.getString("wifi_pass", config.wifiPassword);
   config.networkAutoStart = prefs.getBool("net_auto", config.networkAutoStart);
@@ -784,6 +791,7 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putUShort("axis_cool", config.axisSwitchCooldownMs) > 0;
   ok &= prefs.putUShort("axis_guard", config.axisDivergenceGuardMs) > 0;
   ok &= prefs.putFloat("axis_margin", config.axisDivergenceMarginDeg) > 0;
+  ok &= prefs.putFloat("cmd_env", config.commandEnvelopeRatio) > 0;
   ok &= prefs.putString("wifi_ssid", config.wifiSsid) >= 0;
   ok &= prefs.putString("wifi_pass", config.wifiPassword) >= 0;
   ok &= prefs.putBool("net_auto", config.networkAutoStart) > 0;
