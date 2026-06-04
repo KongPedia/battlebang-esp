@@ -119,6 +119,20 @@ int clampi(int value, int lo, int hi) {
   return value;
 }
 
+unsigned long deadlineAfter(unsigned long now, unsigned long delayMs) {
+  const unsigned long deadlineMs = now + delayMs;
+  return deadlineMs == 0 ? 1 : deadlineMs;
+}
+
+bool deadlineReached(unsigned long now, unsigned long deadlineMs) {
+  return deadlineMs != 0 && static_cast<long>(now - deadlineMs) >= 0;
+}
+
+uint32_t deadlineRemainingMs(unsigned long now, unsigned long deadlineMs) {
+  if (deadlineMs == 0) return 0;
+  return deadlineReached(now, deadlineMs) ? 0 : static_cast<uint32_t>(deadlineMs - now);
+}
+
 float commandEnvelopeEdge(float outerDeg, float homeDeg, float ratio) {
   return homeDeg + (outerDeg - homeDeg) * ratio;
 }
@@ -1542,7 +1556,7 @@ void TurretControl::startFireSequence(unsigned long holdMs, const char* source, 
   fireStartedMs_ = now;
   fireRequestedHoldMs_ = holdMs;
   fireKeepAliveUntilMs_ = 0;
-  fireHardOffAtMs_ = now + fireHardOffDelayMs(config_, holdMs);
+  fireHardOffAtMs_ = deadlineAfter(now, fireHardOffDelayMs(config_, holdMs));
   fireRestartRequested_ = false;
   pendingFire_ = false;
   pendingFireHoldMs_ = 0;
@@ -1574,8 +1588,8 @@ void TurretControl::ensurePatternSweepFire(unsigned long holdMs) {
   bool restartRequested = false;
   if (fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0) {
     const unsigned long now = millis();
-    fireKeepAliveUntilMs_ = now + holdMs;
-    fireHardOffAtMs_ = now + fireHardOffDelayMs(config_, holdMs);
+    fireKeepAliveUntilMs_ = deadlineAfter(now, holdMs);
+    fireHardOffAtMs_ = deadlineAfter(now, fireHardOffDelayMs(config_, holdMs));
   } else if (fireSequenceState_ == FIRE_SEQUENCE_ESC_OFF_WAIT ||
              fireSequenceState_ == FIRE_SEQUENCE_CH3_OFF_WAIT ||
              fireSequenceState_ == FIRE_SEQUENCE_CH1_OFF_WAIT ||
@@ -1609,7 +1623,7 @@ void TurretControl::updateFireSequence() {
 
   const unsigned long now = millis();
 
-  if (fireHardOffAtMs_ != 0 && now >= fireHardOffAtMs_) {
+  if (deadlineReached(now, fireHardOffAtMs_)) {
     Serial.print("[fleet][fire] hard off after wall-clock cap elapsed_ms=");
     Serial.println(fireStartedMs_ == 0 ? 0 : now - fireStartedMs_);
     forceFireOutputsSafeOff();
@@ -1617,7 +1631,7 @@ void TurretControl::updateFireSequence() {
   }
 
   if (fireSequenceState_ == FIRE_SEQUENCE_RUNNING &&
-      fireKeepAliveUntilMs_ != 0 && now >= fireKeepAliveUntilMs_) {
+      deadlineReached(now, fireKeepAliveUntilMs_)) {
     if (escAttached_ && escLastCommandUs_ != config_.fireEscStopUs) {
       esc_.writeMicroseconds(config_.fireEscStopUs);
       escLastCommandUs_ = config_.fireEscStopUs;
@@ -1657,7 +1671,7 @@ void TurretControl::updateFireSequence() {
         fireSequenceState_ = FIRE_SEQUENCE_RUNNING;
         fireStateTs_ = now;
         fireStartedMs_ = now;
-        fireKeepAliveUntilMs_ = now + fireRequestedHoldMs_;
+        fireKeepAliveUntilMs_ = deadlineAfter(now, fireRequestedHoldMs_);
         Serial.println("[fleet][fire] relay sequence complete; ESC hold active");
       }
       break;
@@ -2973,8 +2987,8 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
     fireRequestedHoldMs_ = holdMs;
     if (fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0) {
       const unsigned long now = millis();
-      fireKeepAliveUntilMs_ = now + holdMs;
-      fireHardOffAtMs_ = now + fireHardOffDelayMs(config_, holdMs);
+      fireKeepAliveUntilMs_ = deadlineAfter(now, holdMs);
+      fireHardOffAtMs_ = deadlineAfter(now, fireHardOffDelayMs(config_, holdMs));
     }
     if (fireSequenceState_ == FIRE_SEQUENCE_ESC_OFF_WAIT ||
         fireSequenceState_ == FIRE_SEQUENCE_CH3_OFF_WAIT ||
@@ -3055,8 +3069,11 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
     return;
   }
 
-  if (!ensureMotionSafetyForTracking(source)) return;
-
+  // The motion safety gate must run after the first pattern point has populated
+  // clampedYawDeg_/clampedPitchDeg_. Calling it here would evaluate inward
+  // recovery against the previous command target and reject safe patterns while
+  // the turret is just outside the soft window. applyPatternPoint() calls
+  // applyTargetCm(), which runs ensureMotionSafetyForTracking() before motion.
   clearPatternState("new_pattern");
   activePatternId_ = patternId;
   activePatternInstanceId_ = doc["pattern_instance_id"] | "";
@@ -3261,12 +3278,8 @@ void TurretControl::appendStatus(JsonObject doc) const {
   doc["pattern_last_error"] = lastPatternError_;
   doc["fire_state"] = fireState_;
   doc["fire_sequence"] = fireSequenceName();
-  doc["fire_remaining_ms"] = (isFireSequenceActive() && fireKeepAliveUntilMs_ > now)
-                                ? static_cast<uint32_t>(fireKeepAliveUntilMs_ - now)
-                                : 0;
-  doc["fire_hard_off_remaining_ms"] = (isFireSequenceActive() && fireHardOffAtMs_ > now)
-                                ? static_cast<uint32_t>(fireHardOffAtMs_ - now)
-                                : 0;
+  doc["fire_remaining_ms"] = isFireSequenceActive() ? deadlineRemainingMs(now, fireKeepAliveUntilMs_) : 0;
+  doc["fire_hard_off_remaining_ms"] = isFireSequenceActive() ? deadlineRemainingMs(now, fireHardOffAtMs_) : 0;
   doc["last_error"] = lastError_;
   doc["last_command_id"] = lastCommandId_;
 

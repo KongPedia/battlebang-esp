@@ -314,8 +314,12 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "relayWrite(kRelayCh2Pin, true)" in control
     assert "config_.fireEscRunUs" in control
     assert "fireKeepAliveUntilMs_ = 0;" in control
-    assert "fireSequenceState_ == FIRE_SEQUENCE_RUNNING &&\n      fireKeepAliveUntilMs_ != 0" in control
-    assert "fireKeepAliveUntilMs_ = now + fireRequestedHoldMs_;" in control
+    assert "fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0" in control
+    assert "bool deadlineReached(unsigned long now, unsigned long deadlineMs)" in control
+    assert "if (deadlineMs == 0) return 0;" in control
+    assert "deadlineReached(now, fireHardOffAtMs_)" in control
+    assert "deadlineReached(now, fireKeepAliveUntilMs_)" in control
+    assert "fireKeepAliveUntilMs_ = deadlineAfter(now, fireRequestedHoldMs_);" in control
     assert 'postFireMode_ = (mode_ == "TARGET" || mode_ == "PATTERN" || mode_ == "HOME")' in control
     assert "ESC STOP after hold_ms=" in control
     assert "forceFireOutputsSafeOff();" in control
@@ -697,6 +701,12 @@ def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
     assert "outside safe command envelope margin" in control
     assert "pattern preempted by " in control
     assert 'preemptActivePattern("pattern", source, true);' in control
+    pattern_command_body = control.split("void TurretControl::handlePatternCommand", 1)[1].split(
+        "void TurretControl::handleCommandJson", 1
+    )[0]
+    assert "The motion safety gate must run after the first pattern point" in pattern_command_body
+    assert "if (!ensureMotionSafetyForTracking(source)) return;" not in pattern_command_body
+    assert "applyPatternPoint()" in pattern_command_body
     assert 'preemptActivePattern("target", source, true);' in control
     assert "target rejected during active pattern; send interrupt=true to override" not in control
     assert 'patternState_ = "DWELL"' in control
@@ -1276,6 +1286,7 @@ def test_serial_and_mqtt_json_buffers_are_heap_backed_to_avoid_loop_stack_overfl
     assert "DynamicJsonDocument doc(4096);" in main
     assert "DynamicJsonDocument doc(1024);" in main
     assert "const size_t kPayloadLimit = 8192;" in mqtt
+    assert "client_.setBufferSize(kPayloadLimit);" in mqtt
     assert "const size_t kStatusDocCapacity = 8192;" in mqtt
     assert "DynamicJsonDocument doc(kStatusDocCapacity);" in mqtt
     assert "status publish failed len=" in mqtt
