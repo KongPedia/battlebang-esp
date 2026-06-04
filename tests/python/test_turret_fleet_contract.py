@@ -1368,6 +1368,17 @@ def test_yaw_drive_can_be_tuned_asymmetrically_per_pwm_direction() -> None:
         'motion["yaw_minus_min_drive_us"]',
     ]:
         assert key in config_cpp
+    for key in [
+        'prefs.getUShort("yaw_p_max"',
+        'prefs.getUShort("yaw_m_max"',
+        'prefs.getUShort("yaw_p_min"',
+        'prefs.getUShort("yaw_m_min"',
+        'prefs.putUShort("yaw_p_max"',
+        'prefs.putUShort("yaw_m_max"',
+        'prefs.putUShort("yaw_p_min"',
+        'prefs.putUShort("yaw_m_min"',
+    ]:
+        assert key in config_cpp
     assert "kMotionYawDeltaMaxUs = 450" in config_cpp
     assert "effectiveYawPlusMaxDeltaUs" in config_cpp
     assert "invalidOptionalYawMinDrive(next.yawPlusMinDriveUs, effectiveYawPlusMaxDeltaUs)" in config_cpp

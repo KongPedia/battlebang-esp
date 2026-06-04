@@ -705,6 +705,10 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.yawMaxDeltaUs = prefs.getUShort("yaw_max", config.yawMaxDeltaUs);
   config.pitchMaxDeltaUs = prefs.getUShort("pit_max", config.pitchMaxDeltaUs);
   config.yawMinDriveUs = prefs.getUShort("yaw_min_drv", config.yawMinDriveUs);
+  config.yawPlusMaxDeltaUs = prefs.getUShort("yaw_p_max", config.yawPlusMaxDeltaUs);
+  config.yawMinusMaxDeltaUs = prefs.getUShort("yaw_m_max", config.yawMinusMaxDeltaUs);
+  config.yawPlusMinDriveUs = prefs.getUShort("yaw_p_min", config.yawPlusMinDriveUs);
+  config.yawMinusMinDriveUs = prefs.getUShort("yaw_m_min", config.yawMinusMinDriveUs);
   config.pitchMinDriveUs = prefs.getUShort("pit_min_drv", config.pitchMinDriveUs);
   config.servoAttachSettleMs = prefs.getUShort("srv_settle", config.servoAttachSettleMs);
   config.axisSwitchCooldownMs = prefs.getUShort("axis_cool", config.axisSwitchCooldownMs);
@@ -786,6 +790,10 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putUShort("yaw_max", config.yawMaxDeltaUs) > 0;
   ok &= prefs.putUShort("pit_max", config.pitchMaxDeltaUs) > 0;
   ok &= prefs.putUShort("yaw_min_drv", config.yawMinDriveUs) > 0;
+  ok &= prefs.putUShort("yaw_p_max", config.yawPlusMaxDeltaUs) > 0;
+  ok &= prefs.putUShort("yaw_m_max", config.yawMinusMaxDeltaUs) > 0;
+  ok &= prefs.putUShort("yaw_p_min", config.yawPlusMinDriveUs) > 0;
+  ok &= prefs.putUShort("yaw_m_min", config.yawMinusMinDriveUs) > 0;
   ok &= prefs.putUShort("pit_min_drv", config.pitchMinDriveUs) > 0;
   ok &= prefs.putUShort("srv_settle", config.servoAttachSettleMs) > 0;
   ok &= prefs.putUShort("axis_cool", config.axisSwitchCooldownMs) > 0;
