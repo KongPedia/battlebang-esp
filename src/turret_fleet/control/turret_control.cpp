@@ -43,6 +43,7 @@ const float kPitchMaxDeg = 90.0f;
 // The local origin is treated as calibrated, then target/idle/dead/home commands
 // are clamped to a 150-degree total software envelope by default.
 const bool kUnsafeManualCalibrationMode = false;
+const float kDefaultCommandEnvelopeRatio = 0.65f;
 const float kYawSoftMinDeg = -75.0f;
 const float kYawSoftMaxDeg = 75.0f;
 const float kPitchSoftMinDeg = -75.0f;
@@ -52,6 +53,12 @@ const float kKi = 0.0f;
 const float kKd = 0.03f;
 const float kYawDeadbandPseudo = 10.0f;
 const float kPitchDeadbandPseudo = 10.0f;
+const float kAimReachedToleranceDeg = 3.0f;
+const unsigned long kAimStableBeforeCompleteMs = 300;
+const float kAxisLockReleaseDeg = 5.0f;
+const float kAxisSwitchHysteresisDeg = 3.0f;
+const float kPitchUpPriorityBelowDeg = -35.0f;
+const float kPatternCommandMarginDeg = 3.0f;
 const float kYawMinDriveUs = 120.0f;
 const float kPitchMinDriveUs = 120.0f;
 const bool kYawInvertMotor = false;
@@ -88,8 +95,11 @@ const int kSoftRecoverMaxSteps = 12;
 const int kSoftRecoverMinProgressRaw = 4;
 const int kYawStableSpanRaw = 450;
 const int kPitchStableSpanRaw = 180;
-const int kTrackingYawMaxDeltaUs = 140;
-const int kTrackingPitchMaxDeltaUs = 80;
+// turret_4's yaw stage needs more breakaway torque than the original bench
+// cap allowed. Runtime config still controls the normal value, but tracking
+// must not silently clamp a configured 1900us-class yaw drive back to 1800us.
+const int kTrackingYawMaxDeltaUs = 450;
+const int kTrackingPitchMaxDeltaUs = 160;
 const unsigned long kJogAttachSettleMs = 40;
 const unsigned long kJogStopMs = 20;
 
@@ -107,6 +117,24 @@ int clampi(int value, int lo, int hi) {
   if (value < lo) return lo;
   if (value > hi) return hi;
   return value;
+}
+
+unsigned long deadlineAfter(unsigned long now, unsigned long delayMs) {
+  const unsigned long deadlineMs = now + delayMs;
+  return deadlineMs == 0 ? 1 : deadlineMs;
+}
+
+bool deadlineReached(unsigned long now, unsigned long deadlineMs) {
+  return deadlineMs != 0 && static_cast<long>(now - deadlineMs) >= 0;
+}
+
+uint32_t deadlineRemainingMs(unsigned long now, unsigned long deadlineMs) {
+  if (deadlineMs == 0) return 0;
+  return deadlineReached(now, deadlineMs) ? 0 : static_cast<uint32_t>(deadlineMs - now);
+}
+
+float commandEnvelopeEdge(float outerDeg, float homeDeg, float ratio) {
+  return homeDeg + (outerDeg - homeDeg) * ratio;
 }
 
 float leadToward(float current, float goal, float maxLeadDeg) {
@@ -171,6 +199,14 @@ unsigned long normalizeFireHoldMs(JsonDocument& doc, const RuntimeConfig& config
   return durationMs;
 }
 
+unsigned long fireHardOffDelayMs(const RuntimeConfig& config, unsigned long holdMs) {
+  // Relay sequencing is deliberately staged to avoid brownout. Even so, every
+  // fire command gets an absolute wall-clock cap from the first relay-on edge,
+  // so a stuck pattern leg or missed state transition cannot leave relays/ESC
+  // energized indefinitely.
+  return holdMs + (config.fireRelayStepDelayMs * 6UL) + 250UL;
+}
+
 void writeFireRecoveryMarker(bool active) {
   Preferences prefs;
   if (!prefs.begin(kSafetyPrefsNamespace, false)) {
@@ -195,8 +231,15 @@ void writeRecoveryLockoutMarker(bool active) {
 
 void TurretControl::begin(const RuntimeConfig& config) {
   analogReadResolution(12);
+  randomSeed(static_cast<unsigned long>(micros()) ^
+             (static_cast<unsigned long>(analogRead(kYawPotPin)) << 16) ^
+             static_cast<unsigned long>(analogRead(kPitchPotPin)));
   parkRelayPinsSafeOff();
   applyConfig(config);
+  // Keep the legacy src/turret ESC contract: GPIO25 gets a 50Hz low-throttle
+  // STOP signal at boot so the BLDC ESC can initialize/arm safely before an
+  // explicit fire command. Relays remain parked safe-off until fire.
+  ensureEscStopSignal("boot-ready");
   updateCurrentAngles();
   yawTargetDeg_ = yawCurrentDeg_;
   pitchTargetDeg_ = pitchCurrentDeg_;
@@ -218,7 +261,7 @@ void TurretControl::begin(const RuntimeConfig& config) {
   Serial.print(pitchRawCurrent_);
   Serial.print(" pitch_deg=");
   Serial.println(pitchCurrentDeg_, 2);
-  Serial.println("[fleet][fire] relay outputs parked safe-off; ESC lazy-attached on fire command");
+  Serial.println("[fleet][fire] relay outputs parked safe-off; ESC STOP signal active on boot-ready");
 }
 
 void TurretControl::prepareForNewMotionCommand(const char* source) {
@@ -264,7 +307,12 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
   patternState_ = "IDLE";
   resetPidState();
 
-  const bool trackInitialHome = motionAllowed && bootProbeSafe && ensureMotionSafetyForTracking("BOOT_HOME(home_0_0)");
+  const bool bootHomeInwardRecoveryAllowed =
+      motionAllowed && !bootProbeSafe && yawInwardRecoveryAllowed();
+  const bool trackInitialHome =
+      motionAllowed &&
+      (bootProbeSafe || bootHomeInwardRecoveryAllowed) &&
+      ensureMotionSafetyForTracking("BOOT_HOME(home_0_0)");
   if (trackInitialHome) {
     setTrackedTarget(clampedYawDeg_, clampedPitchDeg_);
     mode_ = "HOME";
@@ -292,6 +340,8 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
     lastError_ = "boot home motion inhibited after brownout/fire reset";
     Serial.print("[fleet][motion] ");
     Serial.println(lastError_);
+  } else if (trackInitialHome && bootHomeInwardRecoveryAllowed) {
+    Serial.println("[fleet][motion] boot home yaw inward recovery enabled");
   } else if (!bootProbeSafe && yawTrackingSuppressed_) {
     lastError_ = "boot home yaw inhibited: yaw outside calibrated 150deg safe envelope";
     Serial.print("[fleet][motion] ");
@@ -372,9 +422,9 @@ void TurretControl::setBrownoutLockout(bool active) {
   yawTrackingSuppressed_ = false;
   lockedMotionAxis_ = 'N';
   selectedMotionAxis_ = 'N';
+  clearPatternState("brownout_lockout");
   mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
   fireState_ = "SAFE_OFF";
-  patternState_ = "IDLE";
   lastError_ = "brownout/fire-reset lockout active: motion/fire blocked until recover succeeds";
   Serial.println("[fleet][safety] brownout/fire-reset lockout active; fire forced off, motion commands blocked");
 }
@@ -549,6 +599,24 @@ bool TurretControl::pitchReadingsStableInSoftWindow(const char* source) {
   return stable;
 }
 
+bool TurretControl::yawInwardRecoveryAllowed() const {
+  if (kUnsafeManualCalibrationMode) return true;
+  const int yawSoftLow = yawSoftLowRaw();
+  const int yawSoftHigh = yawSoftHighRaw();
+  const bool yawLowOutside = yawRawCurrent_ < yawSoftLow;
+  const bool yawHighOutside = yawRawCurrent_ > yawSoftHigh;
+  if (!yawLowOutside && !yawHighOutside) return false;
+  if (yawRawCurrent_ <= kYawFeedbackRailLowCut || yawRawCurrent_ >= kYawFeedbackRailHighCut) {
+    return false;
+  }
+
+  // If inertia or sensor lag reports yaw just outside the configured outer
+  // soft window, allow only commands that drive back toward the inner command
+  // envelope. The motion loop's soft-limit guard still blocks outward drive.
+  return (yawLowOutside && clampedYawDeg_ > yawCurrentDeg_) ||
+         (yawHighOutside && clampedYawDeg_ < yawCurrentDeg_);
+}
+
 bool TurretControl::ensurePitchSafetyForTracking(const char* source) {
   updateCurrentAngles();
   if (kUnsafeManualCalibrationMode) {
@@ -612,6 +680,29 @@ bool TurretControl::ensureMotionSafetyForTracking(const char* source) {
     }
   }
 
+  if (yawInwardRecoveryAllowed()) {
+    bool pitchSafe = pitchInsideSoftWindow();
+    if (!pitchSafe) {
+      Serial.print("[fleet][motion] yaw inward recovery requested pitch soft-window recovery by ");
+      Serial.println(source);
+      pitchSafe = recoverAxisTowardSoftWindow("pitch");
+    }
+    if (pitchSafe && pitchReadingsStableInSoftWindow(source)) {
+      motionSafetyInhibited_ = false;
+      Serial.print("[fleet][motion] yaw inward recovery tracking allowed from ");
+      Serial.print(source);
+      Serial.print(" yaw_raw=");
+      Serial.print(yawRawCurrent_);
+      Serial.print(" soft=");
+      Serial.print(yawSoftLowRaw());
+      Serial.print("..");
+      Serial.print(yawSoftHighRaw());
+      Serial.print(" target_deg=");
+      Serial.println(clampedYawDeg_, 3);
+      return true;
+    }
+  }
+
   Serial.print("[fleet][motion] soft-window recovery requested by ");
   Serial.print(source);
   Serial.print(" yaw_raw=");
@@ -649,6 +740,18 @@ bool TurretControl::clearBrownoutLockoutIfSafe(const char* source) {
     Serial.print("[fleet][safety] recover ignored; brownout lockout already clear from ");
     Serial.println(source);
     return true;
+  }
+
+  if (!motionInsideSoftWindow()) {
+    Serial.print("[fleet][safety] brownout recover soft-window recovery requested by ");
+    Serial.print(source);
+    Serial.print(" yaw_raw=");
+    Serial.print(yawRawCurrent_);
+    Serial.print(" pitch_raw=");
+    Serial.println(pitchRawCurrent_);
+    recoverMotionSoftWindow(source);
+    stopMotionOutputs();
+    updateCurrentAngles();
   }
 
   if (!motionInsideSoftWindow() || !motionReadingsStableInSoftWindow(source)) {
@@ -1154,6 +1257,7 @@ void TurretControl::forceFireOutputsSafeOff() {
   fireSequenceState_ = FIRE_SEQUENCE_IDLE;
   fireStateTs_ = 0;
   fireKeepAliveUntilMs_ = 0;
+  fireHardOffAtMs_ = 0;
   fireStartedMs_ = 0;
   fireRequestedHoldMs_ = 0;
   fireRestartRequested_ = false;
@@ -1200,9 +1304,14 @@ void TurretControl::setTrackedTarget(float yawDeg, float pitchDeg) {
   yawTrackingSuppressed_ = false;
   yawGoalDeg_ = clampYawCommand(yawDeg);
   pitchGoalDeg_ = clampPitchCommand(pitchDeg);
-  yawTargetDeg_ = yawCurrentDeg_;
-  pitchTargetDeg_ = pitchCurrentDeg_;
-  targetSlewActive_ = true;
+  // Seed the intermediate setpoint immediately. Pattern MOVE steps are
+  // started after the loop's normal motion-slew update, so leaving the target
+  // equal to the current feedback for the first cycle can make the pattern
+  // look "in progress" while the motor sees no error and never starts.
+  yawTargetDeg_ = leadToward(yawCurrentDeg_, yawGoalDeg_, kTargetYawLeadDeg);
+  pitchTargetDeg_ = leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg);
+  targetSlewActive_ = fabs(yawTargetDeg_ - yawGoalDeg_) > 0.01f ||
+                      fabs(pitchTargetDeg_ - pitchGoalDeg_) > 0.01f;
   lockedMotionAxis_ = 'N';
 }
 
@@ -1211,8 +1320,8 @@ void TurretControl::setPitchOnlyTrackedTarget(float pitchDeg) {
   yawGoalDeg_ = yawCurrentDeg_;
   yawTargetDeg_ = yawCurrentDeg_;
   pitchGoalDeg_ = clampPitchCommand(pitchDeg);
-  pitchTargetDeg_ = pitchCurrentDeg_;
-  targetSlewActive_ = true;
+  pitchTargetDeg_ = leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg);
+  targetSlewActive_ = fabs(pitchTargetDeg_ - pitchGoalDeg_) > 0.01f;
   lockedMotionAxis_ = 'N';
   yawIntegralPseudo_ = 0.0f;
   yawPrevErrorPseudo_ = 0.0f;
@@ -1343,6 +1452,10 @@ void TurretControl::runPidAxis(Servo& servo,
                                float deadband,
                                float maxDeltaUs,
                                float minDriveUs,
+                               float plusMaxDeltaUs,
+                               float plusMinDriveUs,
+                               float minusMaxDeltaUs,
+                               float minusMinDriveUs,
                                bool invertMotor,
                                int stopUs,
                                float& prevErrorPseudo,
@@ -1363,13 +1476,24 @@ void TurretControl::runPidAxis(Servo& servo,
   integralPseudo = clampf(integralPseudo, -((adcPerDeg == kYawAdcPerDeg) ? kYawILimit : kPitchILimit),
                           ((adcPerDeg == kYawAdcPerDeg) ? kYawILimit : kPitchILimit));
   float output = kKp * errorPseudo + kKi * integralPseudo + kKd * (errorPseudo - prevErrorPseudo);
-  output = clampf(output, -maxDeltaUs, maxDeltaUs);
   prevErrorPseudo = errorPseudo;
 
-  if (fabs(output) < minDriveUs) {
-    output = output >= 0.0f ? minDriveUs : -minDriveUs;
-  }
   if (invertMotor) output = -output;
+
+  // output < 0 maps to stopUs + delta because commandUs = stopUs - output.
+  // Direction overrides are PWM-relative so each turret can compensate for
+  // asymmetric yaw load without guessing clockwise/counter-clockwise labels.
+  const bool plusPwmDirection = output < 0.0f;
+  float directionalMaxDeltaUs = plusPwmDirection ? plusMaxDeltaUs : minusMaxDeltaUs;
+  float directionalMinDriveUs = plusPwmDirection ? plusMinDriveUs : minusMinDriveUs;
+  if (directionalMaxDeltaUs <= 0.0f) directionalMaxDeltaUs = maxDeltaUs;
+  if (directionalMinDriveUs <= 0.0f) directionalMinDriveUs = minDriveUs;
+  if (directionalMinDriveUs > directionalMaxDeltaUs) directionalMinDriveUs = directionalMaxDeltaUs;
+
+  output = clampf(output, -directionalMaxDeltaUs, directionalMaxDeltaUs);
+  if (fabs(output) < directionalMinDriveUs) {
+    output = plusPwmDirection ? -directionalMinDriveUs : directionalMinDriveUs;
+  }
 
   const int commandUs = clampi(static_cast<int>(stopUs - output), 1000, 2000);
   servo.writeMicroseconds(commandUs);
@@ -1385,8 +1509,16 @@ bool TurretControl::aimReached() const {
   const float yawFinal = finalTargetMode ? yawGoalDeg_ : yawTargetDeg_;
   const float pitchFinal = finalTargetMode ? pitchGoalDeg_ : pitchTargetDeg_;
   return (!finalTargetMode || !targetSlewActive_) &&
-         fabs(yawFinal - yawCurrentDeg_) <= 2.0f &&
-         fabs(pitchFinal - pitchCurrentDeg_) <= 2.0f;
+         fabs(yawFinal - yawCurrentDeg_) <= kAimReachedToleranceDeg &&
+         fabs(pitchFinal - pitchCurrentDeg_) <= kAimReachedToleranceDeg;
+}
+
+bool TurretControl::patternSweepYawReached() const {
+  // lane_sweep is a yaw-readable attack: fire should cut as soon as the yaw
+  // sweep reaches the lane edge, even if pitch is still settling inside the
+  // safe envelope. Point-shot patterns keep using aimReached() so they wait
+  // for both axes before firing.
+  return fabs(yawGoalDeg_ - yawCurrentDeg_) <= kAimReachedToleranceDeg;
 }
 
 const char* TurretControl::fireSequenceName() const {
@@ -1413,15 +1545,18 @@ const char* TurretControl::fireSequenceName() const {
   return "UNKNOWN";
 }
 
-void TurretControl::startFireSequence(unsigned long holdMs, const char* source) {
+void TurretControl::startFireSequence(unsigned long holdMs, const char* source, bool keepMotionTracking) {
   ensureEscStopSignal("fire");
   ensureRelayOutputsAttached("fire");
-  stopMotionOutputs();
+  if (!keepMotionTracking) {
+    stopMotionOutputs();
+  }
 
   const unsigned long now = millis();
   fireStartedMs_ = now;
   fireRequestedHoldMs_ = holdMs;
   fireKeepAliveUntilMs_ = 0;
+  fireHardOffAtMs_ = deadlineAfter(now, fireHardOffDelayMs(config_, holdMs));
   fireRestartRequested_ = false;
   pendingFire_ = false;
   pendingFireHoldMs_ = 0;
@@ -1432,7 +1567,7 @@ void TurretControl::startFireSequence(unsigned long holdMs, const char* source) 
   fireSequenceState_ = FIRE_SEQUENCE_CH2_ON_WAIT;
   fireStateTs_ = now;
   fireState_ = "FIRING";
-  mode_ = "FIRING";
+  mode_ = keepMotionTracking ? String("PATTERN") : String("FIRING");
 
   Serial.print("[fleet][fire] sequence started source=");
   Serial.print(source);
@@ -1443,13 +1578,60 @@ void TurretControl::startFireSequence(unsigned long holdMs, const char* source) 
   Serial.println(" relay_order=CH2->CH1->CH3");
 }
 
+void TurretControl::ensurePatternSweepFire(unsigned long holdMs) {
+  if (!isFireSequenceActive()) {
+    startFireSequence(holdMs, "PATTERN(sweep_fire)", true);
+    return;
+  }
+
+  fireRequestedHoldMs_ = holdMs;
+  bool restartRequested = false;
+  if (fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0) {
+    const unsigned long now = millis();
+    fireKeepAliveUntilMs_ = deadlineAfter(now, holdMs);
+    fireHardOffAtMs_ = deadlineAfter(now, fireHardOffDelayMs(config_, holdMs));
+  } else if (fireSequenceState_ == FIRE_SEQUENCE_ESC_OFF_WAIT ||
+             fireSequenceState_ == FIRE_SEQUENCE_CH3_OFF_WAIT ||
+             fireSequenceState_ == FIRE_SEQUENCE_CH1_OFF_WAIT ||
+             fireSequenceState_ == FIRE_SEQUENCE_CH2_OFF_WAIT) {
+    fireRestartRequested_ = true;
+    restartRequested = true;
+  }
+  pendingFire_ = false;
+  pendingFireHoldMs_ = 0;
+  postFireMode_ = "PATTERN";
+  mode_ = "PATTERN";
+  fireState_ = "FIRING";
+  if (restartRequested) {
+    Serial.print("[fleet][pattern] sweep fire restart requested hold_ms=");
+    Serial.println(holdMs);
+  }
+}
+
+void TurretControl::stopPatternSweepFireAtEndpoint(const char* source) {
+  if (!isFireSequenceActive() && fireState_ != "FIRING") return;
+
+  Serial.print("[fleet][pattern] sweep fire cut at ");
+  Serial.println(source);
+  forceFireOutputsSafeOff();
+  postFireMode_ = "PATTERN";
+  mode_ = "PATTERN";
+}
+
 void TurretControl::updateFireSequence() {
   if (!isFireSequenceActive()) return;
 
   const unsigned long now = millis();
 
+  if (deadlineReached(now, fireHardOffAtMs_)) {
+    Serial.print("[fleet][fire] hard off after wall-clock cap elapsed_ms=");
+    Serial.println(fireStartedMs_ == 0 ? 0 : now - fireStartedMs_);
+    forceFireOutputsSafeOff();
+    return;
+  }
+
   if (fireSequenceState_ == FIRE_SEQUENCE_RUNNING &&
-      fireKeepAliveUntilMs_ != 0 && now >= fireKeepAliveUntilMs_) {
+      deadlineReached(now, fireKeepAliveUntilMs_)) {
     if (escAttached_ && escLastCommandUs_ != config_.fireEscStopUs) {
       esc_.writeMicroseconds(config_.fireEscStopUs);
       escLastCommandUs_ = config_.fireEscStopUs;
@@ -1489,7 +1671,7 @@ void TurretControl::updateFireSequence() {
         fireSequenceState_ = FIRE_SEQUENCE_RUNNING;
         fireStateTs_ = now;
         fireStartedMs_ = now;
-        fireKeepAliveUntilMs_ = now + fireRequestedHoldMs_;
+        fireKeepAliveUntilMs_ = deadlineAfter(now, fireRequestedHoldMs_);
         Serial.println("[fleet][fire] relay sequence complete; ESC hold active");
       }
       break;
@@ -1536,6 +1718,7 @@ void TurretControl::updateFireSequence() {
         fireSequenceState_ = FIRE_SEQUENCE_IDLE;
         fireStateTs_ = now;
         fireKeepAliveUntilMs_ = 0;
+        fireHardOffAtMs_ = 0;
         fireStartedMs_ = 0;
         fireRequestedHoldMs_ = 0;
         fireState_ = "SAFE_OFF";
@@ -1543,7 +1726,8 @@ void TurretControl::updateFireSequence() {
         Serial.println("[fleet][fire] sequence complete -> SAFE_OFF");
         if (fireRestartRequested_) {
           fireRestartRequested_ = false;
-          startFireSequence(config_.fireDefaultHoldMs, "queued_keepalive");
+          const bool restartForPattern = postFireMode_ == "PATTERN";
+          startFireSequence(config_.fireDefaultHoldMs, "queued_keepalive", restartForPattern);
         } else if (mode_ == "FIRING") {
           mode_ = postFireMode_.length() > 0 ? postFireMode_ : String("WAIT_COMMAND");
         }
@@ -1570,6 +1754,9 @@ void TurretControl::loop() {
       yawGoalDeg_ = yawCurrentDeg_;
       pitchGoalDeg_ = pitchCurrentDeg_;
       targetSlewActive_ = false;
+      if (!brownoutLockoutActive_) {
+        motionSafetyInhibited_ = !motionInsideSoftWindow();
+      }
     } else if (mode_ == "HOME" || mode_ == "TARGET" || mode_ == "PATTERN") {
       updateTrackedTargetSlew(dtS);
     } else if (mode_ == "IDLE") {
@@ -1657,19 +1844,35 @@ void TurretControl::loop() {
 
       const float yawGoalErrorDeg = fabs(yawGoalDeg_ - yawCurrentDeg_);
       const float pitchGoalErrorDeg = fabs(pitchGoalDeg_ - pitchCurrentDeg_);
+      const bool yawNeedsGoal = driveYaw && yawGoalErrorDeg > kAimReachedToleranceDeg;
+      const bool pitchNeedsGoal = drivePitch && pitchGoalErrorDeg > kAimReachedToleranceDeg;
+      const bool keepYawLock = lockedMotionAxis_ == 'Y' && yawNeedsGoal &&
+                               !(pitchNeedsGoal &&
+                                 yawGoalErrorDeg <= kAxisLockReleaseDeg &&
+                                 pitchGoalErrorDeg > yawGoalErrorDeg + kAxisSwitchHysteresisDeg);
+      const bool keepPitchLock = lockedMotionAxis_ == 'P' && pitchNeedsGoal &&
+                                 !(yawNeedsGoal &&
+                                   pitchGoalErrorDeg <= kAxisLockReleaseDeg &&
+                                   yawGoalErrorDeg > pitchGoalErrorDeg + kAxisSwitchHysteresisDeg);
       char desiredAxis = 'N';
-      if (lockedMotionAxis_ == 'Y' && driveYaw && yawGoalErrorDeg > 2.0f) {
+      if (keepYawLock) {
         desiredAxis = 'Y';
-      } else if (lockedMotionAxis_ == 'P' && drivePitch && pitchGoalErrorDeg > 2.0f) {
+      } else if (keepPitchLock) {
         desiredAxis = 'P';
       } else if (driveYaw && drivePitch) {
         // Drive exactly one axis at a time. The previous implementation
         // selected one axis but attached the new axis before detaching the old
         // one during Y<->P switches, creating a brief two-servo inrush that
         // matched the observed brownout. Lock onto one axis until that axis is
-        // close to its final goal; otherwise noisy pitch/yaw readings can
-        // thrash the outputs and repeatedly re-create attach inrush.
-        desiredAxis = (pitchGoalErrorDeg >= yawGoalErrorDeg) ? 'P' : 'Y';
+        // close to its final goal. Once the locked axis is within the readable
+        // near-target band, allow a much larger opposite-axis error to take
+        // ownership so HOME/pattern moves do not starve pitch behind a tiny
+        // residual yaw error.
+        const bool pitchNeedsUpFromLowAngle =
+            pitchCurrentDeg_ <= kPitchUpPriorityBelowDeg &&
+            pitchGoalDeg_ > pitchCurrentDeg_ &&
+            pitchGoalErrorDeg > kAimReachedToleranceDeg;
+        desiredAxis = pitchNeedsUpFromLowAngle || pitchGoalErrorDeg >= yawGoalErrorDeg ? 'P' : 'Y';
       } else if (driveYaw) {
         desiredAxis = 'Y';
       } else if (drivePitch) {
@@ -1702,7 +1905,11 @@ void TurretControl::loop() {
           stopMotionOutputs();
           resetPidState();
           lockedMotionAxis_ = 'N';
-          mode_ = "WAIT_COMMAND";
+          if (patternPlan_.kind != PATTERN_NONE) {
+            abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern aborted: yaw divergence guard");
+          } else {
+            mode_ = "WAIT_COMMAND";
+          }
         } else {
           ensureYawAttached("motion_loop");
           selectedMotionAxis_ = 'Y';
@@ -1717,13 +1924,37 @@ void TurretControl::loop() {
             if (yawOutsideSoft && yawMaxDeltaInt > kSoftLimitRescueDeltaUs) {
               yawMaxDeltaInt = kSoftLimitRescueDeltaUs;
             }
+            int yawPlusMaxDeltaInt = config_.yawPlusMaxDeltaUs > 0
+                                        ? config_.yawPlusMaxDeltaUs
+                                        : yawMaxDeltaInt;
+            int yawMinusMaxDeltaInt = config_.yawMinusMaxDeltaUs > 0
+                                         ? config_.yawMinusMaxDeltaUs
+                                         : yawMaxDeltaInt;
+            if (yawPlusMaxDeltaInt > kTrackingYawMaxDeltaUs) yawPlusMaxDeltaInt = kTrackingYawMaxDeltaUs;
+            if (yawMinusMaxDeltaInt > kTrackingYawMaxDeltaUs) yawMinusMaxDeltaInt = kTrackingYawMaxDeltaUs;
+            if (yawOutsideSoft && yawPlusMaxDeltaInt > kSoftLimitRescueDeltaUs) {
+              yawPlusMaxDeltaInt = kSoftLimitRescueDeltaUs;
+            }
+            if (yawOutsideSoft && yawMinusMaxDeltaInt > kSoftLimitRescueDeltaUs) {
+              yawMinusMaxDeltaInt = kSoftLimitRescueDeltaUs;
+            }
             const int yawMinDriveInt = config_.yawMinDriveUs > yawMaxDeltaInt
                                          ? yawMaxDeltaInt
                                          : config_.yawMinDriveUs;
+            int yawPlusMinDriveInt = config_.yawPlusMinDriveUs > 0
+                                        ? config_.yawPlusMinDriveUs
+                                        : yawMinDriveInt;
+            int yawMinusMinDriveInt = config_.yawMinusMinDriveUs > 0
+                                         ? config_.yawMinusMinDriveUs
+                                         : yawMinDriveInt;
+            if (yawPlusMinDriveInt > yawPlusMaxDeltaInt) yawPlusMinDriveInt = yawPlusMaxDeltaInt;
+            if (yawMinusMinDriveInt > yawMinusMaxDeltaInt) yawMinusMinDriveInt = yawMinusMaxDeltaInt;
             const float yawMaxDeltaUs = static_cast<float>(yawMaxDeltaInt);
             const float yawMinDriveUs = static_cast<float>(yawMinDriveInt);
             runPidAxis(yawServo_, yawCurrentDeg_, yawTargetDeg_, kYawAdcPerDeg,
                        kYawDeadbandPseudo, yawMaxDeltaUs, yawMinDriveUs,
+                       static_cast<float>(yawPlusMaxDeltaInt), static_cast<float>(yawPlusMinDriveInt),
+                       static_cast<float>(yawMinusMaxDeltaInt), static_cast<float>(yawMinusMinDriveInt),
                        yawInvertMotor_, config_.yawStopUs,
                        yawPrevErrorPseudo_, yawIntegralPseudo_, yawLastCommandUs_);
           }
@@ -1734,7 +1965,11 @@ void TurretControl::loop() {
           stopMotionOutputs();
           resetPidState();
           lockedMotionAxis_ = 'N';
-          mode_ = "WAIT_COMMAND";
+          if (patternPlan_.kind != PATTERN_NONE) {
+            abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern aborted: pitch divergence guard");
+          } else {
+            mode_ = "WAIT_COMMAND";
+          }
         } else {
           ensurePitchAttached("motion_loop");
           selectedMotionAxis_ = 'P';
@@ -1755,6 +1990,8 @@ void TurretControl::loop() {
             const float pitchMinDriveUs = static_cast<float>(pitchMinDriveInt);
             runPidAxis(pitchServo_, pitchCurrentDeg_, pitchTargetDeg_, kPitchAdcPerDeg,
                        kPitchDeadbandPseudo, pitchMaxDeltaUs, pitchMinDriveUs,
+                       pitchMaxDeltaUs, pitchMinDriveUs,
+                       pitchMaxDeltaUs, pitchMinDriveUs,
                        pitchInvertMotor_, config_.pitchStopUs,
                        pitchPrevErrorPseudo_, pitchIntegralPseudo_, pitchLastCommandUs_);
           }
@@ -1767,15 +2004,29 @@ void TurretControl::loop() {
     }
   }
 
-  if (mode_ == "TARGET" && aimReached()) {
+  const bool finiteAimMode = mode_ == "HOME" || mode_ == "TARGET";
+  if (finiteAimMode && aimReached()) {
     if (aimReachedSinceMs_ == 0) aimReachedSinceMs_ = now;
+    if (now - aimReachedSinceMs_ >= kAimStableBeforeCompleteMs) {
+      stopMotionOutputs();
+      resetPidState();
+      selectedMotionAxis_ = 'N';
+      lockedMotionAxis_ = 'N';
+      targetSlewActive_ = false;
+      mode_ = "WAIT_COMMAND";
+      lastError_ = "";
+    }
   } else {
     aimReachedSinceMs_ = 0;
   }
 
+  if (patternPlan_.kind != PATTERN_NONE) {
+    updatePattern();
+  }
+
   if (now - lastMotionDebugMs_ >= 1000) {
     lastMotionDebugMs_ = now;
-    if (motionEnabled_ || mode_ == "TARGET" || mode_ == "IDLE" || mode_ == "DEAD") {
+    if (motionEnabled_ || mode_ == "TARGET" || mode_ == "IDLE" || mode_ == "DEAD" || mode_ == "PATTERN") {
       Serial.print("[fleet][motion] mode=");
       Serial.print(mode_);
       Serial.print(" yaw_raw=");
@@ -1833,12 +2084,36 @@ float TurretControl::targetUnitToCm(float value) const {
   return mqttTargetsInMeters(config_) ? value * 100.0f : value;
 }
 
+float TurretControl::yawCommandMinDeg() const {
+  const float a = commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
+  return a < b ? a : b;
+}
+
+float TurretControl::yawCommandMaxDeg() const {
+  const float a = commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg, config_.commandEnvelopeRatio);
+  return a > b ? a : b;
+}
+
+float TurretControl::pitchCommandMinDeg() const {
+  const float a = commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
+  return a < b ? a : b;
+}
+
+float TurretControl::pitchCommandMaxDeg() const {
+  const float a = commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
+  const float b = commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg, config_.commandEnvelopeRatio);
+  return a > b ? a : b;
+}
+
 float TurretControl::clampYawCommand(float value) const {
-  return clampf(value, config_.yawMinDeg, config_.yawMaxDeg);
+  return clampf(value, yawCommandMinDeg(), yawCommandMaxDeg());
 }
 
 float TurretControl::clampPitchCommand(float value) const {
-  return clampf(value, config_.pitchMinDeg, config_.pitchMaxDeg);
+  return clampf(value, pitchCommandMinDeg(), pitchCommandMaxDeg());
 }
 
 int TurretControl::yawRawForDeg(float deg) const {
@@ -1887,14 +2162,15 @@ bool TurretControl::pitchRawInsideSoftWindow(int raw) const {
 bool TurretControl::applyTargetCm(float xCm,
                                   float yCm,
                                   float zCm,
-                                  const char* source) {
+                                  const char* source,
+                                  bool allowDuringFire) {
   if (!config_.configured) {
     lastError_ = "target rejected: turret is unconfigured";
     Serial.print("[fleet][control] ");
     Serial.println(lastError_);
     return false;
   }
-  if (fireState_ == "FIRING") {
+  if (fireState_ == "FIRING" && !allowDuringFire) {
     lastError_ = "target rejected during firing";
     Serial.print("[fleet][control] ");
     Serial.println(lastError_);
@@ -2361,6 +2637,308 @@ bool TurretControl::applyJogCommand(JsonDocument& doc, const char* source) {
   return true;
 }
 
+void TurretControl::clearPatternState(const char* reason) {
+  patternPlan_.clear();
+  patternStepIndex_ = 0;
+  patternStepStarted_ = false;
+  patternStepStartedMs_ = 0;
+  patternLoopIndex_ = 0;
+  patternCurrentStepType_ = PATTERN_STEP_NONE;
+  patternState_ = "IDLE";
+  Serial.print("[fleet][pattern] cleared reason=");
+  Serial.println(reason);
+}
+
+bool TurretControl::hasActivePattern() const {
+  return patternPlan_.kind != PATTERN_NONE ||
+         mode_ == "PATTERN" ||
+         patternState_ != "IDLE";
+}
+
+void TurretControl::preemptActivePattern(const char* command, const char* source, bool forceFireSafeOff) {
+  if (!hasActivePattern() && !isFireSequenceActive() && fireState_ != "FIRING") return;
+
+  Serial.print("[fleet][pattern] preempt command=");
+  Serial.print(command);
+  Serial.print(" source=");
+  Serial.println(source);
+  stopMotionOutputs();
+  if (forceFireSafeOff) {
+    forceFireOutputsSafeOff();
+  }
+  clearPatternState(command);
+  targetSlewActive_ = false;
+  yawTrackingSuppressed_ = false;
+  lockedMotionAxis_ = 'N';
+  selectedMotionAxis_ = 'N';
+  resetPidState();
+  mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
+  patternState_ = "IDLE";
+  lastPatternError_ = String("pattern preempted by ") + command;
+}
+
+bool TurretControl::validatePatternPointEnvelope(const PatternPoint& point,
+                                                 uint8_t pointIndex,
+                                                 const char* patternId) {
+  const float solvedYaw = computeYawDeg(point.xCm, point.yCm, config_.xCm, config_.yCm) +
+                          config_.yawOffsetDeg;
+  float solvedPitch = 0.0f;
+  const bool pitchReachable = computePitchDeg(point.xCm, point.yCm, config_.xCm, config_.yCm,
+                                              point.zCm, config_.zCm, solvedPitch);
+  solvedPitch += config_.pitchOffsetDeg;
+
+  const float yawMin = yawCommandMinDeg() + kPatternCommandMarginDeg;
+  const float yawMax = yawCommandMaxDeg() - kPatternCommandMarginDeg;
+  const float pitchMin = pitchCommandMinDeg() + kPatternCommandMarginDeg;
+  const float pitchMax = pitchCommandMaxDeg() - kPatternCommandMarginDeg;
+
+  if (!pitchReachable || !isfinite(solvedYaw) || !isfinite(solvedPitch) ||
+      solvedYaw < yawMin || solvedYaw > yawMax ||
+      solvedPitch < pitchMin || solvedPitch > pitchMax) {
+    lastPatternError_ = String("pattern rejected: ") + patternId +
+                        " point " + String(pointIndex) +
+                        " outside safe command envelope margin yaw=" +
+                        String(solvedYaw, 2) + " pitch=" + String(solvedPitch, 2) +
+                        " allowed_yaw=" + String(yawMin, 2) + ".." + String(yawMax, 2) +
+                        " allowed_pitch=" + String(pitchMin, 2) + ".." + String(pitchMax, 2);
+    lastError_ = lastPatternError_;
+    return false;
+  }
+  return true;
+}
+
+bool TurretControl::validatePatternPlanEnvelope(const PatternPlan& plan, const char* patternId) {
+  for (uint8_t index = 0; index < plan.pointCount; ++index) {
+    if (!validatePatternPointEnvelope(plan.points[index], index, patternId)) return false;
+  }
+  return true;
+}
+
+bool TurretControl::applyPatternPoint(uint8_t pointIndex, const char* source, bool allowDuringFire) {
+  if (pointIndex >= patternPlan_.pointCount) {
+    lastPatternError_ = "pattern aborted: point index out of range";
+    lastError_ = lastPatternError_;
+    return false;
+  }
+
+  const PatternPoint& point = patternPlan_.points[pointIndex];
+  const bool ok = applyTargetCm(point.xCm, point.yCm, point.zCm, source, allowDuringFire);
+  if (!ok || motionSafetyInhibited_) return false;
+  if (yawTrackingSuppressed_) {
+    lastPatternError_ = "pattern rejected: full yaw/pitch tracking required";
+    lastError_ = lastPatternError_;
+    return false;
+  }
+
+  mode_ = "PATTERN";
+  patternState_ = "MOVING";
+  patternCurrentStepType_ = PATTERN_STEP_MOVE;
+  return true;
+}
+
+void TurretControl::beginPatternStep(unsigned long now) {
+  if (patternStepIndex_ >= patternPlan_.stepCount) {
+    completePattern("steps_complete");
+    return;
+  }
+
+  PatternStep& step = patternPlan_.steps[patternStepIndex_];
+  patternStepStarted_ = true;
+  patternStepStartedMs_ = now;
+  patternCurrentStepType_ = step.type;
+
+  Serial.print("[fleet][pattern] step=");
+  Serial.print(patternStepIndex_);
+  Serial.print("/");
+  Serial.print(patternPlan_.stepCount);
+  Serial.print(" type=");
+  Serial.println(patternStepTypeName(step.type));
+
+  switch (step.type) {
+    case PATTERN_STEP_WAIT:
+      patternState_ = "DWELL";
+      mode_ = "PATTERN";
+      break;
+    case PATTERN_STEP_MOVE:
+      if (!applyPatternPoint(step.pointIndex, "PATTERN(move)")) {
+        abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern move rejected");
+      }
+      break;
+    case PATTERN_STEP_DWELL:
+      patternState_ = "DWELL";
+      mode_ = "PATTERN";
+      stopMotionOutputs();
+      break;
+    case PATTERN_STEP_FIRE:
+      if (patternPlan_.noFire) {
+        advancePatternStep();
+        return;
+      }
+      if (mode_ == "DEAD" || brownoutLockoutActive_ || !config_.configured) {
+        abortPattern("pattern fire rejected: unsafe state");
+        return;
+      }
+      patternState_ = "FIRING";
+      mode_ = "PATTERN";
+      postFireMode_ = "PATTERN";
+      startFireSequence(patternPlan_.fireMs, "PATTERN(fire)");
+      break;
+    case PATTERN_STEP_FIRE_MOVE:
+      if (patternPlan_.noFire) {
+        advancePatternStep();
+        return;
+      }
+      if (!applyPatternPoint(step.pointIndex, "PATTERN(sweep_fire_move)", true)) {
+        abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern sweep-fire move rejected");
+        return;
+      }
+      if (mode_ == "DEAD" || brownoutLockoutActive_ || !config_.configured) {
+        abortPattern("pattern sweep-fire rejected: unsafe state");
+        return;
+      }
+      patternCurrentStepType_ = PATTERN_STEP_FIRE_MOVE;
+      patternState_ = "FIRE_MOVE";
+      mode_ = "PATTERN";
+      postFireMode_ = "PATTERN";
+      ensurePatternSweepFire(patternPlan_.fireMs);
+      patternCurrentStepType_ = PATTERN_STEP_FIRE_MOVE;
+      patternState_ = "FIRE_MOVE";
+      break;
+    case PATTERN_STEP_WAIT_FIRE_SAFE:
+      patternState_ = "WAIT_FIRE_SAFE";
+      mode_ = isFireSequenceActive() ? mode_ : String("PATTERN");
+      break;
+    case PATTERN_STEP_DONE:
+    case PATTERN_STEP_NONE:
+      completePattern("done_step");
+      break;
+  }
+}
+
+void TurretControl::advancePatternStep() {
+  patternStepIndex_++;
+  patternStepStarted_ = false;
+  patternStepStartedMs_ = 0;
+  if (patternPlan_.stepCount > 0) {
+    patternLoopIndex_ = static_cast<uint8_t>((patternStepIndex_ * patternPlan_.loopCount) / patternPlan_.stepCount);
+    if (patternLoopIndex_ >= patternPlan_.loopCount) patternLoopIndex_ = patternPlan_.loopCount - 1;
+  }
+}
+
+void TurretControl::completePattern(const char* reason) {
+  const String returnTo = patternPlan_.returnTo;
+  lastPatternError_ = "";
+  clearPatternState(reason);
+  stopMotionOutputs();
+  if (returnTo == "idle") {
+    if (config_.configured) {
+      updateCurrentAngles();
+      haveTarget_ = false;
+      yawTrackingSuppressed_ = false;
+      yawTargetDeg_ = clampYawCommand(clampf(yawCurrentDeg_, config_.idleYawMinDeg, config_.idleYawMaxDeg));
+      pitchTargetDeg_ = clampPitchCommand(clampf(pitchCurrentDeg_, config_.idlePitchMinDeg, config_.idlePitchMaxDeg));
+      yawGoalDeg_ = yawTargetDeg_;
+      pitchGoalDeg_ = pitchTargetDeg_;
+      targetSlewActive_ = false;
+      idleSweepForward_ = yawTargetDeg_ <= config_.idleYawMinDeg;
+      idlePitchUp_ = pitchTargetDeg_ <= config_.idlePitchMinDeg;
+      lockedMotionAxis_ = 'N';
+      selectedMotionAxis_ = 'N';
+      resetPidState();
+      mode_ = "IDLE";
+    } else {
+      mode_ = "UNCONFIGURED";
+    }
+  } else {
+    mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
+  }
+  patternCurrentStepType_ = PATTERN_STEP_DONE;
+  Serial.print("[fleet][pattern] complete return_to=");
+  Serial.println(returnTo);
+}
+
+void TurretControl::abortPattern(const char* reason) {
+  lastPatternError_ = reason;
+  lastError_ = reason;
+  clearPatternState("abort");
+  stopMotionOutputs();
+  forceFireOutputsSafeOff();
+  mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
+  patternCurrentStepType_ = PATTERN_STEP_DONE;
+  Serial.print("[fleet][pattern] aborted: ");
+  Serial.println(reason);
+}
+
+void TurretControl::updatePattern() {
+  if (patternPlan_.kind == PATTERN_NONE) return;
+  const unsigned long now = millis();
+
+  if (mode_ == "DEAD" || brownoutLockoutActive_) {
+    abortPattern("pattern aborted: unsafe state");
+    return;
+  }
+
+  if (patternStepIndex_ >= patternPlan_.stepCount) {
+    completePattern("steps_complete");
+    return;
+  }
+
+  if (!patternStepStarted_) {
+    beginPatternStep(now);
+    return;
+  }
+
+  PatternStep& step = patternPlan_.steps[patternStepIndex_];
+  switch (step.type) {
+    case PATTERN_STEP_WAIT:
+    case PATTERN_STEP_DWELL:
+      if (now - patternStepStartedMs_ >= step.durationMs) {
+        advancePatternStep();
+      }
+      break;
+    case PATTERN_STEP_MOVE:
+      if (aimReached()) {
+        advancePatternStep();
+      } else if (now - patternStepStartedMs_ >= step.durationMs * 2UL) {
+        // Motion uses a one-axis-at-a-time scheduler to avoid brownout on this
+        // fleet hardware, so point-shot moves get one configured timeout per
+        // axis before failing. Sweep-fire legs are handled separately as
+        // visible time-boxed sweeps.
+        abortPattern("pattern move timeout before aim reached");
+      }
+      break;
+    case PATTERN_STEP_FIRE_MOVE:
+      patternState_ = "FIRE_MOVE";
+      if (patternSweepYawReached()) {
+        stopPatternSweepFireAtEndpoint("endpoint");
+        advancePatternStep();
+      } else if (now - patternStepStartedMs_ >= step.durationMs) {
+        // A sweep-fire leg is deliberately time-boxed: the visible behavior is
+        // "fire while sweeping toward the opposite lane edge." Unlike a
+        // point-shot MOVE, reaching the exact endpoint is not required before
+        // advancing, because the safety envelope already clamps the commanded
+        // target and the fire sequence must be allowed to shut down cleanly.
+        stopPatternSweepFireAtEndpoint("timeout");
+        advancePatternStep();
+      }
+      break;
+    case PATTERN_STEP_FIRE:
+      advancePatternStep();
+      break;
+    case PATTERN_STEP_WAIT_FIRE_SAFE:
+      patternState_ = "WAIT_FIRE_SAFE";
+      if (!isFireSequenceActive() && fireState_ != "FIRING") {
+        mode_ = "PATTERN";
+        advancePatternStep();
+      }
+      break;
+    case PATTERN_STEP_DONE:
+    case PATTERN_STEP_NONE:
+      completePattern("done");
+      break;
+  }
+}
+
 void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) {
   if (brownoutLockoutActive_) {
     forceFireOutputsSafeOff();
@@ -2386,11 +2964,31 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
     Serial.println(lastError_);
     return;
   }
+  if (patternPlan_.kind != PATTERN_NONE) {
+    lastError_ = "fire rejected during active pattern";
+    Serial.print("[fleet][fire] ");
+    Serial.println(lastError_);
+    return;
+  }
+  updateCurrentAngles();
+  if (!motionInsideSoftWindow()) {
+    forceFireOutputsSafeOff();
+    pendingFire_ = false;
+    pendingFireHoldMs_ = 0;
+    motionSafetyInhibited_ = true;
+    lastError_ = String("fire rejected: pose outside calibrated safe envelope yaw_raw=") +
+                 String(yawRawCurrent_) + " pitch_raw=" + String(pitchRawCurrent_);
+    Serial.print("[fleet][safety] ");
+    Serial.println(lastError_);
+    return;
+  }
   if (isFireSequenceActive()) {
     const unsigned long holdMs = normalizeFireHoldMs(doc, config_);
     fireRequestedHoldMs_ = holdMs;
     if (fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0) {
-      fireKeepAliveUntilMs_ = millis() + holdMs;
+      const unsigned long now = millis();
+      fireKeepAliveUntilMs_ = deadlineAfter(now, holdMs);
+      fireHardOffAtMs_ = deadlineAfter(now, fireHardOffDelayMs(config_, holdMs));
     }
     if (fireSequenceState_ == FIRE_SEQUENCE_ESC_OFF_WAIT ||
         fireSequenceState_ == FIRE_SEQUENCE_CH3_OFF_WAIT ||
@@ -2423,7 +3021,7 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
     return;
   }
   if (!validateFrame(doc["frame_id"], "pattern", source)) return;
-  if (mode_ == "DEAD" || fireState_ == "FIRING") {
+  if (mode_ == "DEAD" || brownoutLockoutActive_) {
     lastError_ = "pattern rejected: unsafe current state";
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
@@ -2438,36 +3036,71 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
     return;
   }
 
+  const PatternKind nextKind = patternKindFromId(patternId);
+  if (nextKind == PATTERN_NONE) {
+    lastError_ = String("pattern rejected: unsupported pattern_id=") + patternId;
+    lastPatternError_ = lastError_;
+    Serial.print("[fleet][pattern] ");
+    Serial.println(lastError_);
+    return;
+  }
+
+  if (hasActivePattern() || fireState_ == "FIRING" || isFireSequenceActive()) {
+    preemptActivePattern("pattern", source, true);
+  }
+
+  JsonObjectConst params = doc["params"].as<JsonObjectConst>();
+  PatternPlan nextPlan;
+  const uint32_t patternSelectionSeed =
+    static_cast<uint32_t>(micros()) ^
+    (static_cast<uint32_t>(analogRead(kYawPotPin)) << 16) ^
+    static_cast<uint32_t>(analogRead(kPitchPotPin)) ^
+    static_cast<uint32_t>(random(0x7fffffff));
+  if (!compilePatternPlan(params, nextKind, config_, nextPlan, patternSelectionSeed)) {
+    lastPatternError_ = nextPlan.error.length() > 0 ? nextPlan.error : String("pattern rejected: no executable steps");
+    lastError_ = lastPatternError_;
+    Serial.print("[fleet][pattern] ");
+    Serial.println(lastError_);
+    return;
+  }
+  if (!validatePatternPlanEnvelope(nextPlan, patternId)) {
+    Serial.print("[fleet][pattern] ");
+    Serial.println(lastError_);
+    return;
+  }
+
+  // The motion safety gate must run after the first pattern point has populated
+  // clampedYawDeg_/clampedPitchDeg_. Calling it here would evaluate inward
+  // recovery against the previous command target and reject safe patterns while
+  // the turret is just outside the soft window. applyPatternPoint() calls
+  // applyTargetCm(), which runs ensureMotionSafetyForTracking() before motion.
+  clearPatternState("new_pattern");
   activePatternId_ = patternId;
   activePatternInstanceId_ = doc["pattern_instance_id"] | "";
-  if (!ensureMotionSafetyForTracking(source)) return;
-
+  patternPlan_ = nextPlan;
   patternState_ = "ACTIVE";
+  patternCurrentStepType_ = PATTERN_STEP_NONE;
   mode_ = "PATTERN";
   lastError_ = "";
+  lastPatternError_ = "";
 
   Serial.print("[fleet][pattern] accepted pattern_id=");
   Serial.print(activePatternId_);
   Serial.print(" instance=");
   Serial.print(activePatternInstanceId_);
   Serial.print(" frame_id=");
-  Serial.println(config_.frameId);
+  Serial.print(config_.frameId);
+  Serial.print(" steps=");
+  Serial.print(patternPlan_.stepCount);
+  Serial.print(" loop=");
+  Serial.print(patternPlan_.loopCount);
+  Serial.print(" dwell_ms=");
+  Serial.print(patternPlan_.dwellMs);
+  Serial.print(" fire_ms=");
+  Serial.println(patternPlan_.fireMs);
 
   if (activePatternId_ == "calibration_no_fire") {
     Serial.println("[fleet][pattern] calibration_no_fire: relay/ESC fire disabled by contract");
-  }
-
-  JsonArrayConst points = doc["params"]["points"].as<JsonArrayConst>();
-  if (!points.isNull() && points.size() > 0) {
-    JsonObjectConst firstPoint = points[0].as<JsonObjectConst>();
-    const bool firstPointApplied = applyTargetObject(firstPoint, "PATTERN(first_point)");
-    if (firstPointApplied && !motionSafetyInhibited_) {
-      mode_ = "PATTERN";
-      patternState_ = "ACTIVE";
-    } else {
-      if (mode_ == "PATTERN") mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
-      patternState_ = "IDLE";
-    }
   }
 }
 
@@ -2483,6 +3116,8 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
   if (commandBlockedByBrownoutLockout(command, source)) return;
 
   if (strcmp(command, "idle") == 0) {
+    preemptActivePattern("idle", source, true);
+    clearPatternState("idle");
     if (!config_.configured) {
       mode_ = "UNCONFIGURED";
       lastError_ = "idle rejected: turret is unconfigured";
@@ -2516,6 +3151,8 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
       }
     }
   } else if (strcmp(command, "dead") == 0) {
+    preemptActivePattern("dead", source, true);
+    clearPatternState("dead");
     haveTarget_ = false;
     prepareForNewMotionCommand(source);
     forceFireOutputsSafeOff();
@@ -2543,6 +3180,8 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
       Serial.println(lastError_);
     }
   } else if (strcmp(command, "hold") == 0 || strcmp(command, "wait") == 0) {
+    preemptActivePattern("hold", source, true);
+    clearPatternState("hold");
     haveTarget_ = false;
     stopMotionOutputs();
     forceFireOutputsSafeOff();
@@ -2557,19 +3196,36 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
     resetPidState();
     mode_ = config_.configured ? "WAIT_COMMAND" : "UNCONFIGURED";
     patternState_ = "IDLE";
-    lastError_ = "";
+    if (!motionInsideSoftWindow()) {
+      motionSafetyInhibited_ = true;
+      lastError_ = String("hold: pose outside calibrated safe envelope yaw_raw=") +
+                   String(yawRawCurrent_) + " pitch_raw=" + String(pitchRawCurrent_);
+      Serial.print("[fleet][safety] ");
+      Serial.println(lastError_);
+    } else {
+      motionSafetyInhibited_ = false;
+      lastError_ = "";
+    }
   } else if (strcmp(command, "home") == 0 || strcmp(command, "init") == 0 ||
              strcmp(command, "initiate") == 0 || strcmp(command, "initialize") == 0) {
+    preemptActivePattern("home", source, true);
+    clearPatternState("home");
     applyHomeCommand(source);
     return;
   } else if (strcmp(command, "target") == 0) {
     if (!validateFrame(doc["frame_id"], "target", source)) return;
+    preemptActivePattern("target", source, true);
+    clearPatternState("target");
     applyTargetObject(doc["target"].as<JsonObjectConst>(), source);
     return;
   } else if (strcmp(command, "aim") == 0 || strcmp(command, "manual_aim") == 0) {
+    preemptActivePattern("aim", source, true);
+    clearPatternState("aim");
     applyDirectAimCommand(doc, source);
     return;
   } else if (strcmp(command, "jog") == 0 || strcmp(command, "debug_jog") == 0) {
+    preemptActivePattern("jog", source, true);
+    clearPatternState("jog");
     applyJogCommand(doc, source);
     return;
   } else if (strcmp(command, "fire") == 0) {
@@ -2600,16 +3256,30 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
 }
 
 void TurretControl::appendStatus(JsonObject doc) const {
+  const unsigned long now = millis();
+  const bool inProgress = commandInProgress();
+  const bool ready = readyForNextCommand();
   doc["mode"] = mode_;
+  doc["command_state"] = commandState();
+  doc["command_in_progress"] = inProgress;
+  doc["ready_for_next_command"] = ready;
+  doc["preemptible"] = config_.configured && !brownoutLockoutActive_ && mode_ != "UNCONFIGURED";
+  doc["active_command_id"] = lastCommandId_;
+  doc["command_policy"] = "latest_wins_preemptive";
   doc["frame_id"] = config_.frameId;
   doc["pattern_state"] = patternState_;
   doc["pattern_id"] = activePatternId_;
   doc["pattern_instance_id"] = activePatternInstanceId_;
+  doc["pattern_step_index"] = patternStepIndex_;
+  doc["pattern_step_count"] = patternPlan_.stepCount;
+  doc["pattern_step_type"] = patternStepTypeName(patternCurrentStepType_);
+  doc["pattern_loop_index"] = patternLoopIndex_;
+  doc["pattern_loop_count"] = patternPlan_.loopCount;
+  doc["pattern_last_error"] = lastPatternError_;
   doc["fire_state"] = fireState_;
   doc["fire_sequence"] = fireSequenceName();
-  doc["fire_remaining_ms"] = (isFireSequenceActive() && fireKeepAliveUntilMs_ > millis())
-                                ? static_cast<uint32_t>(fireKeepAliveUntilMs_ - millis())
-                                : 0;
+  doc["fire_remaining_ms"] = isFireSequenceActive() ? deadlineRemainingMs(now, fireKeepAliveUntilMs_) : 0;
+  doc["fire_hard_off_remaining_ms"] = isFireSequenceActive() ? deadlineRemainingMs(now, fireHardOffAtMs_) : 0;
   doc["last_error"] = lastError_;
   doc["last_command_id"] = lastCommandId_;
 
@@ -2626,7 +3296,7 @@ void TurretControl::appendStatus(JsonObject doc) const {
   fire["requested_hold_ms"] = fireRequestedHoldMs_;
   fire["pending_fire"] = pendingFire_;
   fire["pending_fire_hold_ms"] = pendingFireHoldMs_;
-  fire["aim_stable_ms"] = aimReachedSinceMs_ == 0 ? 0 : static_cast<uint32_t>(millis() - aimReachedSinceMs_);
+  fire["aim_stable_ms"] = aimReachedSinceMs_ == 0 ? 0 : static_cast<uint32_t>(now - aimReachedSinceMs_);
 
   JsonObject motion = doc.createNestedObject("motion_state");
   motion["brownout_lockout"] = brownoutLockoutActive_;
@@ -2663,6 +3333,10 @@ void TurretControl::appendStatus(JsonObject doc) const {
   motionConfig["yaw_max_delta_us"] = config_.yawMaxDeltaUs;
   motionConfig["pitch_max_delta_us"] = config_.pitchMaxDeltaUs;
   motionConfig["yaw_min_drive_us"] = config_.yawMinDriveUs;
+  motionConfig["yaw_plus_max_delta_us"] = config_.yawPlusMaxDeltaUs;
+  motionConfig["yaw_minus_max_delta_us"] = config_.yawMinusMaxDeltaUs;
+  motionConfig["yaw_plus_min_drive_us"] = config_.yawPlusMinDriveUs;
+  motionConfig["yaw_minus_min_drive_us"] = config_.yawMinusMinDriveUs;
   motionConfig["pitch_min_drive_us"] = config_.pitchMinDriveUs;
   motionConfig["servo_attach_settle_ms"] = config_.servoAttachSettleMs;
   motionConfig["axis_switch_cooldown_ms"] = config_.axisSwitchCooldownMs;
@@ -2673,6 +3347,11 @@ void TurretControl::appendStatus(JsonObject doc) const {
   motionConfig["yaw_continuous_feedback"] = kYawContinuousFeedback;
   motionConfig["home_yaw_deg"] = config_.homeYawDeg;
   motionConfig["home_pitch_deg"] = config_.homePitchDeg;
+  motionConfig["command_envelope_ratio"] = config_.commandEnvelopeRatio;
+  motionConfig["yaw_command_min_deg"] = yawCommandMinDeg();
+  motionConfig["yaw_command_max_deg"] = yawCommandMaxDeg();
+  motionConfig["pitch_command_min_deg"] = pitchCommandMinDeg();
+  motionConfig["pitch_command_max_deg"] = pitchCommandMaxDeg();
   motionConfig["yaw_soft_min_deg"] = config_.yawMinDeg;
   motionConfig["yaw_soft_max_deg"] = config_.yawMaxDeg;
   motionConfig["pitch_soft_min_deg"] = config_.pitchMinDeg;
@@ -2728,9 +3407,84 @@ const char* TurretControl::patternState() const {
   return patternState_.c_str();
 }
 
+bool TurretControl::commandInProgress() const {
+  const bool patternActive = patternPlan_.kind != PATTERN_NONE ||
+                             mode_ == "PATTERN" ||
+                             patternState_ != "IDLE";
+  const bool fireActive = fireState_ == "FIRING" ||
+                          isFireSequenceActive() ||
+                          pendingFire_;
+  const bool finiteMotionActive = (mode_ == "HOME" || mode_ == "TARGET") &&
+                                  (targetSlewActive_ ||
+                                   selectedMotionAxis_ != 'N' ||
+                                   !aimReached());
+  // IDLE is a long-running behavior rather than a finite job, but it is still
+  // an active commanded state; Command Center should not treat it as "done".
+  return patternActive || fireActive || finiteMotionActive || mode_ == "IDLE";
+}
+
+bool TurretControl::readyForNextCommand() const {
+  return config_.configured &&
+         mode_ == "WAIT_COMMAND" &&
+         patternPlan_.kind == PATTERN_NONE &&
+         patternState_ == "IDLE" &&
+         fireState_ != "FIRING" &&
+         !isFireSequenceActive() &&
+         !pendingFire_ &&
+         !targetSlewActive_ &&
+         selectedMotionAxis_ == 'N' &&
+         !brownoutLockoutActive_ &&
+         !motionSafetyInhibited_;
+}
+
+const char* TurretControl::commandState() const {
+  if (!config_.configured || mode_ == "UNCONFIGURED") return "unconfigured";
+  if (brownoutLockoutActive_) return "blocked_brownout";
+  if (motionSafetyInhibited_) return "blocked_safety";
+  if (mode_ == "DEAD") return "dead";
+  if (readyForNextCommand()) return "ready";
+  if (commandInProgress()) return "busy";
+  return "settling";
+}
+
+String TurretControl::statusSignature() const {
+  String signature;
+  signature.reserve(160 + lastCommandId_.length() + lastError_.length() +
+                    activePatternId_.length() + activePatternInstanceId_.length());
+  signature += mode_;
+  signature += '|';
+  signature += commandState();
+  signature += '|';
+  signature += commandInProgress() ? '1' : '0';
+  signature += '|';
+  signature += readyForNextCommand() ? '1' : '0';
+  signature += '|';
+  signature += fireState_;
+  signature += '|';
+  signature += fireSequenceName();
+  signature += '|';
+  signature += patternState_;
+  signature += '|';
+  signature += activePatternId_;
+  signature += '|';
+  signature += activePatternInstanceId_;
+  signature += '|';
+  signature += String(patternStepIndex_);
+  signature += '/';
+  signature += String(patternPlan_.stepCount);
+  signature += '|';
+  signature += patternStepTypeName(patternCurrentStepType_);
+  signature += '|';
+  signature += lastCommandId_;
+  signature += '|';
+  signature += lastError_;
+  return signature;
+}
+
 bool TurretControl::isSafeForOta() const {
   if (brownoutLockoutActive_ || motionSafetyInhibited_) return false;
   if (fireState_ == "FIRING" || isFireSequenceActive()) return false;
+  if (patternPlan_.kind != PATTERN_NONE) return false;
   if (mode_ == "PATTERN" || mode_ == "FIRING" || mode_ == "IDLE" || mode_ == "DEAD") return false;
   if (mode_ == "HOME" || mode_ == "TARGET") {
     return aimReached() && !targetSlewActive_ &&
@@ -2739,6 +3493,15 @@ bool TurretControl::isSafeForOta() const {
            pitchLastCommandUs_ == config_.pitchStopUs;
   }
   return mode_ == "WAIT_COMMAND" || mode_ == "UNCONFIGURED";
+}
+
+bool TurretControl::wantsFastStatus() const {
+  return mode_ == "PATTERN" ||
+         mode_ == "HOME" ||
+         mode_ == "TARGET" ||
+         fireState_ == "FIRING" ||
+         isFireSequenceActive() ||
+         patternPlan_.kind != PATTERN_NONE;
 }
 
 }  // namespace turret_fleet

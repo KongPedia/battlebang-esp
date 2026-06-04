@@ -1,0 +1,28 @@
+{
+  "command": "pattern",
+  "command_id": "example-two-point-bounce-001",
+  "pattern_id": "two_point_bounce",
+  "pattern_instance_id": "example-two-point-bounce-a-b",
+  "frame_id": "boss_stage_v1",
+  "ttl_ms": 180000,
+  "params": {
+    "loop": 2,
+    "phase_offset_ms": 0,
+    "move_timeout_ms": 60000,
+    "dwell_ms": 1000,
+    "fire_ms": 1000,
+    "return_to": "wait_command",
+    "points": [
+      {
+        "x": 0.0,
+        "y": 0.75,
+        "z": -0.6
+      },
+      {
+        "x": 0.0,
+        "y": -0.5,
+        "z": -0.6
+      }
+    ]
+  }
+}

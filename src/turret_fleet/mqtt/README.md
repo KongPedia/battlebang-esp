@@ -21,7 +21,8 @@ battlebang/devices/{device_id}/status
 battlebang/turrets/all/ota
 ```
 
-Status includes firmware build, config version, yaw/pitch raw/current/target/goal, clamp results, fire output state, brownout lockout, OTA polling policy, Wi-Fi IP/RSSI, and last error.
+Status includes firmware build, config version, command progress, yaw/pitch raw/current/target/goal,
+clamp results, fire output state, brownout lockout, OTA polling policy, Wi-Fi IP/RSSI, and last error.
 
 Command Center usage notes:
 
@@ -32,6 +33,15 @@ Command Center usage notes:
 - `update --desired-build N` in the CLI publishes OTA polling approval as a config patch; no release-specific manifest URL is typed by the operator.
 - `ota` accepts a full firmware manifest for an immediate approved update job.
 - `status.reason` reports transitions such as `command_applied`,
-  `config_applied`, `ota_downloading`, `ota_rebooting`, and `connected`.
+  `state_changed`, `config_applied`, `ota_downloading`, `ota_rebooting`, and `connected`.
+- Command Center can wait on `ready_for_next_command=true`. During finite work
+  (`pattern`, `target`, `home`, fire sequence), status is emitted at 1 Hz and
+  immediately on state transitions; top-level fields `command_state`,
+  `command_in_progress`, `active_command_id`, `pattern_state`,
+  `pattern_step_index`, `pattern_step_type`, and `fire_state` describe what the
+  turret is currently doing.
+- `command_policy=latest_wins_preemptive` means a new high-priority command
+  preempts an active pattern by stopping motion and forcing fire outputs safe
+  before applying the new command.
 
 See `../docs/usage.md` for exact CLI examples.

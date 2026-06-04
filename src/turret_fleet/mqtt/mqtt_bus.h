@@ -29,6 +29,8 @@ class MqttBus {
   PubSubClient client_{wifiClient_};
   unsigned long lastConnectAttemptMs_ = 0;
   unsigned long lastStatusMs_ = 0;
+  unsigned long lastStatusChangeCheckMs_ = 0;
+  String lastStatusSignature_;
   bool subscriptionsDirty_ = true;
 
   bool connectIfNeeded();

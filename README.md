@@ -118,12 +118,16 @@ python3 -m venv .venv-pio
 # MQTT_BROKER_HOST is the Command Center/MQTT broker, not the ESP device IP.
 export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
 ./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-e2e turret_2 --host "$MQTT_BROKER_HOST" --allow-live-fire
 ```
 
 The fleet firmware is a single generic image. First provisioning over USB stores
 `turret_id`, Wi-Fi, MQTT, pose, calibration, motion/fire, and OTA policy in ESP
 NVS. After that, Command Center can update config and command `target`, `idle`,
 `dead`, `home`, `recover`, and OTA jobs over MQTT without reflashing.
+For `turret_1` through `turret_4`, `fleet-upload` automatically overlays the
+matching `src/turret_fleet/profiles/<turret>.json` and
+`src/turret_fleet/pattern_presets/<turret>.json` files before writing NVS.
 
 ---
 

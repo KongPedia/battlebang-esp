@@ -35,3 +35,13 @@ Before live hardware checks:
 2. Do not run `fire` unless a live fire test is explicitly intended; the explicit command itself is the arm/trigger action.
 3. Use `hold` or serial `show-status` to verify `motion_state.brownout_lockout=false` and `last_error=""`.
 4. Keep target tests inside `motion.limits`.
+
+For the scripted MQTT E2E pass:
+
+```bash
+./bin/turret fleet-e2e turret_2 --host "$MQTT_BROKER_HOST" \
+  --allow-live-fire --json-report .omx/logs/turret_2-e2e.json
+```
+
+Drop `--allow-live-fire` to skip relay/ESC fire and pattern-fire scenarios
+while still checking `target`, `idle`, `dead`, and `hold`.

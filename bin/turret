@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FLASH_SCRIPT="$ROOT_DIR/scripts/turret_flash.py"
 FLEET_PROVISION_SCRIPT="$ROOT_DIR/scripts/turret_fleet/provision.py"
 FLEET_MQTT_SCRIPT="$ROOT_DIR/scripts/turret_fleet/mqtt_command.py"
+FLEET_E2E_SCRIPT="$ROOT_DIR/scripts/turret_fleet/e2e_mqtt_test.py"
 FLEET_OTA_PUBLISH_SCRIPT="$ROOT_DIR/scripts/turret_fleet/publish_mqtt_manifest.py"
 PIO_BIN="$ROOT_DIR/.venv-pio/bin/pio"
 PYTHON_BIN="$ROOT_DIR/.venv-pio/bin/python"
@@ -35,7 +36,8 @@ Usage:
   ./bin/turret fleet-config <turret-number|turret_id>
   ./bin/turret fleet-provision <turret-number|turret_id> [port]
   ./bin/turret fleet-upload <turret-number|turret_id> [port]
-  ./bin/turret fleet-mqtt <turret-number|turret_id> <idle|dead|hold|recover|target|aim|fire|config|update> [options]
+  ./bin/turret fleet-mqtt <turret-number|turret_id> <idle|dead|hold|recover|target|aim|fire|pattern|config|update> [options]
+  ./bin/turret fleet-e2e <turret-number|turret_id> [--host MQTT_BROKER] [--allow-live-fire]
   ./bin/turret fleet-ota-publish <manifest.json> [topic]
   ./bin/turret monitor [port]
   ./bin/turret config
@@ -53,6 +55,9 @@ Examples:
   ./bin/turret fleet-provision turret_2 /dev/cu.usbserial-120
   ./bin/turret fleet-mqtt turret_2 target 0 0 1
   ./bin/turret fleet-mqtt turret_2 aim 0 10
+  ./bin/turret fleet-mqtt turret_2 config --profile-file src/turret_fleet/profiles/turret_2.json --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+  ./bin/turret fleet-mqtt turret_2 pattern two_point_bounce --frame-id boss_stage_v1
+  ./bin/turret fleet-e2e turret_2 --host COMMAND_CENTER_IP_OR_DNS --allow-live-fire
   ./bin/turret fleet-mqtt turret_2 recover
   ./bin/turret fleet-mqtt turret_2 fire --duration-ms 500
   ./bin/turret fleet-mqtt turret_2 update --desired-build 7
@@ -71,11 +76,16 @@ Fleet first provisioning:
   - Copy src/turret_fleet/.env.turret_fleet.example -> src/turret_fleet/.env.turret_fleet and fill Wi-Fi/MQTT.
   - `fleet-upload 2` uploads one generic esp32dev_turret_fleet image and then
     injects turret_2 runtime config over USB serial into ESP32 NVS.
+  - Per-turret non-secret defaults are auto-loaded from:
+      src/turret_fleet/profiles/<turret>.json
+      src/turret_fleet/pattern_presets/<turret>.json
   - Env file can be overridden with TURRET_FLEET_ENV_FILE=/path/to/.env.
   - `fleet-mqtt` reads the same module-local env file for broker host/port/root. Use
     --host "$MQTT_BROKER_HOST" when the env file is absent; this host is the MQTT broker,
     not the ESP device IP. Example: MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS.
   - `fleet-mqtt ... update --desired-build N` approves polling against the GitHub latest manifest.
+  - `fleet-mqtt ... config --profile-file <json> --patterns-file <json>` persists runtime config and readable pattern coordinates in NVS.
+  - `fleet-e2e ... --allow-live-fire` runs target/fire/idle/dead/hold plus the three pattern presets against live hardware and leaves the turret in hold.
   - `fleet-ota-publish` publishes a full release manifest to MQTT for direct OTA jobs.
 USAGE
 }
@@ -290,6 +300,14 @@ case "$cmd" in
     turret_id="$(normalize_turret "${2:-}")"
     shift 2 || true
     exec "$PYTHON_BIN" "$FLEET_MQTT_SCRIPT" --env-file "$FLEET_ENV_FILE" "$turret_id" "$@"
+    ;;
+  fleet-e2e)
+    if [[ -z "${2:-}" || "${2:-}" == "-h" || "${2:-}" == "--help" ]]; then
+      exec "$PYTHON_BIN" "$FLEET_E2E_SCRIPT" --help
+    fi
+    turret_id="$(normalize_turret "${2:-}")"
+    shift 2 || true
+    exec "$PYTHON_BIN" "$FLEET_E2E_SCRIPT" "$turret_id" --env-file "$FLEET_ENV_FILE" "$@"
     ;;
   fleet-ota-publish)
     shift || true

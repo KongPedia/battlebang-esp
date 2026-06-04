@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,6 +81,8 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     assert "Keep false while power/servo brownout" not in env_example
     assert "TURRET_FLEET_YAW_STOP_US=1500" in env_example
     assert "TURRET_FLEET_PITCH_STOP_US=1500" in env_example
+    assert "TURRET_FLEET_YAW_PLUS_MAX_DELTA_US=0" in env_example
+    assert "TURRET_FLEET_YAW_MINUS_MAX_DELTA_US=0" in env_example
     assert "TURRET_FLEET_AXIS_SWITCH_COOLDOWN_MS=800" in env_example
     assert "def build_config" in provision
     assert "normalize_turret_id" in provision
@@ -86,7 +90,14 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     assert "TURRET_FLEET_MQTT_HOST" in provision
     assert 'default="true"' in provision
     assert '"yaw_stop_us": yaw_stop_us' in provision
-    assert "provision {payload}" in provision
+    assert '"yaw_plus_max_delta_us": yaw_plus_max_delta_us' in provision
+    assert "def write_serial_line" in provision
+    assert "SERIAL_WRITE_CHUNK_BYTES = 96" in provision
+    assert "SERIAL_BOOT_SETTLE_S = 4.0" in provision
+    assert "SERIAL_PROVISION_RETRIES = 3" in provision
+    assert '"InvalidInput" JSON parse error' in provision
+    assert "retrying serial provision after truncated JSON" in provision
+    assert "write_serial_line(ser, f\"provision {payload}\")" in provision
 
 
 def test_fleet_target_contract_rejects_frame_mismatch_and_converts_meters() -> None:
@@ -165,11 +176,18 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
     assert "control_->appendStatus" in bus
     for field in [
         'doc["frame_id"]',
+        'doc["command_state"]',
+        'doc["command_in_progress"]',
+        'doc["ready_for_next_command"]',
+        'doc["preemptible"]',
+        'doc["active_command_id"]',
+        'doc["command_policy"]',
         'doc["pattern_state"]',
         'doc["fire_state"]',
         'doc["fire_sequence"]',
         'doc["last_error"]',
         'doc.createNestedObject("fire_output_state")',
+        'fire["esc_attached"]',
         'fire["esc_command_us"]',
         'fire["relay_ch2_on"]',
         'fire["pending_fire"]',
@@ -185,7 +203,16 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
         'motionConfig["servo_max_delta_us"]',
         'motionConfig["yaw_max_delta_us"]',
         'motionConfig["pitch_max_delta_us"]',
+        'motionConfig["yaw_plus_max_delta_us"]',
+        'motionConfig["yaw_minus_max_delta_us"]',
+        'motionConfig["yaw_plus_min_drive_us"]',
+        'motionConfig["yaw_minus_min_drive_us"]',
         'motionConfig["axis_switch_cooldown_ms"]',
+        'motionConfig["command_envelope_ratio"]',
+        'motionConfig["yaw_command_min_deg"]',
+        'motionConfig["yaw_command_max_deg"]',
+        'motionConfig["pitch_command_min_deg"]',
+        'motionConfig["pitch_command_max_deg"]',
         'motionConfig["yaw_soft_low_raw"]',
         'motionConfig["yaw_soft_high_raw"]',
         'motionConfig["pitch_soft_low_raw"]',
@@ -199,6 +226,23 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
         'aim["clamped_pitch_deg"]',
     ]:
         assert field in control
+
+    for field in [
+        "statusSignature",
+        'publishStatus("state_changed")',
+        "kStatusChangeCheckMs",
+    ]:
+        assert field in bus + control
+
+
+def test_turret_fleet_boot_sends_esc_stop_signal_on_gpio25() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+
+    assert "const int kEscPin = 25;" in control
+    assert "ensureEscStopSignal(\"boot-ready\");" in control
+    assert "Keep the legacy src/turret ESC contract" in control
+    assert "ESC STOP signal active on boot-ready" in control
+    assert "relay outputs parked safe-off" in control
 
 
 def test_mqtt_config_update_can_change_wifi_or_broker_after_first_provisioning() -> None:
@@ -270,8 +314,12 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "relayWrite(kRelayCh2Pin, true)" in control
     assert "config_.fireEscRunUs" in control
     assert "fireKeepAliveUntilMs_ = 0;" in control
-    assert "fireSequenceState_ == FIRE_SEQUENCE_RUNNING &&\n      fireKeepAliveUntilMs_ != 0" in control
-    assert "fireKeepAliveUntilMs_ = now + fireRequestedHoldMs_;" in control
+    assert "fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0" in control
+    assert "bool deadlineReached(unsigned long now, unsigned long deadlineMs)" in control
+    assert "if (deadlineMs == 0) return 0;" in control
+    assert "deadlineReached(now, fireHardOffAtMs_)" in control
+    assert "deadlineReached(now, fireKeepAliveUntilMs_)" in control
+    assert "fireKeepAliveUntilMs_ = deadlineAfter(now, fireRequestedHoldMs_);" in control
     assert 'postFireMode_ = (mode_ == "TARGET" || mode_ == "PATTERN" || mode_ == "HOME")' in control
     assert "ESC STOP after hold_ms=" in control
     assert "forceFireOutputsSafeOff();" in control
@@ -297,7 +345,11 @@ def test_pitch_deadband_is_tighter_than_aim_reached_tolerance() -> None:
     control = read("src/turret_fleet/control/turret_control.cpp")
 
     assert "const float kPitchDeadbandPseudo = 10.0f;" in control
-    assert "fabs(pitchFinal - pitchCurrentDeg_) <= 2.0f" in control
+    assert "const float kAimReachedToleranceDeg = 3.0f;" in control
+    assert "const unsigned long kAimStableBeforeCompleteMs = 300;" in control
+    assert 'const bool finiteAimMode = mode_ == "HOME" || mode_ == "TARGET";' in control
+    assert "mode_ = \"WAIT_COMMAND\";" in control
+    assert "fabs(pitchFinal - pitchCurrentDeg_) <= kAimReachedToleranceDeg" in control
 
 
 def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
@@ -336,7 +388,7 @@ def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
     assert "soft-window recovery" in control
     assert "motionReadingsStableInSoftWindow" in control
     assert "feedback stability source=" in control
-    assert "kTrackingYawMaxDeltaUs" in control
+    assert "const int kTrackingYawMaxDeltaUs = 450;" in control
     assert "kYawSoftRecoverDeltaUs" in control
     assert "kPitchSoftRecoverDeltaUs" in control
     assert "kYawSoftRecoverDriveMs" in control
@@ -355,6 +407,10 @@ def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
     assert "kSoftLimitRescueDeltaUs" in control
     assert "yaw_invert_motor" in control
     assert "leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg)" in control
+    assert "Seed the intermediate setpoint immediately" in control
+    assert "yawTargetDeg_ = leadToward(yawCurrentDeg_, yawGoalDeg_, kTargetYawLeadDeg);" in control
+    assert "pitchTargetDeg_ = leadToward(pitchCurrentDeg_, pitchGoalDeg_, kTargetPitchLeadDeg);" in control
+    assert "targetSlewActive_ = fabs(yawTargetDeg_ - yawGoalDeg_) > 0.01f ||" in control
     assert "config_.pitchMaxDeg" in control
     assert "targetSlewActive_" in control
     assert "pitch safety guard" in control
@@ -467,6 +523,739 @@ def test_fleet_docs_do_not_reference_old_pitch_pattern_or_old_ota_identity() -> 
     assert "Post-OTA boot intentionally stayed in `WAIT_COMMAND`" in combined
 
 
+def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> None:
+    plan = read("src/turret_fleet/docs/btb-726-readable-patterns-plan.md")
+    examples = {
+        "lane_sweep": json.loads(read("src/turret_fleet/examples/pattern.lane_sweep.json")),
+        "two_point_bounce": json.loads(read("src/turret_fleet/examples/pattern.two_point_bounce.json")),
+        "telegraph_column": json.loads(read("src/turret_fleet/examples/pattern.telegraph_column.json")),
+    }
+    preset_config = json.loads(read("src/turret_fleet/pattern_presets/turret_2.json"))
+    presets = preset_config["presets"]
+
+    requirements = plan.split("## Requirements Summary", 1)[1].split("## Current Code Facts", 1)[0]
+    assert "pattern catalog is intentionally reduced to three" in requirements.lower()
+    assert "sweep_vertical" not in requirements
+    assert "point_burst" not in requirements
+    assert "calibration_no_fire" in plan
+    assert "operator utility" in plan
+
+    for pattern_id, payload in examples.items():
+        assert payload["command"] == "pattern"
+        assert payload["pattern_id"] == pattern_id
+        assert payload["frame_id"] == "boss_stage_v1"
+        assert payload["pattern_instance_id"].startswith("example-")
+        assert isinstance(payload["params"].get("points"), list)
+        assert 100 <= payload["params"].get("dwell_ms", 0) <= 5000
+        assert 100 <= payload["params"].get("fire_ms", 0) <= 5000
+        assert 500 <= payload["params"].get("move_timeout_ms", 0) <= 60000
+
+    assert examples["two_point_bounce"]["params"].get("loop") == 2
+    assert examples["telegraph_column"]["params"].get("phase_offset_ms") >= 0
+    assert set(presets) == set(examples)
+    assert not (ROOT / "src/turret_fleet/examples/config.patterns.turret_2.json").exists()
+    expected_move_timeout_ms = {
+        "lane_sweep": 20000,
+        "two_point_bounce": 60000,
+        "telegraph_column": 10000,
+    }
+    for pattern_id, preset in presets.items():
+        assert preset["move_timeout_ms"] == expected_move_timeout_ms[pattern_id]
+        for point in preset["points"]:
+            assert point["x"] == 0.0
+    assert 500 <= presets["lane_sweep"]["dwell_ms"] <= 2000
+    assert presets["lane_sweep"]["fire_ms"] == 2000
+    assert presets["two_point_bounce"]["dwell_ms"] == 1000
+    assert presets["two_point_bounce"]["fire_ms"] == 1500
+    assert presets["telegraph_column"]["dwell_ms"] == 1000
+    assert presets["telegraph_column"]["fire_ms"] == 1500
+    lane_points = presets["lane_sweep"]["points"]
+    assert len(lane_points) == 2
+    assert lane_points[0]["y"] > 0
+    assert lane_points[1]["y"] < 0
+    for point in lane_points:
+        assert abs(point["y"]) <= 2.0
+        assert point["z"] < 0.0
+    assert presets["lane_sweep"]["loop"] == 1
+    assert presets["two_point_bounce"]["points"] == [
+        {"x": 0.0, "y": 0.75, "z": -0.6},
+        {"x": 0.0, "y": -0.5, "z": -0.6},
+    ]
+    assert presets["telegraph_column"]["random"] is True
+    assert presets["telegraph_column"]["points"] == [
+        {"x": 0.0, "y": 0.0, "z": -0.6},
+        {"x": 0.0, "y": 0.5, "z": -0.6},
+        {"x": 0.0, "y": -0.5, "z": -0.6},
+    ]
+
+
+def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> None:
+    expected = {
+        "turret_1": {"floor": 2, "side": "upper_left", "pose": {"x_cm": -300.0, "y_cm": 0.0, "z_cm": 134.5}},
+        "turret_2": {"floor": 2, "side": "upper_right", "pose": {"x_cm": -300.0, "y_cm": 200.0, "z_cm": 134.5}},
+        "turret_3": {"floor": 1, "side": "lower_left", "pose": {"x_cm": -300.0, "y_cm": 0.0, "z_cm": 34.5}},
+        "turret_4": {"floor": 1, "side": "lower_right", "pose": {"x_cm": -300.0, "y_cm": 200.0, "z_cm": 34.5}},
+    }
+
+    for turret_id, layout in expected.items():
+        config = json.loads(read(f"src/turret_fleet/profiles/{turret_id}.json"))
+        presets = json.loads(read(f"src/turret_fleet/pattern_presets/{turret_id}.json"))
+        expected_limits = {
+            "yaw_min_deg": -50.0,
+            "yaw_max_deg": 50.0,
+            "pitch_min_deg": -60.0,
+            "pitch_max_deg": 70.0,
+        }
+
+        assert config["schema"] == 2
+        assert config["configured"] is True
+        assert config["turret_id"] == turret_id
+        assert config["floor"] == layout["floor"]
+        assert config["side"] == layout["side"]
+        assert config["coordinate_frame"]["x_axis"] == "stage_forward"
+        assert config["coordinate_frame"]["y_axis"] == "stage_right"
+        assert config["coordinate_frame"]["mqtt_target_unit"] == "m"
+        assert {key: config["pose"][key] for key in ("x_cm", "y_cm", "z_cm")} == layout["pose"]
+        assert config["motion"]["limits"] == expected_limits
+        assert config["motion"]["home"] == {"yaw_deg": 0.0, "pitch_deg": 0.0}
+        assert config["motion"]["axis_divergence_guard_ms"] == 3000
+        assert config["motion"]["axis_divergence_margin_deg"] == 10.0
+        assert config["motion"]["command_envelope_ratio"] == 0.65
+        assert config["motion"]["pitch_max_delta_us"] == 140
+        assert config["motion"]["pitch_min_drive_us"] == 90
+        for key in (
+            "yaw_plus_max_delta_us",
+            "yaw_minus_max_delta_us",
+            "yaw_plus_min_drive_us",
+            "yaw_minus_min_drive_us",
+        ):
+            assert key in config["motion"]
+        if layout["side"].endswith("right"):
+            assert 280 <= config["motion"]["yaw_plus_max_delta_us"] <= 420
+            assert 260 <= config["motion"]["yaw_minus_max_delta_us"] <= 420
+            assert 240 <= config["motion"]["yaw_plus_min_drive_us"] <= config["motion"]["yaw_plus_max_delta_us"]
+            assert 220 <= config["motion"]["yaw_minus_min_drive_us"] <= config["motion"]["yaw_minus_max_delta_us"]
+        else:
+            assert config["motion"]["yaw_plus_max_delta_us"] == config["motion"]["yaw_max_delta_us"]
+            assert config["motion"]["yaw_minus_max_delta_us"] == config["motion"]["yaw_max_delta_us"]
+            assert config["motion"]["yaw_plus_min_drive_us"] == config["motion"]["yaw_min_drive_us"]
+            assert config["motion"]["yaw_minus_min_drive_us"] == config["motion"]["yaw_min_drive_us"]
+        assert "wifi" not in config
+        assert "host" not in config.get("mqtt", {})
+        assert "password" not in config.get("mqtt", {})
+        assert set(presets["presets"]) == {"lane_sweep", "two_point_bounce", "telegraph_column"}
+        for preset_id, preset in presets["presets"].items():
+            assert preset["fire_ms"] == (2000 if preset_id == "lane_sweep" else 1500)
+            for point in preset["points"]:
+                assert point["x"] == 0.0
+        assert presets["presets"]["lane_sweep"]["move_timeout_ms"] == 20000
+        assert 500 <= presets["presets"]["lane_sweep"]["dwell_ms"] <= 2000
+        assert presets["presets"]["lane_sweep"]["fire_ms"] == 2000
+        lane_points = presets["presets"]["lane_sweep"]["points"]
+        assert len(lane_points) == 2
+        assert lane_points[0]["y"] > 0
+        assert lane_points[1]["y"] < 0
+        for point in lane_points:
+            assert abs(point["y"]) <= 2.0
+            assert point["z"] < 0.0
+
+
+def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    header = read("src/turret_fleet/control/turret_control.h")
+    pattern_h = read("src/turret_fleet/control/patterns/pattern_plan.h")
+    pattern_cpp = read("src/turret_fleet/control/patterns/pattern_plan.cpp")
+    pattern_module = pattern_h + "\n" + pattern_cpp
+
+    for token in [
+        "PATTERN_LANE_SWEEP",
+        "PATTERN_TWO_POINT_BOUNCE",
+        "PATTERN_TELEGRAPH_COLUMN",
+        "compileLaneSweepPattern",
+        "compileTwoPointBouncePattern",
+        "compileTelegraphColumnPattern",
+        "updatePattern()",
+        "beginPatternStep",
+        "completePattern",
+        "abortPattern",
+        "clearPatternState",
+        "PATTERN_STEP_FIRE_MOVE",
+        "addSweep",
+        "ensurePatternSweepFire",
+        "selectionSeed",
+        "selected_point_index",
+        "allowDuringFire",
+        "preemptActivePattern",
+        "validatePatternPlanEnvelope",
+        "validatePatternPointEnvelope",
+    ]:
+        assert token in control or token in header or token in pattern_module
+
+    assert "PatternPlan patternPlan_" in header
+    assert "Pattern planning is intentionally pure" in pattern_h
+    assert "compilePatternPlan" in control
+    assert 'strcmp(patternId, "lane_sweep") == 0' in pattern_cpp
+    assert 'strcmp(patternId, "two_point_bounce") == 0' in pattern_cpp
+    assert 'strcmp(patternId, "telegraph_column") == 0' in pattern_cpp
+    assert "pattern rejected: unsupported pattern_id" in control
+    assert "outside safe command envelope margin" in control
+    assert "pattern preempted by " in control
+    assert 'preemptActivePattern("pattern", source, true);' in control
+    pattern_command_body = control.split("void TurretControl::handlePatternCommand", 1)[1].split(
+        "void TurretControl::handleCommandJson", 1
+    )[0]
+    assert "The motion safety gate must run after the first pattern point" in pattern_command_body
+    assert "if (!ensureMotionSafetyForTracking(source)) return;" not in pattern_command_body
+    assert "applyPatternPoint()" in pattern_command_body
+    assert 'preemptActivePattern("target", source, true);' in control
+    assert "target rejected during active pattern; send interrupt=true to override" not in control
+    assert 'patternState_ = "DWELL"' in control
+    assert 'patternState_ = "FIRING"' in control
+    assert 'patternState_ = "FIRE_MOVE"' in control
+    assert 'patternState_ = "WAIT_FIRE_SAFE"' in control
+    assert 'startFireSequence(patternPlan_.fireMs, "PATTERN(fire)")' in control
+    assert "plan.loopCount = normalizePatternLoopCount(params, 1);" in pattern_cpp
+    assert "if (!plan.addSweep(1, true)) return false;" in pattern_cpp
+    assert "if (!plan.addStep(PATTERN_STEP_DWELL, 1, plan.dwellMs)) return false;" in pattern_cpp
+    assert control.count("ensurePatternSweepFire(patternPlan_.fireMs);") == 1
+    assert "bool TurretControl::patternSweepYawReached() const" in control
+    assert "if (patternSweepYawReached())" in control
+    assert 'stopPatternSweepFireAtEndpoint("endpoint")' in control
+    assert '"PATTERN(sweep_fire)"' in control
+    assert "keepMotionTracking" in control
+    assert 'postFireMode_ = "PATTERN";' in control
+    assert 'doc["pattern_step_index"]' in control
+    assert 'doc["pattern_step_type"]' in control
+    assert 'doc["pattern_step_count"]' in control
+    assert 'doc["pattern_loop_index"]' in control
+    assert 'doc["pattern_loop_count"]' in control
+    assert 'doc["pattern_last_error"]' in control
+    assert 'clearPatternState("hold")' in control
+    assert 'clearPatternState("dead")' in control
+    assert 'doc["interrupt"] | false' not in control
+
+
+def test_fleet_mqtt_helper_builds_pattern_payload_for_turret_2() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/mqtt_command.py"),
+            "--dry-run",
+            "turret_2",
+            "pattern",
+            "two_point_bounce",
+            "--frame-id",
+            "boss_stage_v1",
+            "--point",
+            "0",
+            "0.35",
+            "-0.6",
+            "--point",
+            "0",
+            "-0.35",
+            "-0.6",
+        "--loop",
+        "2",
+        "--dwell-ms",
+        "700",
+        "--fire-ms",
+            "300",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    lines = result.stdout.splitlines()
+    assert "topic=battlebang/turrets/turret_2/command" in lines
+    payload_line = next(line for line in lines if line.startswith("payload="))
+    payload = json.loads(payload_line.removeprefix("payload="))
+
+    assert payload["command"] == "pattern"
+    assert payload["pattern_id"] == "two_point_bounce"
+    assert payload["frame_id"] == "boss_stage_v1"
+    assert payload["ttl_ms"] == 3000
+    assert payload["params"]["loop"] == 2
+    assert payload["params"]["dwell_ms"] == 700
+    assert payload["params"]["fire_ms"] == 300
+    assert payload["params"]["points"] == [
+        {"x": 0.0, "y": 0.35, "z": -0.6},
+        {"x": 0.0, "y": -0.35, "z": -0.6},
+    ]
+
+    preset_result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/mqtt_command.py"),
+            "--dry-run",
+            "turret_2",
+            "pattern",
+            "lane_sweep",
+            "--frame-id",
+            "boss_stage_v1",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    preset_payload_line = next(line for line in preset_result.stdout.splitlines() if line.startswith("payload="))
+    preset_payload = json.loads(preset_payload_line.removeprefix("payload="))
+    assert preset_payload["pattern_id"] == "lane_sweep"
+    assert "points" not in preset_payload["params"]
+
+    telegraph_result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/mqtt_command.py"),
+            "--dry-run",
+            "turret_2",
+            "pattern",
+            "telegraph_column",
+            "--frame-id",
+            "boss_stage_v1",
+            "--point-index",
+            "1",
+            "--no-random",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    telegraph_payload_line = next(line for line in telegraph_result.stdout.splitlines() if line.startswith("payload="))
+    telegraph_payload = json.loads(telegraph_payload_line.removeprefix("payload="))
+    assert telegraph_payload["pattern_id"] == "telegraph_column"
+    assert telegraph_payload["params"]["point_index"] == 1
+    assert telegraph_payload["params"]["random"] is False
+
+
+def test_fleet_e2e_mqtt_harness_covers_modes_and_readable_patterns() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/e2e_mqtt_test.py"
+    script = script_path.read_text(encoding="utf-8")
+    bin_helper = read("bin/turret")
+
+    for token in [
+        "run_target",
+        "run_fire",
+        "run_idle",
+        "run_dead",
+        "run_hold",
+        "run_home",
+        "lane_sweep",
+        "two_point_bounce",
+        "telegraph_column",
+        "FIRE_MOVE",
+        "fire_after_aim_reached",
+        "fire_yaw_motion_deg",
+        "lane_round_trip_seen",
+        "final-hold",
+        "--allow-live-fire",
+        "--between-sleep-s",
+        "--lane-fire-yaw-motion-deg",
+        "--json-report",
+    ]:
+        assert token in script
+
+    assert "fleet-e2e" in bin_helper
+    assert "e2e_mqtt_test.py" in bin_helper
+
+    help_result = subprocess.run(
+        [sys.executable, str(script_path), "--help"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    assert "--allow-live-fire" in help_result.stdout
+    assert "--profile-file" in help_result.stdout
+    assert "--patterns-file" in help_result.stdout
+    assert "--json-report" in help_result.stdout
+
+    spec = importlib.util.spec_from_file_location("e2e_mqtt_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    args = module.build_parser().parse_args(["turret_2", "--host", "COMMAND_CENTER_IP_OR_DNS"])
+    assert args.target_point == [0.0, -0.5, -0.6]
+    assert args.allow_live_fire is False
+    assert module.E2E_PATTERN_IDS == ("lane_sweep", "two_point_bounce", "telegraph_column")
+    assert module.fire_active({"fire_state": "FIRING"}) is True
+    assert module.terminal_safe({"fire_state": "SAFE_OFF", "mode": "WAIT_COMMAND", "pattern_state": "IDLE"}) is True
+    assert module.axis_range(
+        [{"motion_state": {"yaw_current_deg": -1.0}}, {"motion_state": {"yaw_current_deg": 2.5}}],
+        "yaw_current_deg",
+    ) == 3.5
+    assert module.sign_changes([2.0, -2.0, 2.0]) == 2
+
+
+def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/e2e_mqtt_test.py"
+    spec = importlib.util.spec_from_file_location("e2e_mqtt_test_fake", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    module.drain_statuses = lambda *_args, **_kwargs: None
+
+    status_topic = "battlebang/turrets/turret_2/status"
+    command_topic = "battlebang/turrets/turret_2/command"
+
+    def status(
+        cid: str,
+        *,
+        mode: str,
+        yaw: float = 0.0,
+        pitch: float = 0.0,
+        fire_state: str = "SAFE_OFF",
+        pattern_state: str = "IDLE",
+        step_type: str = "",
+        tracking: bool = False,
+        aim_reached: bool = True,
+        target_y: float | None = None,
+    ) -> dict[str, object]:
+        doc: dict[str, object] = {
+            "last_command_id": cid,
+            "mode": mode,
+            "fire_state": fire_state,
+            "pattern_state": pattern_state,
+            "pattern_step_type": step_type,
+            "last_error": "",
+            "motion_state": {
+                "yaw_current_deg": yaw,
+                "pitch_current_deg": pitch,
+                "yaw_goal_deg": yaw,
+                "pitch_goal_deg": pitch,
+                "tracking_active": tracking,
+                "aim_reached": aim_reached,
+            },
+            "fire_output_state": {
+                "esc_command_us": 1000 if fire_state == "SAFE_OFF" else 1200,
+                "esc_stop_us_config": 1000,
+                "relay_ch1_on": fire_state != "SAFE_OFF",
+                "relay_ch2_on": False,
+                "relay_ch3_on": False,
+            },
+        }
+        if target_y is not None:
+            doc["aim_state"] = {"last_target_input": {"x": 0.0, "y": target_y, "z": -0.6}}
+        return doc
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.queue: list[dict[str, object]] = [status("", mode="WAIT_COMMAND", yaw=0.0, pitch=0.0)]
+            self.published: list[tuple[str, dict[str, object]]] = []
+
+        def publish_json(self, topic: str, payload: dict[str, object]) -> None:
+            self.published.append((topic, payload.copy()))
+            cid = str(payload["command_id"])
+            command = payload["command"]
+            if command == "hold":
+                self.queue.extend([status(cid, mode="WAIT_COMMAND", tracking=False)])
+            elif command == "target":
+                self.queue.extend([status(cid, mode="TARGET", yaw=2.0, pitch=-3.0, tracking=True)])
+            elif command == "idle":
+                self.queue.extend([status(cid, mode="IDLE", yaw=1.0, pitch=-1.0)])
+            elif command == "dead":
+                self.queue.extend([status(cid, mode="DEAD", pitch=45.0, fire_state="SAFE_OFF")])
+            elif command == "fire":
+                self.queue.extend(
+                    [
+                        status(cid, mode="FIRE", fire_state="FIRING"),
+                        status(cid, mode="WAIT_COMMAND", fire_state="SAFE_OFF"),
+                    ]
+                )
+            elif command == "pattern":
+                pattern_id = payload["pattern_id"]
+                if pattern_id == "lane_sweep":
+                    self.queue.extend(
+                        [
+                            status(
+                                cid,
+                                mode="PATTERN",
+                                yaw=-12.0,
+                                fire_state="FIRING",
+                                pattern_state="FIRE_MOVE",
+                                step_type="FIRE_MOVE",
+                                tracking=True,
+                                aim_reached=False,
+                                target_y=-0.75,
+                            ),
+                            status(
+                                cid,
+                                mode="PATTERN",
+                                yaw=-12.0,
+                                fire_state="SAFE_OFF",
+                                pattern_state="DWELL",
+                                step_type="DWELL",
+                                tracking=False,
+                                aim_reached=True,
+                                target_y=-0.75,
+                            ),
+                            status(
+                                cid,
+                                mode="PATTERN",
+                                yaw=8.0,
+                                fire_state="FIRING",
+                                pattern_state="FIRE_MOVE",
+                                step_type="FIRE_MOVE",
+                                tracking=True,
+                                aim_reached=False,
+                                target_y=1.0,
+                            ),
+                            status(cid, mode="WAIT_COMMAND", yaw=8.0, fire_state="SAFE_OFF", target_y=1.0),
+                        ]
+                    )
+                elif pattern_id == "two_point_bounce":
+                    self.queue.extend(
+                        [
+                            status(cid, mode="PATTERN", pattern_state="DWELL", target_y=0.75),
+                            status(
+                                cid,
+                                mode="PATTERN",
+                                fire_state="FIRING",
+                                pattern_state="FIRING",
+                                step_type="FIRE",
+                                aim_reached=True,
+                                target_y=-0.5,
+                            ),
+                            status(cid, mode="WAIT_COMMAND", fire_state="SAFE_OFF", target_y=-0.5),
+                        ]
+                    )
+                else:
+                    self.queue.extend(
+                        [
+                            status(cid, mode="PATTERN", pattern_state="DWELL", target_y=0.0),
+                            status(
+                                cid,
+                                mode="PATTERN",
+                                fire_state="FIRING",
+                                pattern_state="FIRING",
+                                step_type="FIRE",
+                                aim_reached=True,
+                                target_y=0.0,
+                            ),
+                            status(cid, mode="WAIT_COMMAND", fire_state="SAFE_OFF", target_y=0.0),
+                        ]
+                    )
+
+        def read_publish(self, *, deadline: float) -> tuple[str, str] | None:  # noqa: ARG002
+            if not self.queue:
+                return None
+            return status_topic, json.dumps(self.queue.pop(0))
+
+    args = module.build_parser().parse_args(
+        [
+            "turret_2",
+            "--host",
+            "COMMAND_CENTER_IP_OR_DNS",
+            "--allow-live-fire",
+            "--target-observe-s",
+            "0.001",
+            "--idle-observe-s",
+            "0.001",
+            "--dead-observe-s",
+            "0.001",
+            "--pattern-timeout-s",
+            "0.001",
+        ]
+    )
+    client = FakeClient()
+
+    results = [module.run_hold(client, command_topic, status_topic)]
+    client.queue.append(status("", mode="WAIT_COMMAND", yaw=0.0, pitch=0.0))
+    results.extend(
+        [
+            module.run_target(client, command_topic, status_topic, args),
+            module.run_fire(client, command_topic, status_topic, args),
+            module.run_idle(client, command_topic, status_topic, args),
+            module.run_dead(client, command_topic, status_topic, args),
+            module.run_pattern(client, command_topic, status_topic, "lane_sweep", args),
+            module.run_pattern(client, command_topic, status_topic, "two_point_bounce", args),
+            module.run_pattern(client, command_topic, status_topic, "telegraph_column", args),
+        ]
+    )
+
+    assert [result.status for result in results] == ["PASS"] * len(results)
+    assert [payload["command"] for _topic, payload in client.published] == [
+        "hold",
+        "target",
+        "fire",
+        "idle",
+        "dead",
+        "pattern",
+        "pattern",
+        "pattern",
+    ]
+
+
+def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
+    config_h = read("src/turret_fleet/config/runtime_config.h")
+    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
+    pattern_cpp = read("src/turret_fleet/control/patterns/pattern_plan.cpp")
+    helper = read("scripts/turret_fleet/mqtt_command.py")
+    provision = read("scripts/turret_fleet/provision.py")
+
+    assert "String patternPresetsJson;" in config_h
+    assert 'doc.containsKey("patterns")' in config_cpp
+    assert "validatePatternPresets" in config_cpp
+    assert 'prefs.getString("pattern_json"' in config_cpp
+    assert 'prefs.putString("pattern_json"' in config_cpp
+    assert "copyConfiguredPresetParams" in pattern_cpp
+    assert "config.patternPresetsJson.length()" in pattern_cpp
+    assert '"--profile-file"' in helper
+    assert "load_profile_file" in helper
+    assert '"--patterns-file"' in helper
+    assert "load_patterns_file" in helper
+    assert "DEFAULT_PROFILE_DIR" in provision
+    assert "TURRET_FLEET_PROFILE_FILE" in provision
+    assert "TURRET_FLEET_PATTERN_PRESETS_FILE" in provision
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/mqtt_command.py"),
+            "--dry-run",
+            "turret_2",
+            "config",
+            "--patterns-file",
+            str(ROOT / "src/turret_fleet/pattern_presets/turret_2.json"),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    lines = result.stdout.splitlines()
+    assert "topic=battlebang/turrets/turret_2/config" in lines
+    payload_line = next(line for line in lines if line.startswith("payload="))
+    payload = json.loads(payload_line.removeprefix("payload="))
+    assert payload["type"] == "config"
+    assert payload["patterns"]["presets"]["two_point_bounce"]["points"] == [
+        {"x": 0.0, "y": 0.75, "z": -0.6},
+        {"x": 0.0, "y": -0.5, "z": -0.6},
+    ]
+
+    full_result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/mqtt_command.py"),
+            "--dry-run",
+            "turret_2",
+            "config",
+            "--profile-file",
+            str(ROOT / "src/turret_fleet/profiles/turret_2.json"),
+            "--patterns-file",
+            str(ROOT / "src/turret_fleet/pattern_presets/turret_2.json"),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    full_payload_line = next(line for line in full_result.stdout.splitlines() if line.startswith("payload="))
+    full_payload = json.loads(full_payload_line.removeprefix("payload="))
+    assert full_payload["type"] == "config"
+    assert full_payload["turret_id"] == "turret_2"
+    assert full_payload["pose"] == {
+        "x_cm": -300.0,
+        "y_cm": 200.0,
+        "z_cm": 134.5,
+        "default_target_z_cm": 70.0,
+    }
+    assert full_payload["motion"]["pitch_max_delta_us"] == 140
+    assert full_payload["motion"]["pitch_min_drive_us"] == 90
+    assert full_payload["motion"]["command_envelope_ratio"] == 0.65
+    assert full_payload["motion"]["limits"] == {
+        "yaw_min_deg": -50.0,
+        "yaw_max_deg": 50.0,
+        "pitch_min_deg": -60.0,
+        "pitch_max_deg": 70.0,
+    }
+    assert full_payload["motion"]["yaw_plus_max_delta_us"] == 420
+    assert full_payload["motion"]["yaw_minus_max_delta_us"] == 420
+    assert full_payload["motion"]["yaw_plus_min_drive_us"] == 400
+    assert full_payload["motion"]["yaw_minus_min_drive_us"] == 400
+    assert 500 <= full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] <= 2000
+    assert full_payload["patterns"]["presets"]["lane_sweep"]["fire_ms"] == 2000
+    lane_points = full_payload["patterns"]["presets"]["lane_sweep"]["points"]
+    assert len(lane_points) == 2
+    assert lane_points[0]["y"] > 0
+    assert lane_points[1]["y"] < 0
+    for point in lane_points:
+        assert abs(point["y"]) <= 2.0
+        assert point["z"] < 0.0
+    assert full_payload["patterns"]["presets"]["telegraph_column"]["random"] is True
+    assert full_payload["patterns"]["presets"]["telegraph_column"]["points"] == [
+        {"x": 0.0, "y": 0.0, "z": -0.6},
+        {"x": 0.0, "y": 0.5, "z": -0.6},
+        {"x": 0.0, "y": -0.5, "z": -0.6},
+    ]
+
+
+def test_fleet_provision_auto_loads_per_turret_config_and_patterns(tmp_path: Path) -> None:
+    env_file = tmp_path / "fleet.env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "TURRET_FLEET_WIFI_SSID=TEST_WIFI",
+                "TURRET_FLEET_WIFI_PASSWORD=TEST_PASSWORD",
+                "TURRET_FLEET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS",
+                "TURRET_FLEET_MQTT_PORT=1883",
+                "TURRET_FLEET_MQTT_ROOT=battlebang",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/provision.py"),
+            "build-config",
+            "2",
+            "--env-file",
+            str(env_file),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["type"] == "provision"
+    assert payload["turret_id"] == "turret_2"
+    assert payload["pose"] == {
+        "x_cm": -300.0,
+        "y_cm": 200.0,
+        "z_cm": 134.5,
+        "default_target_z_cm": 70.0,
+    }
+    assert payload["motion"]["limits"] == {
+        "yaw_min_deg": -50.0,
+        "yaw_max_deg": 50.0,
+        "pitch_min_deg": -60.0,
+        "pitch_max_deg": 70.0,
+    }
+    assert payload["wifi"] == {"ssid": "TEST_WIFI", "password": "***"}
+    assert payload["mqtt"]["host"] == "COMMAND_CENTER_IP_OR_DNS"
+    assert payload["patterns"]["presets"]["telegraph_column"]["random"] is True
+    assert payload["patterns"]["presets"]["telegraph_column"]["points"] == [
+        {"x": 0.0, "y": 0.0, "z": -0.6},
+        {"x": 0.0, "y": 0.5, "z": -0.6},
+        {"x": 0.0, "y": -0.5, "z": -0.6},
+    ]
+
+
 def test_fleet_docs_mask_lab_broker_ip_and_define_mqtt_broker_host() -> None:
     paths = [
         "README.md",
@@ -496,9 +1285,15 @@ def test_serial_and_mqtt_json_buffers_are_heap_backed_to_avoid_loop_stack_overfl
 
     assert "DynamicJsonDocument doc(4096);" in main
     assert "DynamicJsonDocument doc(1024);" in main
-    assert "DynamicJsonDocument doc(4096);" in mqtt
+    assert "const size_t kPayloadLimit = 8192;" in mqtt
+    assert "client_.setBufferSize(kPayloadLimit);" in mqtt
+    assert "const size_t kStatusDocCapacity = 8192;" in mqtt
+    assert "DynamicJsonDocument doc(kStatusDocCapacity);" in mqtt
+    assert "status publish failed len=" in mqtt
     assert "DynamicJsonDocument doc(1024);" in mqtt
-    assert "DynamicJsonDocument doc(4096);" in config
+    assert "const size_t kRuntimeConfigJsonCapacity = 8192;" in config
+    assert "DynamicJsonDocument doc(kRuntimeConfigJsonCapacity);" in config
+    assert "constexpr size_t kSerialCommandBufferSize = 9216;" in main
     assert "StaticJsonDocument<4096>" not in main
     assert "StaticJsonDocument<4096>" not in mqtt
     assert "StaticJsonDocument<4096>" not in config
@@ -547,6 +1342,10 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "brownout/fire-reset lockout active: motion/fire blocked until recover succeeds" in control
     assert "writeFireRecoveryMarker(true)" in control
     assert "writeFireRecoveryMarker(false)" in control
+    assert "fireHardOffDelayMs" in control
+    assert "fireHardOffAtMs_" in header
+    assert "hard off after wall-clock cap" in control
+    assert 'doc["fire_hard_off_remaining_ms"]' in control
     assert 'kRecoveryLockoutMarkerKey = "recover_req"' in control
     assert "writeRecoveryLockoutMarker(true)" in control or "writeRecoveryLockoutMarker(active)" in control
     assert "writeRecoveryLockoutMarker(false)" in control
@@ -554,8 +1353,52 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert "command rejected after brownout lockout" in control
     assert "fire rejected after brownout lockout" in control
     assert "recover rejected: feedback outside stable soft window" in control
+    assert "brownout recover soft-window recovery requested" in control
+    assert "recoverMotionSoftWindow(source)" in control
     assert 'motion["brownout_lockout"] = brownoutLockoutActive_;' in control
     assert '"recover"' in helper
+
+
+def test_yaw_drive_can_be_tuned_asymmetrically_per_pwm_direction() -> None:
+    config_h = read("src/turret_fleet/config/runtime_config.h")
+    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    helper = read("scripts/turret_fleet/mqtt_command.py")
+
+    for field in [
+        "yawPlusMaxDeltaUs",
+        "yawMinusMaxDeltaUs",
+        "yawPlusMinDriveUs",
+        "yawMinusMinDriveUs",
+    ]:
+        assert field in config_h
+    for key in [
+        'motion["yaw_plus_max_delta_us"]',
+        'motion["yaw_minus_max_delta_us"]',
+        'motion["yaw_plus_min_drive_us"]',
+        'motion["yaw_minus_min_drive_us"]',
+    ]:
+        assert key in config_cpp
+    for key in [
+        'prefs.getUShort("yaw_p_max"',
+        'prefs.getUShort("yaw_m_max"',
+        'prefs.getUShort("yaw_p_min"',
+        'prefs.getUShort("yaw_m_min"',
+        'prefs.putUShort("yaw_p_max"',
+        'prefs.putUShort("yaw_m_max"',
+        'prefs.putUShort("yaw_p_min"',
+        'prefs.putUShort("yaw_m_min"',
+    ]:
+        assert key in config_cpp
+    assert "kMotionYawDeltaMaxUs = 450" in config_cpp
+    assert "effectiveYawPlusMaxDeltaUs" in config_cpp
+    assert "invalidOptionalYawMinDrive(next.yawPlusMinDriveUs, effectiveYawPlusMaxDeltaUs)" in config_cpp
+    assert "plusPwmDirection = output < 0.0f" in control
+    assert "stopUs + delta" in control
+    assert "config_.yawPlusMaxDeltaUs > 0" in control
+    assert "config_.yawMinusMaxDeltaUs > 0" in control
+    assert '"--yaw-plus-max-delta-us"' in helper
+    assert '"--yaw-minus-min-drive-us"' in helper
 
 
 def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
@@ -631,6 +1474,70 @@ def test_fleet_calibration_config_accepts_150deg_safe_envelope() -> None:
     assert "next.deadPitchDeg < next.pitchMinDeg || next.deadPitchDeg > next.pitchMaxDeg" in config_cpp
 
 
+def test_fleet_motion_commands_use_runtime_configurable_inner_envelope() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    header = read("src/turret_fleet/control/turret_control.h")
+    config_h = read("src/turret_fleet/config/runtime_config.h")
+    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
+
+    assert "float commandEnvelopeRatio = 0.65f;" in config_h
+    assert 'motion["command_envelope_ratio"]' in config_cpp
+    assert 'prefs.getFloat("cmd_env"' in config_cpp
+    assert 'prefs.putFloat("cmd_env"' in config_cpp
+    assert "next.commandEnvelopeRatio < 0.50f" in config_cpp
+    assert "next.commandEnvelopeRatio > 0.85f" in config_cpp
+    assert "const float kDefaultCommandEnvelopeRatio = 0.65f;" in control
+    assert "commandEnvelopeEdge(config_.yawMinDeg, config_.homeYawDeg, config_.commandEnvelopeRatio)" in control
+    assert "commandEnvelopeEdge(config_.yawMaxDeg, config_.homeYawDeg, config_.commandEnvelopeRatio)" in control
+    assert "commandEnvelopeEdge(config_.pitchMinDeg, config_.homePitchDeg, config_.commandEnvelopeRatio)" in control
+    assert "commandEnvelopeEdge(config_.pitchMaxDeg, config_.homePitchDeg, config_.commandEnvelopeRatio)" in control
+    assert "return clampf(value, yawCommandMinDeg(), yawCommandMaxDeg());" in control
+    assert "return clampf(value, pitchCommandMinDeg(), pitchCommandMaxDeg());" in control
+    for symbol in [
+        "float yawCommandMinDeg() const;",
+        "float yawCommandMaxDeg() const;",
+        "float pitchCommandMinDeg() const;",
+        "float pitchCommandMaxDeg() const;",
+    ]:
+        assert symbol in header
+
+
+def test_fleet_direct_fire_requires_current_pose_inside_safe_window() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    fire_body = control.split("void TurretControl::startFireFromCommand", 1)[1].split(
+        "void TurretControl::handlePatternCommand", 1
+    )[0]
+
+    assert "updateCurrentAngles();" in fire_body
+    assert "if (!motionInsideSoftWindow())" in fire_body
+    assert "fire rejected: pose outside calibrated safe envelope" in fire_body
+    assert "forceFireOutputsSafeOff();" in fire_body
+    assert "motionSafetyInhibited_ = true;" in fire_body
+
+
+def test_fleet_allows_only_inward_yaw_recovery_from_soft_limit() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    header = read("src/turret_fleet/control/turret_control.h")
+
+    assert "bool yawInwardRecoveryAllowed() const;" in header
+    assert "bool TurretControl::yawInwardRecoveryAllowed() const" in control
+    assert "yawLowOutside && clampedYawDeg_ > yawCurrentDeg_" in control
+    assert "yawHighOutside && clampedYawDeg_ < yawCurrentDeg_" in control
+    assert "yaw inward recovery tracking allowed" in control
+    assert "bootHomeInwardRecoveryAllowed" in control
+    assert "boot home yaw inward recovery enabled" in control
+    assert "motionSafetyInhibited_ = !motionInsideSoftWindow();" in control
+
+
+def test_fleet_patterns_abort_on_axis_divergence_and_hold_reports_unsafe_pose() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+
+    assert 'abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern aborted: yaw divergence guard")' in control
+    assert 'abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern aborted: pitch divergence guard")' in control
+    assert "hold: pose outside calibrated safe envelope" in control
+    assert "motionSafetyInhibited_ = true;" in control
+
+
 def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
     import importlib.util
 
@@ -696,6 +1603,14 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
         "220",
         "--yaw-max-delta-us",
         "60",
+        "--yaw-plus-max-delta-us",
+        "90",
+        "--yaw-minus-max-delta-us",
+        "50",
+        "--yaw-plus-min-drive-us",
+        "70",
+        "--yaw-minus-min-drive-us",
+        "35",
         "--pitch-max-delta-us",
         "40",
         "--yaw-min-deg",
@@ -723,6 +1638,10 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
     assert payload["motion"]["axis_switch_cooldown_ms"] == 800
     assert payload["motion"]["servo_max_delta_us"] == 220
     assert payload["motion"]["yaw_max_delta_us"] == 60
+    assert payload["motion"]["yaw_plus_max_delta_us"] == 90
+    assert payload["motion"]["yaw_minus_max_delta_us"] == 50
+    assert payload["motion"]["yaw_plus_min_drive_us"] == 70
+    assert payload["motion"]["yaw_minus_min_drive_us"] == 35
     assert payload["motion"]["pitch_max_delta_us"] == 40
     assert payload["motion"]["limits"] == {"yaw_min_deg": -75.0, "yaw_max_deg": 75.0}
     assert payload["motion"]["home"] == {"yaw_deg": 0.0, "pitch_deg": 0.0}

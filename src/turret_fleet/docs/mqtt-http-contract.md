@@ -32,8 +32,8 @@ Payload:
     "frame_id": "boss_stage_v1",
     "unit": "cm",
     "origin": "boss_stage_center_floor",
-    "x_axis": "stage_right",
-    "y_axis": "stage_forward",
+    "x_axis": "stage_forward",
+    "y_axis": "stage_right",
     "z_axis": "up",
     "mqtt_target_unit": "m"
   },
@@ -87,6 +87,7 @@ Payload:
 Coordinate rules:
 
 - `coordinate_frame.frame_id` is the Command Center world frame shared by all four boss turrets.
+- For the current boss layout, left/right is the world `y` axis; top/bottom row height is the world `z` axis.
 - MQTT `target` and pattern coordinates use meters by default (`mqtt_target_unit: "m"`); the ESP converts to centimeters before solving yaw/pitch.
 - If a command includes a different `frame_id`, the ESP rejects it before motion/fire and reports the mismatch in ACK/status.
 
@@ -158,6 +159,61 @@ Payload examples:
 {"command":"home"}
 {"command":"fire"}
 {"command":"target","frame_id":"boss_stage_v1","target":{"x":3.0,"y":-0.4,"z":0.5}}
+{"command":"pattern","pattern_id":"two_point_bounce","pattern_instance_id":"boss-phase-1-a-b","frame_id":"boss_stage_v1","params":{"loop":2}}
+{"command":"pattern","pattern_id":"two_point_bounce","pattern_instance_id":"boss-phase-1-a-b","frame_id":"boss_stage_v1","params":{"loop":2,"dwell_ms":1000,"fire_ms":1000,"move_timeout_ms":60000,"return_to":"wait_command","points":[{"x":0.0,"y":0.75,"z":-0.6},{"x":0.0,"y":-0.5,"z":-0.6}]}}
+```
+
+BTB-726 keeps the player-facing catalog intentionally small and readable:
+`lane_sweep`, `two_point_bounce`, and `telegraph_column`. Command Center
+compiles 1F/2F pair choreography into per-turret primitive commands. Operator
+calibration may still use `calibration_no_fire`, which never starts relay/ESC
+fire.
+
+Pattern coordinates/timings can be stored in runtime config and updated over the
+normal `/config` topic. When `params.points` is omitted, firmware uses the
+configured preset for the requested `pattern_id`; when `params.points` is
+present, the command overrides the preset for that one run. `lane_sweep`
+defaults to one narrow ping-pong round trip; each sweep leg starts one fire
+window capped by `fire_ms`, cuts early if yaw reaches the endpoint, and then
+waits safe-off plus the endpoint dwell before the next leg.
+`telegraph_column` may store multiple candidate points; with `random:
+true` it chooses one per command, while `params.point_index` selects a fixed
+candidate.
+
+```json
+{
+  "type": "config",
+  "schema": 2,
+  "config_version": 123,
+  "patterns": {
+    "presets": {
+      "two_point_bounce": {
+        "loop": 2,
+        "move_timeout_ms": 60000,
+        "dwell_ms": 1000,
+        "fire_ms": 1000,
+        "return_to": "wait_command",
+        "points": [
+          {"x": 0.0, "y": 0.75, "z": -0.6},
+          {"x": 0.0, "y": -0.5, "z": -0.6}
+        ]
+      },
+      "telegraph_column": {
+        "loop": 1,
+        "random": true,
+        "move_timeout_ms": 10000,
+        "dwell_ms": 1000,
+        "fire_ms": 1000,
+        "return_to": "wait_command",
+        "points": [
+          {"x": 0.0, "y": 0.0, "z": -0.6},
+          {"x": 0.0, "y": 0.5, "z": -0.6},
+          {"x": 0.0, "y": -0.5, "z": -0.6}
+        ]
+      }
+    }
+  }
+}
 ```
 
 
@@ -178,6 +234,7 @@ export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
 ./bin/turret fleet-mqtt turret_2 idle
 ./bin/turret fleet-mqtt turret_2 dead
 ./bin/turret fleet-mqtt turret_2 config --yaw-axis-offset-deg 9
+./bin/turret fleet-mqtt turret_2 config --profile-file src/turret_fleet/profiles/turret_2.json --patterns-file src/turret_fleet/pattern_presets/turret_2.json
 ./bin/turret fleet-mqtt turret_2 config --home-yaw-deg 0 --home-pitch-deg 0 --yaw-min-deg -75 --yaw-max-deg 75 --pitch-min-deg -75 --pitch-max-deg 75
 ./bin/turret fleet-mqtt turret_2 config --fire-default-hold-ms 500
 # direct fire starts immediately; it is not gated by any pre-arm flag or aim stability
@@ -190,7 +247,9 @@ world-coordinate target-solver offsets.
 `motion.yaw_stop_us` / `motion.pitch_stop_us` correct continuous-servo neutral
 PWM so `hold` does not creep while the turret is waiting for the next command.
 `motion.home` defines the boot local home pose, and `motion.limits` defines the
-persisted local command envelope used by target/aim/idle/dead/home clamping.
+persisted outer safety/deadzone envelope. Normal target/aim/pattern/idle/dead/
+home setpoints are clamped to the inner 80% command envelope derived from those
+limits around home.
 
 ## OTA manifest
 
@@ -311,8 +370,22 @@ Payload includes:
   "firmware_build": 42,
   "config_version": 1,
   "frame_id": "boss_stage_v1",
-  "mode": "WAIT_COMMAND",
-  "pattern_state": "IDLE",
+  "mode": "PATTERN",
+  "command_state": "busy",
+  "command_in_progress": true,
+  "ready_for_next_command": false,
+  "preemptible": true,
+  "active_command_id": "cmd-123",
+  "command_policy": "latest_wins_preemptive",
+  "pattern_state": "MOVING",
+  "pattern_id": "two_point_bounce",
+  "pattern_instance_id": "boss-phase-1-a-b",
+  "pattern_step_index": 0,
+  "pattern_step_type": "MOVE",
+  "pattern_step_count": 16,
+  "pattern_loop_index": 0,
+  "pattern_loop_count": 2,
+  "pattern_last_error": "",
   "fire_state": "SAFE_OFF",
   "aim_state": {
     "last_target_m": {"x": 3.0, "y": -0.4, "z": 0.5},
@@ -334,3 +407,11 @@ Payload includes:
   "uptime_ms": 123456
 }
 ```
+
+Command Center should wait for `ready_for_next_command=true` when it wants
+sequential choreography. While a finite command is running (`pattern`, `target`,
+`home`, or fire sequence), the ESP publishes status at 1 Hz and immediately when
+the command/pattern/fire state changes. New commands are still accepted while
+busy: `command_policy=latest_wins_preemptive` means the ESP stops motion, forces
+fire outputs safe, clears the active pattern, and then applies the newest
+command.
