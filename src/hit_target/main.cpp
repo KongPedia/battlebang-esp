@@ -52,7 +52,7 @@ uint32_t lastSerialHeartbeatMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 String serialLine;
 
-constexpr uint32_t SERIAL_STATUS_PERIOD_MS = 1000;
+constexpr uint32_t SERIAL_STATUS_PERIOD_MS = 10000;
 
 void publishMqttStatusIfConnected(const char* reason) {
   if (mqttStarted && mqtt.connected()) mqtt.publishStatus(reason);
@@ -358,7 +358,10 @@ void pollSerial() {
 }
 
 void publishPeriodicSerialStatus(uint32_t now) {
+  if (SERIAL_STATUS_PERIOD_MS == 0) return;
   if (now - lastSerialHeartbeatMs < SERIAL_STATUS_PERIOD_MS) return;
+  // Large JSON writes at 115200 bps can visibly stall LED animation.
+  // Keep unsolicited serial status low-frequency; use `s`/`show-status` for immediate bench status.
   lastSerialHeartbeatMs = now;
   printStatusJson("heartbeat", "heartbeat", 0, "state");
 }

@@ -197,8 +197,8 @@ def test_hit_target_ota_has_separate_app_hardware_manifest_and_workflow() -> Non
     assert "writeOtaRebootMarker(true)" in main
 
     assert "name: Hit Target Firmware" in workflow
-    assert "pull_request:" in workflow
-    assert 'CREATE_RELEASE="false"' in workflow
+    assert "pull_request:" not in workflow
+    assert 'GITHUB_EVENT_NAME" == "pull_request"' not in workflow
     assert "pio run -e esp32dev_hit_target" in workflow
     assert "src/hit_target/app/version_autogen.h" in workflow
     assert "battlebang-hit-target-${{ steps.version.outputs.version }}.bin" in workflow
@@ -249,6 +249,31 @@ def test_hit_target_platformio_env_is_distinct_from_go2_mounted_firmware() -> No
 def test_legacy_target_module_experiment_is_removed_after_migration() -> None:
     assert not (ROOT / "src" / "target_module-v2").exists()
     assert not (ROOT / "src" / "Wall_Target").exists()
+
+
+def test_hit_target_mqtt_helper_can_publish_config_command_and_ota() -> None:
+    helper = read("scripts/hit_target/mqtt_command.py")
+    readme = read("src/hit_target/README.md")
+
+    assert 'DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "hit_target" / ".env.hit_target"' in helper
+    assert "def publish_mqtt" in helper
+    assert "def build_config_payload" in helper
+    assert "def build_command_payload" in helper
+    assert "def build_ota_payload" in helper
+    assert "hit_targets/all/ota" in helper
+    assert "HIT_TARGET_MQTT_HOST" in helper
+    assert "--hits-per-phase" in helper
+    assert "--ota-desired-build" in helper
+    assert "--debug-allow-simulate-hit" in helper
+    assert "scripts/hit_target/mqtt_command.py config" in readme
+    assert "scripts/hit_target/mqtt_command.py ota" in readme
+
+
+def test_hit_target_serial_heartbeat_is_slow_enough_not_to_stutter_orbit() -> None:
+    main = read("src/hit_target/main.cpp")
+
+    assert "constexpr uint32_t SERIAL_STATUS_PERIOD_MS = 10000;" in main
+    assert "Large JSON writes at 115200 bps can visibly stall LED animation" in main
 
 
 def test_hit_target_local_env_example_and_gitignore_keep_runtime_secrets_out_of_git() -> None:

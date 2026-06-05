@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import sys
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "hit_target" / ".env.hit_target"
+DEFAULT_LATEST_MANIFEST_URL = "https://github.com/KongPedia/battlebang-esp/releases/download/hit-target-latest/hit-target-manifest.json"
+
+
+class HitTargetMqttError(RuntimeError):
+    pass
+
+
+def parse_dotenv(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def merged_env(env_file: Path) -> dict[str, str]:
+    values = parse_dotenv(env_file)
+    for key, value in os.environ.items():
+        if key.startswith("HIT_TARGET_") or key.startswith("BATTLEBANG_HIT_TARGET_"):
+            values[key] = value
+    return values
+
+
+def env_first(env: dict[str, str], *keys: str, default: str | None = None) -> str | None:
+    for key in keys:
+        value = env.get(key)
+        if value is not None and value != "":
+            return value
+    return default
+
+
+def parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on", "enable", "enabled"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off", "disable", "disabled"}:
+        return False
+    raise argparse.ArgumentTypeError(f"expected true/false, got {value!r}")
+
+
+def mqtt_string(value: str) -> bytes:
+    data = value.encode("utf-8")
+    if len(data) > 65535:
+        raise HitTargetMqttError("MQTT string too long")
+    return len(data).to_bytes(2, "big") + data
+
+
+def encode_remaining_length(length: int) -> bytes:
+    out = bytearray()
+    while True:
+        encoded = length % 128
+        length //= 128
+        if length > 0:
+            encoded |= 128
+        out.append(encoded)
+        if length == 0:
+            return bytes(out)
+
+
+def read_packet(sock: socket.socket) -> tuple[int, bytes]:
+    first = sock.recv(1)
+    if not first:
+        raise HitTargetMqttError("MQTT broker closed connection before packet")
+    multiplier = 1
+    remaining = 0
+    while True:
+        raw = sock.recv(1)
+        if not raw:
+            raise HitTargetMqttError("MQTT broker closed connection while reading packet length")
+        encoded = raw[0]
+        remaining += (encoded & 127) * multiplier
+        if (encoded & 128) == 0:
+            break
+        multiplier *= 128
+        if multiplier > 128 * 128 * 128:
+            raise HitTargetMqttError("malformed MQTT remaining length")
+    payload = b""
+    while len(payload) < remaining:
+        chunk = sock.recv(remaining - len(payload))
+        if not chunk:
+            raise HitTargetMqttError("MQTT broker closed connection while reading packet payload")
+        payload += chunk
+    return first[0], payload
+
+
+def publish_mqtt(host: str,
+                 port: int,
+                 topic: str,
+                 payload: str,
+                 username: str | None = None,
+                 password: str | None = None,
+                 timeout_s: float = 5.0) -> None:
+    client_id = f"bb-hit-cli-{int(time.time())}"
+    connect_flags = 0x02
+    payload_parts = [mqtt_string(client_id)]
+    if username:
+        connect_flags |= 0x80
+        if password:
+            connect_flags |= 0x40
+        payload_parts.append(mqtt_string(username))
+        if password:
+            payload_parts.append(mqtt_string(password))
+    variable = mqtt_string("MQTT") + bytes([4, connect_flags, 0, 60])
+    connect_payload = b"".join(payload_parts)
+    connect_packet = bytes([0x10]) + encode_remaining_length(len(variable) + len(connect_payload)) + variable + connect_payload
+    publish_body = mqtt_string(topic) + payload.encode("utf-8")
+    publish_packet = bytes([0x30]) + encode_remaining_length(len(publish_body)) + publish_body
+    disconnect_packet = bytes([0xE0, 0x00])
+    with socket.create_connection((host, port), timeout=timeout_s) as sock:
+      sock.settimeout(timeout_s)
+      sock.sendall(connect_packet)
+      packet_type, body = read_packet(sock)
+      if packet_type != 0x20 or len(body) < 2 or body[1] != 0:
+          raise HitTargetMqttError(f"MQTT connect rejected packet=0x{packet_type:02x} body={body!r}")
+      sock.sendall(publish_packet)
+      sock.sendall(disconnect_packet)
+
+
+def clean_root(root: str) -> str:
+    return root.strip("/") or "battlebang"
+
+
+def topic_for(root: str, kind: str, identifier: str | None, suffix: str, all_ota: bool = False) -> str:
+    root = clean_root(root)
+    if all_ota:
+        return f"{root}/hit_targets/all/ota"
+    if not identifier:
+        raise HitTargetMqttError(f"missing --{kind}-id for {suffix} topic")
+    if kind == "device":
+        return f"{root}/devices/{identifier}/{suffix}"
+    return f"{root}/hit_targets/{identifier}/{suffix}"
+
+
+def load_json_arg(payload: str | None, json_file: Path | None) -> dict[str, Any]:
+    if payload and json_file:
+        raise HitTargetMqttError("use only one of --payload or --json-file")
+    if json_file:
+        return json.loads(json_file.read_text(encoding="utf-8"))
+    if payload:
+        return json.loads(payload)
+    return {}
+
+
+def build_config_payload(args: argparse.Namespace) -> dict[str, Any]:
+    doc = load_json_arg(args.payload, args.json_file)
+    if not doc:
+        doc = {"type": "config", "config_version": int(args.config_version or time.time())}
+    doc.setdefault("type", "config")
+    doc.setdefault("config_version", int(args.config_version or time.time()))
+    if args.phase_count is not None or args.hits_per_phase is not None or args.palette:
+        hp = dict(doc.get("hp") or {})
+        if args.phase_count is not None:
+            hp["phase_count"] = args.phase_count
+        if args.hits_per_phase is not None:
+            hp["hits_per_phase"] = args.hits_per_phase
+        if args.palette:
+            hp["palette"] = [part.strip() for part in args.palette.split(",") if part.strip()]
+        doc["hp"] = hp
+    if args.debug_allow_simulate_hit is not None:
+        doc["debug_allow_simulate_hit"] = args.debug_allow_simulate_hit
+    sensor: dict[str, Any] = dict(doc.get("sensor") or {})
+    if args.hit_cooldown_ms is not None:
+        sensor["hit_cooldown_ms"] = args.hit_cooldown_ms
+    if args.digital_hit_min_edges is not None:
+        sensor["digital_hit_min_edges"] = args.digital_hit_min_edges
+    if args.digital_isr_debounce_us is not None:
+        sensor["digital_isr_debounce_us"] = args.digital_isr_debounce_us
+    if sensor:
+        doc["sensor"] = sensor
+    visual: dict[str, Any] = dict(doc.get("visual") or {})
+    if args.orbit_step_ms is not None:
+        visual["orbit_step_ms"] = args.orbit_step_ms
+    if visual:
+        doc["visual"] = visual
+    ota: dict[str, Any] = dict(doc.get("ota") or {})
+    if args.ota_auto_check is not None:
+        ota["auto_check_enabled"] = args.ota_auto_check
+    if args.ota_desired_build is not None:
+        ota["desired_build"] = args.ota_desired_build
+    if args.ota_manifest_url:
+        ota["public_manifest_url"] = args.ota_manifest_url
+    if args.ota_command_center_controlled is not None:
+        ota["command_center_controlled"] = args.ota_command_center_controlled
+    if ota:
+        doc["ota"] = ota
+    return doc
+
+
+def build_command_payload(args: argparse.Namespace) -> dict[str, Any]:
+    if args.payload or args.json_file:
+        return load_json_arg(args.payload, args.json_file)
+    return {"command": args.command}
+
+
+def build_ota_payload(args: argparse.Namespace) -> dict[str, Any]:
+    if args.manifest_url:
+        req = urllib.request.Request(args.manifest_url, headers={"User-Agent": "battlebang-hit-target-mqtt-helper"})
+        with urllib.request.urlopen(req, timeout=args.timeout_s) as response:
+            return json.loads(response.read().decode("utf-8"))
+    if args.manifest_file:
+        return json.loads(args.manifest_file.read_text(encoding="utf-8"))
+    return load_json_arg(args.payload, args.json_file)
+
+
+def add_common(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    sub.add_argument("--host", help="MQTT broker host; default/env HIT_TARGET_MQTT_HOST")
+    sub.add_argument("--port", type=int, help="MQTT broker port; default/env 1883")
+    sub.add_argument("--root", help="MQTT root; default/env battlebang")
+    sub.add_argument("--username", help="MQTT username")
+    sub.add_argument("--password", help="MQTT password")
+    sub.add_argument("--target-id", help="target id, e.g. hit_target_AABBCCDDEEFF")
+    sub.add_argument("--device-id", help="device id, e.g. esp32-AABBCCDDEEFF")
+    sub.add_argument("--timeout-s", type=float, default=5.0)
+    sub.add_argument("--print-only", action="store_true", help="print topic/payload without publishing")
+
+
+def make_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Publish BattleBang hit_target MQTT config/command/OTA messages.")
+    subparsers = parser.add_subparsers(dest="action", required=True)
+
+    config = subparsers.add_parser("config", help="publish runtime config patch")
+    add_common(config)
+    config.add_argument("--payload", help="raw JSON object")
+    config.add_argument("--json-file", type=Path)
+    config.add_argument("--config-version", type=int)
+    config.add_argument("--phase-count", type=int)
+    config.add_argument("--hits-per-phase", type=int)
+    config.add_argument("--palette", help="comma-separated #RRGGBB colors")
+    config.add_argument("--debug-allow-simulate-hit", type=parse_bool)
+    config.add_argument("--hit-cooldown-ms", type=int)
+    config.add_argument("--digital-hit-min-edges", type=int)
+    config.add_argument("--digital-isr-debounce-us", type=int)
+    config.add_argument("--orbit-step-ms", type=int)
+    config.add_argument("--ota-auto-check", type=parse_bool)
+    config.add_argument("--ota-desired-build", type=int)
+    config.add_argument("--ota-manifest-url", default=DEFAULT_LATEST_MANIFEST_URL)
+    config.add_argument("--ota-command-center-controlled", type=parse_bool)
+
+    command = subparsers.add_parser("command", help="publish reset/status/enable/disable/simulate_hit")
+    add_common(command)
+    command.add_argument("command", choices=["reset", "status", "enable", "disable", "simulate_hit"])
+    command.add_argument("--payload", help="raw JSON object override")
+    command.add_argument("--json-file", type=Path)
+
+    ota = subparsers.add_parser("ota", help="publish an OTA manifest JSON")
+    add_common(ota)
+    ota.add_argument("--all", action="store_true", help="publish to {root}/hit_targets/all/ota")
+    ota.add_argument("--manifest-url", default=DEFAULT_LATEST_MANIFEST_URL)
+    ota.add_argument("--manifest-file", type=Path)
+    ota.add_argument("--payload", help="raw JSON object override")
+    ota.add_argument("--json-file", type=Path)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = make_parser()
+    args = parser.parse_args(argv)
+    env = merged_env(args.env_file)
+    host = args.host or env_first(env, "HIT_TARGET_MQTT_HOST")
+    if not host:
+        parser.error("missing --host or HIT_TARGET_MQTT_HOST")
+    port = int(args.port or env_first(env, "HIT_TARGET_MQTT_PORT", default="1883") or "1883")
+    root = args.root or env_first(env, "HIT_TARGET_MQTT_ROOT", default="battlebang") or "battlebang"
+    username = args.username or env_first(env, "HIT_TARGET_MQTT_USERNAME")
+    password = args.password or env_first(env, "HIT_TARGET_MQTT_PASSWORD")
+
+    target_id = args.target_id or env_first(env, "HIT_TARGET_TARGET_ID")
+    device_id = args.device_id or env_first(env, "HIT_TARGET_DEVICE_ID")
+    kind = "target" if target_id else "device"
+    identifier = target_id or device_id
+    if args.action == "command":
+        suffix = "command"
+        payload_doc = build_command_payload(args)
+    elif args.action == "config":
+        suffix = "config"
+        payload_doc = build_config_payload(args)
+    else:
+        suffix = "ota"
+        payload_doc = build_ota_payload(args)
+    topic = topic_for(root, kind, identifier, suffix, all_ota=(args.action == "ota" and args.all))
+    payload = json.dumps(payload_doc, ensure_ascii=False, separators=(",", ":"))
+    if args.print_only:
+        print(topic)
+        print(payload)
+        return 0
+    publish_mqtt(host, port, topic, payload, username=username, password=password, timeout_s=args.timeout_s)
+    print(f"published topic={topic} bytes={len(payload)}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (HitTargetMqttError, OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2)

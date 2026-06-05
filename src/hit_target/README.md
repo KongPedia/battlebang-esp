@@ -220,6 +220,24 @@ Supported MQTT commands on `{root}/hit_targets/{target_id}/command`:
 
 `{"command":"simulate_hit"}` is rejected unless `debug_allow_simulate_hit=true` is provisioned.
 
+Local helper examples using `src/hit_target/.env.hit_target`:
+
+```bash
+# Make the ring 3 hits per phase, save to NVS, and reset HP to full.
+./.venv-pio/bin/python scripts/hit_target/mqtt_command.py config \
+  --target-id hit_target_AABBCCDDEEFF \
+  --phase-count 3 --hits-per-phase 3 --debug-allow-simulate-hit true
+
+# Reset, then restore the default 5 hits per phase.
+./.venv-pio/bin/python scripts/hit_target/mqtt_command.py command --target-id hit_target_AABBCCDDEEFF reset
+./.venv-pio/bin/python scripts/hit_target/mqtt_command.py config \
+  --target-id hit_target_AABBCCDDEEFF \
+  --phase-count 3 --hits-per-phase 5 --debug-allow-simulate-hit false
+
+# Publish the current stable OTA manifest to one target.
+./.venv-pio/bin/python scripts/hit_target/mqtt_command.py ota --target-id hit_target_AABBCCDDEEFF
+```
+
 OTA manifests for this firmware must use:
 
 ```json

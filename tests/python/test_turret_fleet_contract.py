@@ -460,8 +460,8 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert 'default="esp32dev-turret-v2"' in script
     assert "KongPedia/battlebang-esp" in provision
     assert "push:" in workflow
-    assert "pull_request:" in workflow
-    assert 'CREATE_RELEASE="false"' in workflow
+    assert "pull_request:" not in workflow
+    assert 'GITHUB_EVENT_NAME" == "pull_request"' not in workflow
     assert "branches:" in workflow
     assert "- main" in workflow
     assert 'VERSION="0.1.${GITHUB_RUN_NUMBER}-main"' in workflow
