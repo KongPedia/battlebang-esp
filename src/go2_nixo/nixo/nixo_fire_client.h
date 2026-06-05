@@ -5,7 +5,7 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
-#include "build_config.h"
+#include "go2_nixo/build_config.h"
 
 namespace go2 {
 

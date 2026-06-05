@@ -3,9 +3,9 @@
 
 #include "go2_nixo/mqtt/hit_mqtt_client.h"
 #include "go2_nixo/build_config.h"
-#include "go2_nixo/nixo_fire_client.h"
-#include "go2_nixo/sensors/piezo_sensor.h"
-#include "go2_nixo/display/ring_display.h"
+#include "go2_nixo/nixo/nixo_fire_client.h"
+#include "go2_nixo/piezo/piezo_sensor.h"
+#include "go2_nixo/ring_led/ring_display.h"
 
 using namespace go2;
 

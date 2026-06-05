@@ -1,4 +1,4 @@
-#include "go2_nixo/nixo_fire_client.h"
+#include "go2_nixo/nixo/nixo_fire_client.h"
 
 namespace go2 {
 

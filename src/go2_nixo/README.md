@@ -23,8 +23,8 @@ Command Center Nixo fire command -> ESP servo/relay fire sequence
 
 ```text
 main.cpp   setup/loop runtime orchestration
-sensors/   piezo DO interrupt + cooldown/rearm gate
-display/   ring_display command renderer
+piezo/     piezo DO interrupt + cooldown/rearm gate
+ring_led/  ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 nixo_fire_client.*  battlebang/nixo/{nixo_id}/command 구독 + relay/servo fire
 ```
