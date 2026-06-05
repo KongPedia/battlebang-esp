@@ -235,3 +235,82 @@ def test_hit_target_platformio_env_is_distinct_from_go2_mounted_firmware() -> No
 def test_legacy_target_module_experiment_is_removed_after_migration() -> None:
     assert not (ROOT / "src" / "target_module-v2").exists()
     assert not (ROOT / "src" / "Wall_Target").exists()
+
+
+def test_hit_target_local_env_example_and_gitignore_keep_runtime_secrets_out_of_git() -> None:
+    example = read("src/hit_target/.env.hit_target.example")
+    gitignore = read(".gitignore")
+
+    assert "Copy to src/hit_target/.env.hit_target" in example
+    assert "Do not commit real Wi-Fi/MQTT secrets" in example
+    assert "HIT_TARGET_WIFI_SSID=YOUR_WIFI_SSID" in example
+    assert "HIT_TARGET_WIFI_PASSWORD=YOUR_WIFI_PASSWORD" in example
+    assert "HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS" in example
+    assert "HIT_TARGET_MQTT_PORT=1883" in example
+    assert "HIT_TARGET_MQTT_ROOT=battlebang" in example
+    assert "HIT_TARGET_OTA_PUBLIC_MANIFEST_URL=https://github.com/KongPedia/battlebang-esp/releases/latest/download/hit-target-manifest.json" in example
+    assert "src/hit_target/.env.hit_target" in gitignore
+    assert "src/*/.env.*" in gitignore
+    assert "!src/*/.env*.example" in gitignore
+
+
+def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
+    script_path = ROOT / "scripts" / "hit_target" / "provision.py"
+    script = script_path.read_text(encoding="utf-8")
+
+    assert 'DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "hit_target" / ".env.hit_target"' in script
+    assert "def parse_dotenv" in script
+    assert "def build_provision_config" in script
+    assert "provision {payload}" in script
+    assert "serial.Serial" in script
+    assert "HIT_TARGET_WIFI_SSID" in script
+    assert "HIT_TARGET_WIFI_PASSWORD" in script
+    assert "HIT_TARGET_MQTT_HOST" in script
+    assert "HIT_TARGET_MQTT_ROOT" in script
+    assert "HIT_TARGET_TARGET_ID" in script
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("hit_target_provision", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    doc = module.build_provision_config(
+        {
+            "HIT_TARGET_CONFIG_VERSION": "123",
+            "HIT_TARGET_WIFI_SSID": "lab-wifi",
+            "HIT_TARGET_WIFI_PASSWORD": "secret",
+            "HIT_TARGET_MQTT_HOST": "10.0.0.5",
+            "HIT_TARGET_MQTT_ROOT": "battlebang-dev",
+            "HIT_TARGET_HP_PHASE_COUNT": "3",
+            "HIT_TARGET_HITS_PER_PHASE": "10",
+            "HIT_TARGET_HP_PALETTE": "#009600,#BE8200,#BE0000",
+            "HIT_TARGET_NETWORK_AUTO_START": "true",
+        }
+    )
+    assert doc["type"] == "provision"
+    assert doc["config_version"] == 123
+    assert doc["configured"] is True
+    assert doc["wifi"] == {"ssid": "lab-wifi", "password": "secret"}
+    assert doc["mqtt"]["host"] == "10.0.0.5"
+    assert doc["mqtt"]["root"] == "battlebang-dev"
+    assert doc["network"]["auto_start"] is True
+    assert doc["hp"] == {
+        "phase_count": 3,
+        "hits_per_phase": 10,
+        "palette": ["#009600", "#BE8200", "#BE0000"],
+    }
+
+
+def test_hit_target_github_action_is_scoped_to_hit_target_folder_changes() -> None:
+    workflow = read(".github/workflows/hit-target-firmware.yml")
+
+    assert "Folder-scoped trigger" in workflow
+    assert '"src/hit_target/**"' in workflow
+    assert '"scripts/hit_target/**"' in workflow
+    assert '"scripts/hit_target_config.py"' in workflow
+    assert '"scripts/firmware/make_release_manifest.py"' in workflow
+    assert '"src/turret_fleet/**"' not in workflow
+    assert '"src/go2_nixo/**"' not in workflow
+    assert "platformio.ini remains included" in workflow

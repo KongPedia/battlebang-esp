@@ -162,6 +162,17 @@ Build/upload:
 ./.venv-pio/bin/pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 ```
 
+Local Wi-Fi / Command Center / MQTT settings are folder-owned, like `turret_fleet`:
+
+```bash
+cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
+# Edit HIT_TARGET_WIFI_* and HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS.
+./.venv-pio/bin/python scripts/hit_target/provision.py --print-json --no-serial
+./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
+```
+
+`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `src/go2_nixo/**` or `src/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index.
+
 Default pins are migrated from the wall-mounted target bench sketch and can be overridden while debugging hardware:
 
 - LED data: GPIO18

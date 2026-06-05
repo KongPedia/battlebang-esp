@@ -69,6 +69,25 @@ Physical initialize:
 
 Serial events are JSON lines (`hit`, `destroyed`, `reset`, `heartbeat`) and include both `target_id` and `device_mac`, so a future game controller can discover devices without a numbered build profile. Hit/reset/status events also include `source` (`boot`, `serial`, or `piezo`) to make bench debugging obvious when the comparator input is noisy.
 
+## Local env / provisioning
+
+`hit_target` keeps its own local runtime env file, separate from `turret_fleet` and Go2 builds:
+
+```bash
+cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
+# edit the gitignored file:
+#   HIT_TARGET_WIFI_SSID / HIT_TARGET_WIFI_PASSWORD
+#   HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS
+#   HIT_TARGET_MQTT_PORT=1883
+#   HIT_TARGET_MQTT_ROOT=battlebang
+./.venv-pio/bin/python scripts/hit_target/provision.py --print-json --no-serial
+./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
+```
+
+The helper sends one `provision {json}` line over USB serial, so Wi-Fi, Command Center/MQTT host, HP phase count, hit sensitivity, OTA policy, and target metadata are stored in ESP32 NVS without rebuilding firmware. Leave `HIT_TARGET_TARGET_ID` empty to use the ESP32 MAC-derived `target_id`; set only `group`/`location` for human-readable placement.
+
+The real env file is intentionally ignored by `.gitignore` (`src/hit_target/.env.hit_target` and generic `src/*/.env.*`). Commit only `src/hit_target/.env.hit_target.example`.
+
 ## Debugging/tuning pins and thresholds
 
 Non-secret, commit-safe defaults live in `config.json`. For one-off bench tuning, override with shell env instead of editing code:
@@ -125,7 +144,7 @@ If the analog line is not wired yet, use `BATTLEBANG_HIT_TARGET_PIEZO_AO_PIN=-1`
 
 ## Runtime config / NVS / MQTT / OTA model
 
-The firmware now boots with the values in `config.json` as **factory defaults**, then overlays any saved NVS runtime config. This means one generic `esp32dev_hit_target` image can be flashed once and later tuned without rebuilding.
+The firmware now boots with the values in `config.json` as **factory defaults**, then overlays any saved NVS runtime config. This means one generic `esp32dev_hit_target` image can be flashed once and later tuned without rebuilding. Local bench/provisioning values live in `src/hit_target/.env.hit_target`; Wi-Fi and Command Center IP/DNS are **not** hardcoded in `src/` or in GitHub Actions.
 
 Serial provisioning commands:
 

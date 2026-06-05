@@ -4,10 +4,13 @@ on:
   push:
     branches:
       - main
+    # Folder-scoped trigger: unrelated src/go2_nixo or src/turret_fleet edits do not build hit_target.
+    # platformio.ini remains included because it owns the esp32dev_hit_target build env/dependencies.
     paths:
       - ".github/workflows/hit-target-firmware.yml"
       - "platformio.ini"
       - "src/hit_target/**"
+      - "scripts/hit_target/**"
       - "scripts/hit_target_config.py"
       - "scripts/firmware/make_release_manifest.py"
   workflow_dispatch:
