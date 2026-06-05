@@ -2,6 +2,28 @@
 
 Closed-loop turret motion, target solving, idle/dead modes, fire sequencing, and brownout recovery.
 
+## Design boundary
+
+`TurretControl` is the hardware executor/adaptor: it owns sensors, servos,
+relay/ESC sequencing, brownout recovery, and command-state transitions.
+
+Pattern definitions live under `control/patterns/` as a pure planning module:
+
+- `patterns/pattern_plan.h`
+- `patterns/pattern_plan.cpp`
+
+The pattern module implements a Plan/Executor split. It compiles Command Center
+MQTT pattern JSON into a bounded `PatternPlan` (`MOVE`, `DWELL`, `FIRE`,
+`WAIT_FIRE_SAFE`) without touching hardware. `TurretControl` then executes that
+plan through the same target solver and fire state machine used by normal
+commands. This keeps future pattern catalog changes away from motor/relay safety
+code.
+
+Runtime config may provide `patterns.presets.{pattern_id}` JSON for per-turret
+coordinates/timings. The planner merges that preset before per-command params,
+so MQTT `config` can tune readable patterns without changing the hardware
+executor.
+
 Command units:
 
 - `target`: world coordinates in configured MQTT unit, normally meters. The solver converts to local yaw/pitch, then clamps to `motion.limits`.

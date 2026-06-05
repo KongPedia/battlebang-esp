@@ -65,11 +65,23 @@ struct RuntimeConfig {
   uint16_t yawMaxDeltaUs = 20;
   uint16_t pitchMaxDeltaUs = 20;
   uint16_t yawMinDriveUs = 20;
+  // Optional yaw direction overrides. 0 means "fall back to the symmetric
+  // yawMaxDeltaUs/yawMinDriveUs values". Names are PWM-relative, not
+  // clockwise/counter-clockwise, because motor orientation can differ per
+  // turret: plus is yawStopUs + delta, minus is yawStopUs - delta.
+  uint16_t yawPlusMaxDeltaUs = 0;
+  uint16_t yawMinusMaxDeltaUs = 0;
+  uint16_t yawPlusMinDriveUs = 0;
+  uint16_t yawMinusMinDriveUs = 0;
   uint16_t pitchMinDriveUs = 20;
   uint16_t servoAttachSettleMs = 350;
   uint16_t axisSwitchCooldownMs = 800;
   uint16_t axisDivergenceGuardMs = 3000;
   float axisDivergenceMarginDeg = 20.0f;
+  // Inner command envelope ratio relative to configured motion limits.
+  // Keep commands away from the physical/sensor soft edge so offline hardware
+  // inertia and feedback lag do not turn a valid setpoint into an overshoot.
+  float commandEnvelopeRatio = 0.65f;
 
   uint16_t fireEscRunUs = 1700;
   uint16_t fireEscStopUs = 1000;
@@ -89,6 +101,12 @@ struct RuntimeConfig {
   String mqttUsername;
   String mqttPassword;
   String mqttRoot = "battlebang";
+
+  // Runtime-configurable high-level pattern presets. Stored as validated JSON
+  // so Command Center can update readable pattern coordinates/timings over the
+  // same MQTT config path as motion/fire/OTA without adding new firmware fields
+  // for every future pattern knob.
+  String patternPresetsJson;
 
   bool otaCommandCenterControlled = true;
   bool otaAutoCheckEnabled = false;

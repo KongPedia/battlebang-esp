@@ -34,7 +34,8 @@ bool bootSafetyLockoutRequired = false;
 unsigned long lastAutoOtaCheckMs = 0;
 
 namespace {
-char serialBuf[4096];
+constexpr size_t kSerialCommandBufferSize = 9216;
+char serialBuf[kSerialCommandBufferSize];
 size_t serialLen = 0;
 const char* kSafetyPrefsNamespace = "bb_fleet";
 const char* kFireRecoveryMarkerKey = "fire_active";

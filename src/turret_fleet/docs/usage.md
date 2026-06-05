@@ -48,6 +48,26 @@ Upload one generic firmware image and inject per-turret runtime config into NVS:
 ./bin/turret fleet-upload turret_2
 ```
 
+`fleet-upload` automatically merges the selected non-secret layout config and
+pattern preset file:
+
+```text
+src/turret_fleet/profiles/turret_2.json
+src/turret_fleet/pattern_presets/turret_2.json
+```
+
+Wi-Fi and MQTT broker credentials still come from
+`src/turret_fleet/.env.turret_fleet`, so those secrets are not committed.
+For the current four-turret boss layout, flash/provision each board with the
+same firmware and its own id:
+
+```bash
+./bin/turret fleet-upload turret_1 /dev/cu.usbserial-XXX
+./bin/turret fleet-upload turret_2 /dev/cu.usbserial-XXX
+./bin/turret fleet-upload turret_3 /dev/cu.usbserial-XXX
+./bin/turret fleet-upload turret_4 /dev/cu.usbserial-XXX
+```
+
 If firmware is already flashed and only config needs to be injected:
 
 ```bash
@@ -137,6 +157,102 @@ Optional frame guard:
 
 If `frame_id` does not match config, firmware rejects before motion/fire.
 
+### Pattern: readable boss attacks
+
+BTB-726 limits player-facing turret attacks to three readable patterns:
+
+- `lane_sweep`: one turret, or a Command Center-orchestrated same-side 1F/2F
+  pair, sweeps between two world points. The default preset is one narrow
+  ping-pong round trip. Each yaw leg starts one fire window capped by
+  `fire_ms`; endpoint arrival cuts it early, otherwise fire is not refreshed
+  beyond that cap. After safe-off it waits the configured 500 ms dwell, then
+  starts the return leg.
+- `two_point_bounce`: one turret alternates point A/B and defaults to two
+  round trips.
+- `telegraph_column`: Command Center sends same-side 1F/2F per-turret commands
+  with `phase_offset_ms`; each turret picks one configured candidate point at
+  random by default, aims, visibly dwells, then fires.
+
+Pattern commands are still per-turret MQTT payloads:
+
+```bash
+mosquitto_pub -h "$MQTT_BROKER_HOST" \
+  -t battlebang/turrets/boss_1f_left/command \
+  -m @src/turret_fleet/examples/pattern.two_point_bounce.json
+```
+
+For `turret_2`, keep the concrete coordinates in runtime config so Command
+Center can patch them over MQTT like motion/fire/OTA settings. The example
+points stay inside the normal yaw/pitch envelope and use negative `z` so the
+solver pitches downward:
+
+```bash
+./bin/turret fleet-mqtt turret_2 config \
+  --profile-file src/turret_fleet/profiles/turret_2.json \
+  --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+
+./bin/turret fleet-mqtt turret_2 pattern lane_sweep --frame-id boss_stage_v1
+./bin/turret fleet-mqtt turret_2 pattern two_point_bounce --frame-id boss_stage_v1
+./bin/turret fleet-mqtt turret_2 pattern telegraph_column --frame-id boss_stage_v1
+./bin/turret fleet-mqtt turret_2 pattern telegraph_column \
+  --frame-id boss_stage_v1 --point-index 1
+```
+
+Use the matching file names for the other boards:
+
+```bash
+./bin/turret fleet-mqtt turret_1 config \
+  --profile-file src/turret_fleet/profiles/turret_1.json \
+  --patterns-file src/turret_fleet/pattern_presets/turret_1.json
+./bin/turret fleet-mqtt turret_3 config \
+  --profile-file src/turret_fleet/profiles/turret_3.json \
+  --patterns-file src/turret_fleet/pattern_presets/turret_3.json
+./bin/turret fleet-mqtt turret_4 config \
+  --profile-file src/turret_fleet/profiles/turret_4.json \
+  --patterns-file src/turret_fleet/pattern_presets/turret_4.json
+```
+
+The same command may still override configured points/timings for one-off
+tuning; explicit `params.points` always wins over the preset:
+
+```bash
+./bin/turret fleet-mqtt turret_2 pattern two_point_bounce \
+  --frame-id boss_stage_v1 --point 0 0.75 -0.6 --point 0 -0.5 -0.6 \
+  --loop 2 --dwell-ms 1000 --fire-ms 2000
+```
+
+Use `hold` or `dead` to interrupt an active pattern. A direct `target` is
+rejected during an active pattern unless the payload includes `interrupt=true`,
+which clears the pattern before applying the target. `calibration_no_fire` is
+reserved for operator alignment and never starts relay/ESC fire.
+
+### Live MQTT E2E check
+
+Use the E2E harness when validating a board after upload/provisioning. It first
+publishes the matching profile and pattern presets, then exercises `hold`,
+`target`, optional `fire`, `idle`, `dead`, and `lane_sweep` /
+`two_point_bounce` / `telegraph_column` with settle sleeps between scenarios.
+Pattern checks assert the observable contract: sweep fires while yaw/pitch
+tracking is active, point patterns fire only after aim is reached, and the
+device returns to `WAIT_COMMAND` with fire output safe.
+
+```bash
+./bin/turret fleet-e2e turret_2 \
+  --host "$MQTT_BROKER_HOST" \
+  --allow-live-fire \
+  --json-report .omx/logs/turret_2-e2e.json
+```
+
+Omit `--allow-live-fire` for a non-firing movement/config check; the fire and
+pattern scenarios are reported as `SKIP`. The harness always sends a final
+`hold` so recovery after an over-pitch/over-yaw event is the same operator
+gesture:
+
+```bash
+./bin/turret fleet-mqtt turret_2 hold --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-mqtt turret_2 recover --host "$MQTT_BROKER_HOST"
+```
+
 ### Initiate/home: local 0,0
 
 ```bash
@@ -216,7 +332,8 @@ All config patches are saved to ESP NVS and survive reboot/OTA.
 
 Config validation rejects envelopes wider than the firmware's allowed 150° total
 range. Ordinary target/aim/home/idle/dead commands are clamped into the accepted
-envelope.
+envelope's inner 80% command region, leaving the full `motion.limits` range as
+the outer feedback/deadzone guard.
 
 ### Motion speed / drive strength
 
@@ -419,6 +536,9 @@ Important fields:
 
 ```text
 firmware_version, firmware_build, config_version, mode, last_error
+pattern_state, pattern_id, pattern_instance_id
+pattern_step_index, pattern_step_type, pattern_step_count
+pattern_loop_index, pattern_loop_count, pattern_last_error
 motion_state.brownout_lockout
 motion_state.safety_inhibited
 motion_state.yaw_current_deg / pitch_current_deg

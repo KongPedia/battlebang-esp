@@ -13,7 +13,10 @@ namespace turret_fleet {
 namespace {
 const unsigned long kMqttRetryMs = 5000;
 const unsigned long kStatusIntervalMs = 10000;
-const size_t kPayloadLimit = 4096;
+const unsigned long kFastStatusIntervalMs = 1000;
+const unsigned long kStatusChangeCheckMs = 100;
+const size_t kPayloadLimit = 8192;
+const size_t kStatusDocCapacity = 8192;
 }
 
 void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManager& wifi, TurretControl& control) {
@@ -48,8 +51,18 @@ void MqttBus::loop() {
   }
 
   const unsigned long now = millis();
-  if (now - lastStatusMs_ >= kStatusIntervalMs) {
-    lastStatusMs_ = now;
+  if (control_ != nullptr && now - lastStatusChangeCheckMs_ >= kStatusChangeCheckMs) {
+    lastStatusChangeCheckMs_ = now;
+    const String signature = control_->statusSignature();
+    if (signature != lastStatusSignature_) {
+      publishStatus("state_changed");
+      return;
+    }
+  }
+
+  const unsigned long statusIntervalMs =
+      (control_ != nullptr && control_->wantsFastStatus()) ? kFastStatusIntervalMs : kStatusIntervalMs;
+  if (now - lastStatusMs_ >= statusIntervalMs) {
     publishStatus("heartbeat");
   }
 }
@@ -114,7 +127,8 @@ void MqttBus::subscribeTopics() {
 void MqttBus::publishStatus(const char* reason) {
   if (config_ == nullptr || wifi_ == nullptr || control_ == nullptr || !client_.connected()) return;
 
-  DynamicJsonDocument doc(4096);
+  lastStatusMs_ = millis();
+  DynamicJsonDocument doc(kStatusDocCapacity);
   doc["type"] = "status";
   doc["reason"] = reason;
   doc["device_id"] = config_->deviceId;
@@ -140,10 +154,17 @@ void MqttBus::publishStatus(const char* reason) {
   String payload;
   serializeJson(doc, payload);
   TopicSet topics = buildTopics(*config_);
-  client_.publish(topics.deviceStatus.c_str(), payload.c_str(), false);
+  bool ok = client_.publish(topics.deviceStatus.c_str(), payload.c_str(), false);
   if (topics.turretStatus.length() > 0) {
-    client_.publish(topics.turretStatus.c_str(), payload.c_str(), false);
+    ok = client_.publish(topics.turretStatus.c_str(), payload.c_str(), false) && ok;
   }
+  if (!ok) {
+    Serial.print("[fleet][mqtt] status publish failed len=");
+    Serial.print(payload.length());
+    Serial.print(" buffer=");
+    Serial.println(kPayloadLimit);
+  }
+  lastStatusSignature_ = control_->statusSignature();
 }
 
 void MqttBus::handleMessage(char* topic, byte* payload, unsigned int length) {

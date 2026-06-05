@@ -5,6 +5,7 @@
 #include <ESP32Servo.h>
 
 #include "../config/runtime_config.h"
+#include "patterns/pattern_plan.h"
 
 namespace battlebang {
 namespace turret_fleet {
@@ -23,7 +24,12 @@ class TurretControl {
   const char* mode() const;
   const char* fireState() const;
   const char* patternState() const;
+  const char* commandState() const;
+  bool commandInProgress() const;
+  bool readyForNextCommand() const;
+  String statusSignature() const;
   bool isSafeForOta() const;
+  bool wantsFastStatus() const;
 
  private:
   RuntimeConfig config_;
@@ -34,7 +40,15 @@ class TurretControl {
   String lastCommandId_;
   String activePatternId_;
   String activePatternInstanceId_;
+  String lastPatternError_;
   String postFireMode_ = "WAIT_COMMAND";
+
+  PatternPlan patternPlan_;
+  uint8_t patternStepIndex_ = 0;
+  bool patternStepStarted_ = false;
+  unsigned long patternStepStartedMs_ = 0;
+  uint8_t patternLoopIndex_ = 0;
+  PatternStepType patternCurrentStepType_ = PATTERN_STEP_NONE;
 
   Servo yawServo_;
   Servo pitchServo_;
@@ -114,6 +128,7 @@ class TurretControl {
   FireSequenceState fireSequenceState_ = FIRE_SEQUENCE_IDLE;
   unsigned long fireStateTs_ = 0;
   unsigned long fireKeepAliveUntilMs_ = 0;
+  unsigned long fireHardOffAtMs_ = 0;
   unsigned long fireStartedMs_ = 0;
   unsigned long fireRequestedHoldMs_ = 0;
   bool fireRestartRequested_ = false;
@@ -135,6 +150,7 @@ class TurretControl {
   bool pitchInsideSoftWindow() const;
   bool motionReadingsStableInSoftWindow(const char* source);
   bool pitchReadingsStableInSoftWindow(const char* source);
+  bool yawInwardRecoveryAllowed() const;
   bool ensureMotionSafetyForTracking(const char* source);
   bool ensurePitchSafetyForTracking(const char* source);
   void resetPidState();
@@ -157,6 +173,10 @@ class TurretControl {
                   float deadband,
                   float maxDeltaUs,
                   float minDriveUs,
+                  float plusMaxDeltaUs,
+                  float plusMinDriveUs,
+                  float minusMaxDeltaUs,
+                  float minusMinDriveUs,
                   bool invertMotor,
                   int stopUs,
                   float& prevErrorPseudo,
@@ -164,11 +184,22 @@ class TurretControl {
                   int& lastCommandUs);
   bool validateFrame(JsonVariantConst frameVariant, const char* command, const char* source);
   bool applyTargetObject(JsonObjectConst target, const char* source);
-  bool applyTargetCm(float xCm, float yCm, float zCm, const char* source);
+  bool applyTargetCm(float xCm, float yCm, float zCm, const char* source, bool allowDuringFire = false);
   bool applyDirectAimCommand(JsonDocument& doc, const char* source);
   bool applyHomeCommand(const char* source);
   bool applyJogCommand(JsonDocument& doc, const char* source);
+  bool hasActivePattern() const;
+  void preemptActivePattern(const char* command, const char* source, bool forceFireSafeOff = true);
   void handlePatternCommand(JsonDocument& doc, const char* source);
+  void updatePattern();
+  void beginPatternStep(unsigned long now);
+  void advancePatternStep();
+  void completePattern(const char* reason);
+  void abortPattern(const char* reason);
+  void clearPatternState(const char* reason);
+  bool validatePatternPlanEnvelope(const PatternPlan& plan, const char* patternId);
+  bool validatePatternPointEnvelope(const PatternPoint& point, uint8_t pointIndex, const char* patternId);
+  bool applyPatternPoint(uint8_t pointIndex, const char* source, bool allowDuringFire = false);
   void startFireFromCommand(JsonDocument& doc, const char* source);
   bool commandBlockedByBrownoutLockout(const char* command, const char* source);
   bool clearBrownoutLockoutIfSafe(const char* source);
@@ -180,12 +211,19 @@ class TurretControl {
   void ensureEscStopSignal(const char* reason);
   void runEscNow(const char* reason);
   void forceFireOutputsSafeOff();
-  void startFireSequence(unsigned long holdMs, const char* source);
+  void startFireSequence(unsigned long holdMs, const char* source, bool keepMotionTracking = false);
+  void ensurePatternSweepFire(unsigned long holdMs);
+  void stopPatternSweepFireAtEndpoint(const char* source);
   void updateFireSequence();
   bool isFireSequenceActive() const;
   bool aimReached() const;
+  bool patternSweepYawReached() const;
   const char* fireSequenceName() const;
   float targetUnitToCm(float value) const;
+  float yawCommandMinDeg() const;
+  float yawCommandMaxDeg() const;
+  float pitchCommandMinDeg() const;
+  float pitchCommandMaxDeg() const;
   float clampYawCommand(float value) const;
   float clampPitchCommand(float value) const;
   int yawRawForDeg(float deg) const;
