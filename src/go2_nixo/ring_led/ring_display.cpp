@@ -1,4 +1,4 @@
-#include "go2/display/ring_display.h"
+#include "go2_nixo/ring_led/ring_display.h"
 
 namespace go2 {
 
@@ -36,6 +36,7 @@ void RingDisplay::setRemoteDisplay(float fillRatio, const String& mode, bool dow
   remoteFillRatio_ = constrain(fillRatio, 0.0f, 1.0f);
   remoteMode_ = mode.length() > 0 ? mode : String("idle");
   if (ttlMs < 1) ttlMs = 1;
+  if (ttlMs > 0x7ffffffful) ttlMs = 0x7ffffffful;
   remoteExpiresMs_ = now + ttlMs;
   dirty_ = true;
 }

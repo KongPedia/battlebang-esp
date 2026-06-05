@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #include "BluetoothSerial.h"
 
-#include "go2/mqtt/hit_mqtt_client.h"
-#include "go2/build_config.h"
-#include "go2/sensors/piezo_sensor.h"
-#include "go2/display/ring_display.h"
+#include "go2_nixo/mqtt/hit_mqtt_client.h"
+#include "go2_nixo/build_config.h"
+#include "go2_nixo/nixo/nixo_fire_client.h"
+#include "go2_nixo/piezo/piezo_sensor.h"
+#include "go2_nixo/ring_led/ring_display.h"
 
 using namespace go2;
 
@@ -14,6 +15,7 @@ HardwareSerial& JetsonSerial = Serial2;
 RingDisplay ringDisplay;
 PiezoSensor piezoSensor;
 HitMqttClient hitMqtt;
+NixoFireClient nixoFire;
 
 uint32_t hitSequence = 0;
 
@@ -29,6 +31,7 @@ static bool isIgnoredCommandChar(char c) {
 static void resetAll() {
   piezoSensor.resetFlags();
   hitMqtt.clearOfflineQueue();
+  nixoFire.stopFire("reset");
   ringDisplay.clearRemoteDisplay();
   ringDisplay.markDirty();
   Serial.println("[RESET] hit/display state cleared");
@@ -56,8 +59,9 @@ static void handleCommandChar(char c) {
     return;
   }
   if (c == '1' || c == 'f') {
-    Serial.println("[CMD] fire ignored; handled by Nixo firmware");
-    if (SerialBT.hasClient()) SerialBT.println("[CMD] fire ignored; handled by Nixo firmware");
+    bool started = nixoFire.startFire(NIXO_FIRE_DEFAULT_DURATION_MS, "serial");
+    Serial.printf("[CMD] fire %s source=serial\n", started ? "started" : "ignored");
+    if (SerialBT.hasClient()) SerialBT.printf("[CMD] fire %s source=serial\n", started ? "started" : "ignored");
   }
 }
 
@@ -86,10 +90,12 @@ static void onRingDisplayUpdate(const RingDisplayUpdate& update) {
   if (update.resetHitState) {
     piezoSensor.resetFlags();
     hitMqtt.clearOfflineQueue();
+    nixoFire.stopFire("mqtt-hit-reset");
     ringDisplay.clearRemoteDisplay();
     Serial.println("[RESET] MQTT hit/display state reset");
     if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT hit/display state reset");
   }
+  nixoFire.setFireInhibited(update.down || update.mode == "down" || update.mode == "disabled");
   ringDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
 
@@ -103,6 +109,7 @@ void setup() {
   ringDisplay.begin();
   piezoSensor.begin();
   hitMqtt.begin(onRingDisplayUpdate);
+  nixoFire.begin();
 
   ringDisplay.markDirty();
   ringDisplay.tick(millis());
@@ -112,7 +119,7 @@ void setup() {
                 UART_TX_PIN,
                 LED_PIN,
                 PIEZO_DO_PIN);
-  Serial.printf("USB/BT/Jetson CMD: '%c'=reset hit/display state. Fire is handled by Nixo firmware.\n",
+  Serial.printf("USB/BT/Jetson CMD: '%c'=reset hit/display state, '1'/'f'=Nixo fire.\n",
                 CMD_RESET_HIT_DISPLAY);
   Serial.print("Bluetooth name: ");
   Serial.println(BT_NAME);
@@ -123,12 +130,19 @@ void setup() {
                 MQTT_PORT,
                 hitMqtt.eventTopic(),
                 hitMqtt.ringCommandTopic());
+  Serial.printf("[NIXO] mqtt=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d\n",
+                nixoFire.configured() ? "enabled" : "disabled",
+                NIXO_ID_VALUE,
+                nixoFire.commandTopic(),
+                NIXO_RELAY1_PIN_VALUE,
+                NIXO_RELAY2_PIN_VALUE);
 }
 
 void loop() {
   uint32_t now = millis();
 
   hitMqtt.tick(now, ringDisplay.remoteDisplayActive());
+  nixoFire.tick(now);
   pollCommands();
   ringDisplay.tick(now);
   piezoSensor.poll(now, handleTargetHit);

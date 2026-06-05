@@ -1,12 +1,12 @@
 #include <FastLED.h>
 
-#define LED_PIN        26
-#define NUM_LEDS       40
-#define PIEZO_DO_PIN   27
+#define LED_PIN 4
+#define NUM_LEDS 40
+#define PIEZO_DO_PIN 27
 
-#define BRIGHTNESS     80
-#define LED_TYPE       WS2811
-#define COLOR_ORDER    RGB
+#define BRIGHTNESS 80
+#define LED_TYPE WS2811
+#define COLOR_ORDER RGB
 
 CRGB leds[NUM_LEDS];
 
@@ -40,19 +40,22 @@ uint32_t lastHitMs = 0;
 void IRAM_ATTR piezoISR() {
   uint32_t nowUs = micros();
 
-  if (nowUs - lastIsrUs < ISR_DEBOUNCE_US) return;
+  if (nowUs - lastIsrUs < ISR_DEBOUNCE_US)
+    return;
 
   lastIsrUs = nowUs;
   piezoTriggered = true;
 }
 
 int hpToBand(int hpVal) {
-  if (hpVal <= 0) return -1;
+  if (hpVal <= 0)
+    return -1;
   return (hpVal - 1) / HP_PER_LAP;
 }
 
 int hpToLapHp(int hpVal) {
-  if (hpVal <= 0) return 0;
+  if (hpVal <= 0)
+    return 0;
 
   int r = hpVal % HP_PER_LAP;
   return (r == 0) ? HP_PER_LAP : r;
@@ -64,14 +67,18 @@ int lapHpToLit(int lapHp) {
 }
 
 CRGB bandColor(int band) {
-  if (band >= 2) return CRGB::Green;
-  if (band == 1) return CRGB::Yellow;
-  if (band == 0) return CRGB::Red;
+  if (band >= 2)
+    return CRGB::Green;
+  if (band == 1)
+    return CRGB::Yellow;
+  if (band == 0)
+    return CRGB::Red;
   return CRGB::Black;
 }
 
 CRGB nextBandColor(int band) {
-  if (band <= 0) return CRGB::Black;
+  if (band <= 0)
+    return CRGB::Black;
   return bandColor(band - 1);
 }
 
@@ -132,11 +139,9 @@ void renderLeds() {
   for (int i = 0; i < NUM_LEDS; i++) {
     if (i < lit) {
       leds[i] = base;
-    }
-    else if (blinkMask[i]) {
+    } else if (blinkMask[i]) {
       leds[i] = blinkOn ? blinkC : CRGB::Black;
-    }
-    else {
+    } else {
       leds[i] = CRGB::Black;
     }
   }
@@ -145,13 +150,15 @@ void renderLeds() {
 }
 
 void applyDamage() {
-  if (hp <= 0) return;
+  if (hp <= 0)
+    return;
 
   int oldHp = hp;
   int oldBand = hpToBand(oldHp);
 
   hp -= DAMAGE;
-  if (hp < 0) hp = 0;
+  if (hp < 0)
+    hp = 0;
 
   int newBand = hpToBand(hp);
 
@@ -161,8 +168,7 @@ void applyDamage() {
 
   if (hp > 0 && newBand == oldBand) {
     addBlinkSegmentSameBand(oldHp, hp);
-  }
-  else if (hp > 0 && newBand != oldBand) {
+  } else if (hp > 0 && newBand != oldBand) {
     int newLit = lapHpToLit(hpToLapHp(hp));
 
     for (int i = newLit; i < NUM_LEDS; i++) {
@@ -196,11 +202,7 @@ void setup() {
 
   pinMode(PIEZO_DO_PIN, INPUT_PULLDOWN);
 
-  attachInterrupt(
-    digitalPinToInterrupt(PIEZO_DO_PIN),
-    piezoISR,
-    RISING
-  );
+  attachInterrupt(digitalPinToInterrupt(PIEZO_DO_PIN), piezoISR, RISING);
 
   clearBlinkMask();
   renderLeds();
