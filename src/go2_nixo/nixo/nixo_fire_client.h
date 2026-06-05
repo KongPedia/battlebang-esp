@@ -15,6 +15,7 @@ class NixoFireClient {
   void tick(uint32_t now);
   bool configured() const;
   bool connected();
+  void setFireInhibited(bool inhibited);
   bool startFire(uint32_t durationMs = NIXO_FIRE_DEFAULT_DURATION_MS, const char* source = "local");
   void stopFire(const char* source = "local");
   const char* commandTopic() const;
@@ -41,6 +42,7 @@ class NixoFireClient {
   int servoCur_ = NIXO_SERVO_INITIAL_POS;
   int servoTarget_ = NIXO_SERVO_INITIAL_POS;
   uint32_t lastServoMs_ = 0;
+  bool fireInhibited_ = false;
 
   static NixoFireClient* instance_;
   static void mqttMessageCallback(char* topic, byte* payload, unsigned int length);

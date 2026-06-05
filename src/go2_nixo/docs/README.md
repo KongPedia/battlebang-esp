@@ -17,7 +17,7 @@ src/go2_nixo/
 ├─ piezo/                           # piezo DO interrupt / hit candidate detection
 ├─ ring_led/                        # ring_display command renderer
 ├─ mqtt/                            # MQTT hit candidate / heartbeat / display command
-└─ nixo_fire_client.*               # MQTT Nixo fire command / servo-relay sequence
+└─ nixo/                            # MQTT Nixo fire command / servo-relay sequence
 ```
 
 피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 `hit=true` 이벤트를 보내고 `ring_display` 명령을 렌더링만 합니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다.

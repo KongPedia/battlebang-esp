@@ -67,9 +67,22 @@ bool NixoFireClient::connected() {
   return mqttClient_.connected();
 }
 
+void NixoFireClient::setFireInhibited(bool inhibited) {
+  if (fireInhibited_ == inhibited) return;
+  fireInhibited_ = inhibited;
+  if (fireInhibited_) {
+    stopFire("inhibited");
+  }
+  Serial.printf("[FIRE] inhibit=%s\n", fireInhibited_ ? "true" : "false");
+}
+
 bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
   uint32_t now = millis();
 
+  if (fireInhibited_) {
+    Serial.printf("[FIRE] ignored source=%s reason=inhibited\n", source);
+    return false;
+  }
   if (isFiring()) {
     Serial.printf("[FIRE] ignored source=%s reason=already_firing\n", source);
     return false;
@@ -279,7 +292,11 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
     Serial.printf("[NIXO MQTT] ignored nixo_id=%s expected=%s\n", nixoId, NIXO_ID_VALUE);
     return;
   }
-  if (requestId[0] != '\0' && lastMqttRequestId_ == requestId) {
+  if (requestId[0] == '\0') {
+    Serial.println("[NIXO MQTT] ignored fire command without request_id");
+    return;
+  }
+  if (lastMqttRequestId_ == requestId) {
     Serial.printf("[NIXO MQTT] duplicate request_id=%s ignored\n", requestId);
     return;
   }

@@ -95,6 +95,7 @@ static void onRingDisplayUpdate(const RingDisplayUpdate& update) {
     Serial.println("[RESET] MQTT hit/display state reset");
     if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT hit/display state reset");
   }
+  nixoFire.setFireInhibited(update.down || update.mode == "down" || update.mode == "disabled");
   ringDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
 

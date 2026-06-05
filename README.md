@@ -54,7 +54,7 @@ Go2 피격 펌웨어 구조:
 - `src/go2_nixo/build_config.h`: 핀, MQTT topic, 빌드 설정
 - `src/go2_nixo/robots.json`: Go2별 non-secret 프로필. `robot_id`, LED/센서/Nixo relay 핀 등
 - `src/go2_nixo/local_secrets.h`: Wi-Fi/MQTT secret. **gitignore 대상**
-- `src/go2_nixo/piezo/piezo_sensor.*`: 피에조 ISR, ADC peak capture, debounce/cooldown
+- `src/go2_nixo/piezo/piezo_sensor.*`: 피에조 DO 디지털 입력, ISR edge detection, debounce/cooldown
 - `src/go2_nixo/ring_led/ring_display.*`: Command Center `ring_display` 렌더링과 fallback LED 표시
 - `src/go2_nixo/mqtt/hit_mqtt_client.*`: MQTT hit_candidate/heartbeat publish, ring_display subscribe
 - `src/go2_nixo/nixo/nixo_fire_client.*`: MQTT Nixo fire command subscribe, servo/relay fire sequence

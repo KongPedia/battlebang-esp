@@ -51,6 +51,14 @@
 #define BATTLEBANG_NIXO_RELAY2_PIN NIXO_RELAY2_PIN
 #endif
 
+#if defined(NIXO_RELAY_ON_LEVEL) && !defined(BATTLEBANG_NIXO_RELAY_ON_LEVEL)
+#define BATTLEBANG_NIXO_RELAY_ON_LEVEL NIXO_RELAY_ON_LEVEL
+#endif
+
+#if defined(NIXO_RELAY_OFF_LEVEL) && !defined(BATTLEBANG_NIXO_RELAY_OFF_LEVEL)
+#define BATTLEBANG_NIXO_RELAY_OFF_LEVEL NIXO_RELAY_OFF_LEVEL
+#endif
+
 // Overrides injected by scripts/go2_config.py from PlatformIO profile/shell env.
 // These intentionally apply after local_secrets.h so explicit env/profile builds
 // win without editing the gitignored local file.

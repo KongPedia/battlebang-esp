@@ -46,15 +46,14 @@ Command Center publishes:
   "parent_robot_id": "go2_03",
   "enabled": true,
   "duration_ms": 1000,
-  "request_id": "manual-fire-001",
-  "ttl_ms": 1000
+  "request_id": "manual-fire-001"
 }
 ```
 
 `enabled=false` stops an active fire sequence.
 
-The firmware deduplicates repeated `request_id` values and clamps
-`duration_ms` to the configured min/max duration.
+The firmware requires `request_id`, deduplicates repeated `request_id` values,
+and clamps `duration_ms` to the configured min/max duration.
 
 ## Expected serial evidence
 
@@ -80,5 +79,5 @@ On fire:
 ```bash
 mosquitto_pub -h <BROKER_IP> -p 1883 -q 1 \
   -t battlebang/nixo/nixo_go2_03/command \
-  -m '{"schema_version":1,"command":"fire","nixo_id":"nixo_go2_03","parent_robot_id":"go2_03","enabled":true,"duration_ms":1000,"request_id":"direct-mqtt-smoke","ttl_ms":1000}'
+  -m '{"schema_version":1,"command":"fire","nixo_id":"nixo_go2_03","parent_robot_id":"go2_03","enabled":true,"duration_ms":1000,"request_id":"direct-mqtt-smoke"}'
 ```

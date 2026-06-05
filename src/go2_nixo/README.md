@@ -239,8 +239,7 @@ Nixo fire MQTT command 예:
   "parent_robot_id": "go2_03",
   "enabled": true,
   "duration_ms": 1000,
-  "request_id": "manual-fire-001",
-  "ttl_ms": 1000
+  "request_id": "manual-fire-001"
 }
 ```
 

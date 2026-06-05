@@ -65,6 +65,7 @@ src/*/.env.*
 src/local_secrets.h
 src/go2/local_secrets.h
 src/go2/upload_targets.toml
+src/go2_nixo/upload_targets.toml
 src/turret/local_secrets.h
 src/turret/upload_targets.toml
 # Legacy local-only Nixo secrets may exist on operator laptops after the
