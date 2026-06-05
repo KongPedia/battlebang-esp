@@ -13,6 +13,15 @@ on:
       - "scripts/hit_target/**"
       - "scripts/hit_target_config.py"
       - "scripts/firmware/make_release_manifest.py"
+  pull_request:
+    # PR CI is build-only; release publication stays limited to push-to-main/manual dispatch.
+    paths:
+      - ".github/workflows/hit-target-firmware.yml"
+      - "platformio.ini"
+      - "src/hit_target/**"
+      - "scripts/hit_target/**"
+      - "scripts/hit_target_config.py"
+      - "scripts/firmware/make_release_manifest.py"
   workflow_dispatch:
     inputs:
       version:
@@ -71,6 +80,13 @@ jobs:
             PUBLIC_REPO="${{ inputs.public_release_repo }}"
             TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
             CREATE_RELEASE="${{ inputs.create_release }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            VERSION="0.1.${GITHUB_RUN_NUMBER}-pr${{ github.event.pull_request.number }}"
+            BUILD="${GITHUB_RUN_NUMBER}"
+            FIRMWARE_BASE_URL=""
+            PUBLIC_REPO="${GITHUB_REPOSITORY}"
+            TARGET_BRANCH="${GITHUB_HEAD_REF}"
+            CREATE_RELEASE="false"
           else
             VERSION="0.1.${GITHUB_RUN_NUMBER}-main"
             BUILD="${GITHUB_RUN_NUMBER}"

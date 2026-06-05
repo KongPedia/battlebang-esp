@@ -190,6 +190,8 @@ def test_hit_target_ota_has_separate_app_hardware_manifest_and_workflow() -> Non
     assert "writeOtaRebootMarker(true)" in main
 
     assert "name: Hit Target Firmware" in workflow
+    assert "pull_request:" in workflow
+    assert 'CREATE_RELEASE="false"' in workflow
     assert "pio run -e esp32dev_hit_target" in workflow
     assert "src/hit_target/app/version_autogen.h" in workflow
     assert "battlebang-hit-target-${{ steps.version.outputs.version }}.bin" in workflow
