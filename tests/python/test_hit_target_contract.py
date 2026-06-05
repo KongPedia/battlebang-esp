@@ -24,6 +24,7 @@ def test_hit_target_config_exposes_factory_defaults_for_runtime_config() -> None
     assert defaults["hit_rearm_stable_ms"] == 80
     assert defaults["digital_hit_min_edges"] == 2
     assert defaults["digital_isr_debounce_us"] == 5000
+    assert defaults["cooldown_blink_ms"] == 60
     assert 40 <= defaults["hit_flash_ms"] <= 60
     assert 300 <= defaults["damage_chip_ms"] <= 650
     assert defaults["phase_backfill_gap_leds"] == 1
@@ -71,6 +72,7 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert "VisualConfig visual" in header
     assert "SensorConfig sensor" in header
     assert "LedConfig led" in header
+    assert "uint32_t cooldownBlinkMs = 60" in header
     assert "String wifiSsid" in header
     assert "String mqttHost" in header
     assert "bool otaCommandCenterControlled" in header
@@ -86,6 +88,7 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert 'prefs.getBool("ota_cc"' in source
     assert 'prefs.putUInt("ota_build"' in source
     assert 'prefs.putUShort("hp_per"' in source
+    assert 'prefs.putUInt("cd_blink"' in source
     assert 'prefs.putUInt("dmg_chip"' in source
     assert 'prefs.putUShort("dig_edges"' in source
 
@@ -96,6 +99,7 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert 'hp["phase_count"]' in source
     assert 'hp["hits_per_phase"]' in source
     assert 'applyPalette(hp["palette"]' in source
+    assert 'visual["cooldown_blink_ms"]' in source
     assert 'JsonObjectConst wifi = doc["wifi"]' in source
     assert 'JsonObjectConst mqtt = doc["mqtt"]' in source
     assert 'JsonObjectConst ota = doc["ota"]' in source
@@ -125,6 +129,7 @@ def test_hit_target_controller_uses_runtime_config_for_hp_sensor_and_effects() -
     assert "config_.hp.hitsPerPhase" in source
     assert "phaseColorRgb(config_" in source
     assert "config_.visual.orbitStepMs" in source
+    assert "config_.visual.cooldownBlinkMs" in source
     assert "config_.visual.damageChipMs" in source
     assert "config_.visual.defeatRainbowMs" in source
     assert "config_.sensor.hitThreshold" in source
@@ -263,6 +268,12 @@ def test_hit_target_mqtt_helper_can_publish_config_command_and_ota() -> None:
     assert "hit_targets/all/ota" in helper
     assert "HIT_TARGET_MQTT_HOST" in helper
     assert "--hits-per-phase" in helper
+    assert "--cooldown-blink-ms" in helper
+    assert "--hit-flash-ms" in helper
+    assert "--hp-hit-pulse-ms" in helper
+    assert "--hit-threshold" in helper
+    assert "--led-brightness" in helper
+    assert "--reset-button-hold-ms" in helper
     assert "--ota-desired-build" in helper
     assert "--debug-allow-simulate-hit" in helper
     assert "scripts/hit_target/mqtt_command.py config" in readme
@@ -287,6 +298,9 @@ def test_hit_target_local_env_example_and_gitignore_keep_runtime_secrets_out_of_
     assert "HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS" in example
     assert "HIT_TARGET_MQTT_PORT=1883" in example
     assert "HIT_TARGET_MQTT_ROOT=battlebang" in example
+    assert "HIT_TARGET_COOLDOWN_BLINK_MS=60" in example
+    assert "HIT_TARGET_LED_BRIGHTNESS=80" in example
+    assert "HIT_TARGET_RESET_BUTTON_HOLD_MS=1200" in example
     assert "HIT_TARGET_OTA_PUBLIC_MANIFEST_URL=https://github.com/KongPedia/battlebang-esp/releases/download/hit-target-latest/hit-target-manifest.json" in example
     assert "src/hit_target/.env.hit_target" in gitignore
     assert "src/*/.env.*" in gitignore
@@ -325,6 +339,9 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
             "HIT_TARGET_HP_PHASE_COUNT": "3",
             "HIT_TARGET_HITS_PER_PHASE": "10",
             "HIT_TARGET_HP_PALETTE": "#009600,#BE8200,#BE0000",
+            "HIT_TARGET_COOLDOWN_BLINK_MS": "140",
+            "HIT_TARGET_LED_BRIGHTNESS": "72",
+            "HIT_TARGET_RESET_BUTTON_HOLD_MS": "1500",
             "HIT_TARGET_NETWORK_AUTO_START": "true",
         }
     )
@@ -335,6 +352,9 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
     assert doc["mqtt"]["host"] == "10.0.0.5"
     assert doc["mqtt"]["root"] == "battlebang-dev"
     assert doc["network"]["auto_start"] is True
+    assert doc["visual"]["cooldown_blink_ms"] == 140
+    assert doc["led"]["brightness"] == 72
+    assert doc["reset"]["button_hold_ms"] == 1500
     assert doc["hp"] == {
         "phase_count": 3,
         "hits_per_phase": 10,

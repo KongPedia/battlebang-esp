@@ -198,6 +198,7 @@ print(
     f"cooldown_ms={defaults.get('hit_cooldown_ms')} "
     f"hit_flash_ms={defaults.get('hit_flash_ms')} "
     f"damage_chip_ms={defaults.get('damage_chip_ms')} "
+    f"cooldown_blink_ms={defaults.get('cooldown_blink_ms')} "
     f"phase_backfill_gap_leds={defaults.get('phase_backfill_gap_leds')} "
     f"phase_backfill_scale={defaults.get('phase_backfill_scale')} "
     f"hp_hit_pulse_ms={defaults.get('hp_hit_pulse_ms')} "

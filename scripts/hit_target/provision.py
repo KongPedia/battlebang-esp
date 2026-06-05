@@ -117,6 +117,7 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         "visual": {
             "orbit_step_ms": env_int(env, "HIT_TARGET_ORBIT_STEP_MS", 20),
             "orbit_tail_leds": env_int(env, "HIT_TARGET_ORBIT_TAIL_LEDS", 6),
+            "cooldown_blink_ms": env_int(env, "HIT_TARGET_COOLDOWN_BLINK_MS", 60),
             "hit_flash_ms": env_int(env, "HIT_TARGET_HIT_FLASH_MS", 50),
             "damage_chip_ms": env_int(env, "HIT_TARGET_DAMAGE_CHIP_MS", 580),
             "phase_backfill_gap_leds": env_int(env, "HIT_TARGET_PHASE_BACKFILL_GAP_LEDS", 1),
@@ -137,6 +138,18 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
             "digital_hit_min_edges": env_int(env, "HIT_TARGET_DIGITAL_HIT_MIN_EDGES", 2),
             "digital_isr_debounce_us": env_int(env, "HIT_TARGET_DIGITAL_ISR_DEBOUNCE_US", 5000),
             "capture_window_ms": env_int(env, "HIT_TARGET_CAPTURE_WINDOW_MS", 80),
+        },
+        "led": {
+            "pin": env_int(env, "HIT_TARGET_LED_PIN", 18),
+            "num_leds": env_int(env, "HIT_TARGET_NUM_LEDS", 60),
+            "type": env_first(env, "HIT_TARGET_LED_TYPE", default="WS2812B"),
+            "color_order": env_first(env, "HIT_TARGET_COLOR_ORDER", default="GRB"),
+            "brightness": env_int(env, "HIT_TARGET_LED_BRIGHTNESS", 80),
+            "max_ma": env_int(env, "HIT_TARGET_LED_MAX_MA", 1500),
+        },
+        "reset": {
+            "button_pin": env_int(env, "HIT_TARGET_RESET_BUTTON_PIN", 0),
+            "button_hold_ms": env_int(env, "HIT_TARGET_RESET_BUTTON_HOLD_MS", 1200),
         },
         "wifi": {
             "ssid": env_first(env, "HIT_TARGET_WIFI_SSID", default=""),

@@ -172,7 +172,12 @@ CRGB HitTargetController::applyHpHitPulse(const CRGB& color, uint32_t now) const
   if ((int32_t)(timers_.hpPulseUntilMs - now) <= 0) return color;
   uint32_t remaining = timers_.hpPulseUntilMs - now;
   if (remaining > config_.visual.hpHitPulseMs) remaining = config_.visual.hpHitPulseMs;
-  uint8_t boost = static_cast<uint8_t>((remaining * 90) / config_.visual.hpHitPulseMs);
+  uint32_t elapsed = now > timers_.hitFlashUntilMs ? now - timers_.hitFlashUntilMs : 0;
+  uint32_t blinkMs = config_.visual.cooldownBlinkMs < 1 ? 1 : config_.visual.cooldownBlinkMs;
+  bool strongBeat = ((elapsed / blinkMs) % 2) == 0;
+  uint8_t beatBoost = strongBeat ? 105 : 28;
+  uint8_t fade = static_cast<uint8_t>((remaining * 255UL) / config_.visual.hpHitPulseMs);
+  uint8_t boost = scale8(beatBoost, fade);
   return addBlend(color, CRGB(boost, boost, boost / 3));
 }
 
@@ -541,6 +546,7 @@ void HitTargetController::appendStatus(JsonObject obj) const {
   obj["digital_isr_debounce_us"] = config_.sensor.digitalIsrDebounceUs;
   obj["threshold"] = config_.sensor.hitThreshold;
   obj["cooldown_ms"] = config_.sensor.hitCooldownMs;
+  obj["cooldown_blink_ms"] = config_.visual.cooldownBlinkMs;
   obj["hit_flash_ms"] = config_.visual.hitFlashMs;
   obj["damage_chip_ms"] = config_.visual.damageChipMs;
   obj["hp_hit_pulse_ms"] = config_.visual.hpHitPulseMs;
@@ -587,6 +593,8 @@ void HitTargetController::printBootBanner() const {
   Serial.print(config_.sensor.hitRearmThreshold);
   Serial.print(" cooldown_ms=");
   Serial.print(config_.sensor.hitCooldownMs);
+  Serial.print(" cooldown_blink_ms=");
+  Serial.print(config_.visual.cooldownBlinkMs);
   Serial.print(" orbit_step_ms=");
   Serial.println(config_.visual.orbitStepMs);
   Serial.print("[PIN] LED=");

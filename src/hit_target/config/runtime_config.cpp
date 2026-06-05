@@ -179,6 +179,10 @@ bool validateConfig(RuntimeConfig& config, String& error) {
   if (config.visual.orbitTailLeds >= config.led.numLeds) {
     config.visual.orbitTailLeds = config.led.numLeds > 0 ? config.led.numLeds - 1 : 0;
   }
+  if (config.visual.cooldownBlinkMs < 20 || config.visual.cooldownBlinkMs > 1000) {
+    error = "visual.cooldown_blink_ms must be 20..1000";
+    return false;
+  }
   if (config.visual.hitFlashMs < 10 || config.visual.hitFlashMs > 250) {
     error = "visual.hit_flash_ms must be 10..250";
     return false;
@@ -267,6 +271,7 @@ RuntimeConfig makeDefaultRuntimeConfig(const DeviceIdentity& identity) {
   normalizePalette(config);
   config.visual.orbitStepMs = ::hit_target::ORBIT_STEP_MS;
   config.visual.orbitTailLeds = ::hit_target::ORBIT_TAIL_LEDS;
+  config.visual.cooldownBlinkMs = ::hit_target::COOLDOWN_BLINK_MS;
   config.visual.hitFlashMs = ::hit_target::HIT_FLASH_MS;
   config.visual.damageChipMs = ::hit_target::DAMAGE_CHIP_MS;
   config.visual.phaseBackfillGapLeds = ::hit_target::PHASE_BACKFILL_GAP_LEDS;
@@ -355,6 +360,7 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
   if (!visual.isNull()) {
     next.visual.orbitStepMs = getUIntOr(visual["orbit_step_ms"], next.visual.orbitStepMs);
     next.visual.orbitTailLeds = static_cast<uint8_t>(getUIntOr(visual["orbit_tail_leds"], next.visual.orbitTailLeds));
+    next.visual.cooldownBlinkMs = getUIntOr(visual["cooldown_blink_ms"], next.visual.cooldownBlinkMs);
     next.visual.hitFlashMs = getUIntOr(visual["hit_flash_ms"], next.visual.hitFlashMs);
     next.visual.damageChipMs = getUIntOr(visual["damage_chip_ms"], next.visual.damageChipMs);
     next.visual.phaseBackfillGapLeds = static_cast<uint8_t>(getUIntOr(visual["phase_backfill_gap_leds"], next.visual.phaseBackfillGapLeds));
@@ -455,6 +461,7 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   JsonObject visual = doc.createNestedObject("visual");
   visual["orbit_step_ms"] = config.visual.orbitStepMs;
   visual["orbit_tail_leds"] = config.visual.orbitTailLeds;
+  visual["cooldown_blink_ms"] = config.visual.cooldownBlinkMs;
   visual["hit_flash_ms"] = config.visual.hitFlashMs;
   visual["damage_chip_ms"] = config.visual.damageChipMs;
   visual["phase_backfill_gap_leds"] = config.visual.phaseBackfillGapLeds;
@@ -560,6 +567,7 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   }
   config.visual.orbitStepMs = prefs.getUInt("orb_step", config.visual.orbitStepMs);
   config.visual.orbitTailLeds = prefs.getUChar("orb_tail", config.visual.orbitTailLeds);
+  config.visual.cooldownBlinkMs = prefs.getUInt("cd_blink", config.visual.cooldownBlinkMs);
   config.visual.hitFlashMs = prefs.getUInt("hit_flash", config.visual.hitFlashMs);
   config.visual.damageChipMs = prefs.getUInt("dmg_chip", config.visual.damageChipMs);
   config.visual.phaseBackfillGapLeds = prefs.getUChar("back_gap", config.visual.phaseBackfillGapLeds);
@@ -635,6 +643,7 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   }
   ok &= prefs.putUInt("orb_step", config.visual.orbitStepMs) > 0;
   ok &= prefs.putUChar("orb_tail", config.visual.orbitTailLeds) > 0;
+  ok &= prefs.putUInt("cd_blink", config.visual.cooldownBlinkMs) > 0;
   ok &= prefs.putUInt("hit_flash", config.visual.hitFlashMs) > 0;
   ok &= prefs.putUInt("dmg_chip", config.visual.damageChipMs) > 0;
   ok &= prefs.putUChar("back_gap", config.visual.phaseBackfillGapLeds) > 0;

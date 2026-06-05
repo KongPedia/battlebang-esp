@@ -19,6 +19,7 @@ struct HpConfig {
 struct VisualConfig {
   uint32_t orbitStepMs = 20;
   uint8_t orbitTailLeds = 6;
+  uint32_t cooldownBlinkMs = 60;
   uint32_t hitFlashMs = 50;
   uint32_t damageChipMs = 580;
   uint8_t phaseBackfillGapLeds = 1;

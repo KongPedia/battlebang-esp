@@ -189,19 +189,75 @@ def build_config_payload(args: argparse.Namespace) -> dict[str, Any]:
     if args.debug_allow_simulate_hit is not None:
         doc["debug_allow_simulate_hit"] = args.debug_allow_simulate_hit
     sensor: dict[str, Any] = dict(doc.get("sensor") or {})
+    if args.piezo_do_pin is not None:
+        sensor["piezo_do_pin"] = args.piezo_do_pin
+    if args.piezo_ao_pin is not None:
+        sensor["piezo_ao_pin"] = args.piezo_ao_pin
+    if args.hit_threshold is not None:
+        sensor["hit_threshold"] = args.hit_threshold
+    if args.hit_rearm_threshold is not None:
+        sensor["hit_rearm_threshold"] = args.hit_rearm_threshold
     if args.hit_cooldown_ms is not None:
         sensor["hit_cooldown_ms"] = args.hit_cooldown_ms
+    if args.hit_rearm_stable_ms is not None:
+        sensor["hit_rearm_stable_ms"] = args.hit_rearm_stable_ms
+    if args.hit_rearm_check_ms is not None:
+        sensor["hit_rearm_check_ms"] = args.hit_rearm_check_ms
     if args.digital_hit_min_edges is not None:
         sensor["digital_hit_min_edges"] = args.digital_hit_min_edges
     if args.digital_isr_debounce_us is not None:
         sensor["digital_isr_debounce_us"] = args.digital_isr_debounce_us
+    if args.capture_window_ms is not None:
+        sensor["capture_window_ms"] = args.capture_window_ms
     if sensor:
         doc["sensor"] = sensor
     visual: dict[str, Any] = dict(doc.get("visual") or {})
     if args.orbit_step_ms is not None:
         visual["orbit_step_ms"] = args.orbit_step_ms
+    if args.orbit_tail_leds is not None:
+        visual["orbit_tail_leds"] = args.orbit_tail_leds
+    if args.cooldown_blink_ms is not None:
+        visual["cooldown_blink_ms"] = args.cooldown_blink_ms
+    if args.hit_flash_ms is not None:
+        visual["hit_flash_ms"] = args.hit_flash_ms
+    if args.damage_chip_ms is not None:
+        visual["damage_chip_ms"] = args.damage_chip_ms
+    if args.phase_backfill_gap_leds is not None:
+        visual["phase_backfill_gap_leds"] = args.phase_backfill_gap_leds
+    if args.phase_backfill_scale is not None:
+        visual["phase_backfill_scale"] = args.phase_backfill_scale
+    if args.hp_hit_pulse_ms is not None:
+        visual["hp_hit_pulse_ms"] = args.hp_hit_pulse_ms
+    if args.defeat_blackout_ms is not None:
+        visual["defeat_blackout_ms"] = args.defeat_blackout_ms
+    if args.defeat_rainbow_ms is not None:
+        visual["defeat_rainbow_ms"] = args.defeat_rainbow_ms
+    if args.defeat_rainbow_spins is not None:
+        visual["defeat_rainbow_spins"] = args.defeat_rainbow_spins
     if visual:
         doc["visual"] = visual
+    led: dict[str, Any] = dict(doc.get("led") or {})
+    if args.led_pin is not None:
+        led["pin"] = args.led_pin
+    if args.num_leds is not None:
+        led["num_leds"] = args.num_leds
+    if args.led_type:
+        led["type"] = args.led_type
+    if args.color_order:
+        led["color_order"] = args.color_order
+    if args.led_brightness is not None:
+        led["brightness"] = args.led_brightness
+    if args.led_max_ma is not None:
+        led["max_ma"] = args.led_max_ma
+    if led:
+        doc["led"] = led
+    reset: dict[str, Any] = dict(doc.get("reset") or {})
+    if args.reset_button_pin is not None:
+        reset["button_pin"] = args.reset_button_pin
+    if args.reset_button_hold_ms is not None:
+        reset["button_hold_ms"] = args.reset_button_hold_ms
+    if reset:
+        doc["reset"] = reset
     ota: dict[str, Any] = dict(doc.get("ota") or {})
     if args.ota_auto_check is not None:
         ota["auto_check_enabled"] = args.ota_auto_check
@@ -258,10 +314,35 @@ def make_parser() -> argparse.ArgumentParser:
     config.add_argument("--hits-per-phase", type=int)
     config.add_argument("--palette", help="comma-separated #RRGGBB colors")
     config.add_argument("--debug-allow-simulate-hit", type=parse_bool)
+    config.add_argument("--piezo-do-pin", type=int)
+    config.add_argument("--piezo-ao-pin", type=int)
+    config.add_argument("--hit-threshold", type=int)
+    config.add_argument("--hit-rearm-threshold", type=int)
     config.add_argument("--hit-cooldown-ms", type=int)
+    config.add_argument("--hit-rearm-stable-ms", type=int)
+    config.add_argument("--hit-rearm-check-ms", type=int)
     config.add_argument("--digital-hit-min-edges", type=int)
     config.add_argument("--digital-isr-debounce-us", type=int)
+    config.add_argument("--capture-window-ms", type=int)
     config.add_argument("--orbit-step-ms", type=int)
+    config.add_argument("--orbit-tail-leds", type=int)
+    config.add_argument("--cooldown-blink-ms", type=int)
+    config.add_argument("--hit-flash-ms", type=int)
+    config.add_argument("--damage-chip-ms", type=int)
+    config.add_argument("--phase-backfill-gap-leds", type=int)
+    config.add_argument("--phase-backfill-scale", type=int)
+    config.add_argument("--hp-hit-pulse-ms", type=int)
+    config.add_argument("--defeat-blackout-ms", type=int)
+    config.add_argument("--defeat-rainbow-ms", type=int)
+    config.add_argument("--defeat-rainbow-spins", type=int)
+    config.add_argument("--led-pin", type=int)
+    config.add_argument("--num-leds", type=int)
+    config.add_argument("--led-type")
+    config.add_argument("--color-order")
+    config.add_argument("--led-brightness", type=int)
+    config.add_argument("--led-max-ma", type=int)
+    config.add_argument("--reset-button-pin", type=int)
+    config.add_argument("--reset-button-hold-ms", type=int)
     config.add_argument("--ota-auto-check", type=parse_bool)
     config.add_argument("--ota-desired-build", type=int)
     config.add_argument("--ota-manifest-url", default=DEFAULT_LATEST_MANIFEST_URL)
