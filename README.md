@@ -10,6 +10,29 @@ ESP32 펌웨어 저장소입니다. Go2-mounted ESP, 터렛 등 장치별 펌웨
 
 ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
 
+## Active vs legacy Go2/Nixo firmware
+
+현재 Go2에 실제로 구워야 하는 펌웨어는 **`src/go2_nixo` 통합 펌웨어**입니다.
+
+- Active: `src/go2_nixo/`
+  - hit sensor
+  - ring LED
+  - Nixo/game blaster fire
+  - 빌드/업로드 env: `esp32dev_go2_03`, `esp32dev_go2_05`, `esp32dev_go2_06`, `esp32dev_go2_07`
+- Legacy/reference: `src/go2/`
+  - 예전 Go2 hit/ring 전용 펌웨어 보관용
+  - 현재 `esp32dev_go2_*` 빌드에는 들어가지 않음
+- Legacy/reference: `src/nIxo/`
+  - 예전 Nixo 단독 펌웨어 보관용
+  - 현재 `esp32dev_go2_*` 빌드에는 들어가지 않음
+
+`platformio.ini`의 Go2 env는 `build_src_filter = +<go2_nixo/**>`를 사용하므로, 아래처럼 굽는 명령은
+`src/go2_nixo`만 컴파일/업로드합니다.
+
+```bash
+pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+```
+
 ---
 
 ## Go2-mounted ESP firmware summary
@@ -37,6 +60,17 @@ Go2 피격 펌웨어 구조:
 - `src/go2_nixo/nixo/nixo_fire_client.*`: MQTT Nixo fire command subscribe, servo/relay fire sequence
 - `src/go2_nixo/docs/`: 터렛 문서 구조와 맞춘 Go2 빌드/통신/fallback 문서
 
+Go2 Nixo 기본 핀맵 (`src/go2_nixo/robots.json` defaults 기준, UART 제외):
+
+| Part | Pin |
+| --- | --- |
+| LED ring data | `GPIO4` |
+| Piezo T1 DO | `GPIO27` |
+| Piezo T2 DO | `-1` |
+| Nixo relay CH1 | `GPIO23` |
+| Nixo relay CH2 | `-1` |
+| Nixo servo PWM | `GPIO18` |
+
 초기 설정:
 
 ```bash
@@ -44,11 +78,31 @@ cp src/go2_nixo/local_secrets.example.h src/go2_nixo/local_secrets.h
 # src/go2_nixo/local_secrets.h 안의 Wi-Fi / MQTT broker 수정
 ```
 
-Go2 5번 빌드/업로드:
+### Go2 Nixo 코드 굽는 명령어
+
+현재 통합 Go2 ESP 펌웨어는 `src/go2_nixo/**`이고, 로봇별 PlatformIO env로 굽습니다.
 
 ```bash
-pio run -e esp32dev_go2_05
-pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-21130
+# 1) ESP32 USB 포트 확인
+python3 scripts/go2_flash.py list-ports
+
+# 2) go2_03용 통합 hit/ring LED/Nixo 펌웨어 빌드
+pio run -e esp32dev_go2_03
+
+# 3) go2_03용 펌웨어를 실제 ESP32에 업로드/flash
+pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+
+# 4) 업로드 후 serial log 확인
+pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
+```
+
+다른 Go2에 굽는 경우 env만 바꿉니다.
+
+```bash
+pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
 터렛 flash 스크립트와 같은 방식으로도 실행할 수 있습니다.

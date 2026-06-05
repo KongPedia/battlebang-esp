@@ -5,6 +5,10 @@ Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 피격/LED 링과 Nixo/game blaster
 발사/릴레이/서보 제어가 `src/go2_nixo` 펌웨어 하나로 통합되어 있습니다.
 
+> 현재 Go2에 실제로 굽는 active 펌웨어는 `src/go2_nixo`입니다.
+> `src/go2`와 `src/nIxo`는 비교/복구를 위해 남겨둔 legacy/reference 경로이며,
+> `esp32dev_go2_*` PlatformIO env에는 포함되지 않습니다.
+
 현재 Go2 ESP의 책임은 세 가지입니다.
 
 1. 피에조 센서 DO 디지털 입력에서 valid hit가 발생하면 `hit=true` 이벤트를 Command Center에 publish
@@ -26,8 +30,19 @@ main.cpp   setup/loop runtime orchestration
 piezo/     piezo DO interrupt + cooldown/rearm gate
 ring_led/  ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
-nixo_fire_client.*  battlebang/nixo/{nixo_id}/command 구독 + relay/servo fire
+nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay/servo fire
 ```
+
+기본 핀맵 (`robots.json` defaults 기준, UART 제외):
+
+| Part | Pin |
+| --- | --- |
+| LED ring data | `GPIO4` |
+| Piezo T1 DO | `GPIO27` |
+| Piezo T2 DO | `-1` |
+| Nixo relay CH1 | `GPIO23` |
+| Nixo relay CH2 | `-1` |
+| Nixo servo PWM | `GPIO18` |
 
 - ESP → Command Center
   - `battlebang/hit/{go2_id}/events`
@@ -135,6 +150,34 @@ COM3
 ---
 
 ## 5. Firmware upload
+
+### 명령어
+
+현재 `go2_nixo` 통합 펌웨어를 직접 굽는 기본 명령은 아래입니다.
+
+```bash
+# ESP32 USB 포트 확인
+python3 scripts/go2_flash.py list-ports
+
+# go2_03용 통합 hit/ring LED/Nixo 펌웨어 빌드
+pio run -e esp32dev_go2_03
+
+# go2_03용 펌웨어 업로드/flash
+pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+
+# 업로드 후 serial log 확인
+pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
+```
+
+다른 Go2는 env만 바꿉니다.
+
+```bash
+pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
+```
+
+`pio` 경로가 꼬이면 아래 helper를 써도 됩니다. helper는 `pio`가 없을 때 `uvx platformio` fallback을 사용합니다.
 
 `esp_03`이 `/dev/cu.usbserial-21130`으로 잡혔고, 이 ESP가 `go2_03`에 붙는다면:
 
