@@ -150,6 +150,9 @@ Implemented local UX:
 - ESP32 BOOT/GPIO0 long-press initialize/reset in addition to USB serial reset
 - JSON-line USB serial events with MAC-derived `target_id` / `device_mac` for bench debugging and future controller parsing
 - DO-only piezo input uses configurable multi-edge capture/debounce (`digital_hit_min_edges`, `digital_isr_debounce_us`) to balance sensitivity against idle comparator noise
+- NVS-backed runtime config: `show-config`, `config {json}`, `provision {json}`, and `clear-config` let HP/effect/sensor/network/OTA values change without rebuilding
+- MQTT remote config/status/commands on `battlebang/devices/{device_id}/...` and `battlebang/hit_targets/{target_id}/...` topics
+- hit-target-specific OTA manifests use app `battlebang-hit-target`, hardware `esp32dev-hit-target-ring-v1`, and default latest asset `hit-target-manifest.json` so they do not collide with turret fleet `manifest.json`
 
 Build/upload:
 
@@ -166,9 +169,10 @@ Default pins are migrated from the wall-mounted target bench sketch and can be o
 - piezo DO: GPIO27
 - piezo AO: disabled by default (`-1`; set an ADC1 GPIO such as GPIO34 if wired)
 - reset/initialize button: ESP32 BOOT/GPIO0 long-press after firmware boot
-- HP phases/hits-per-phase, AO threshold, DO noise/sensitivity filtering, cooldown, hit flash, damage-chip speed, remaining-HP pulse, and orbit speed are gameplay tuning values in `src/hit_target/config.json`.
+- HP phases/hits-per-phase, AO threshold, DO noise/sensitivity filtering, cooldown, hit flash, damage-chip speed, remaining-HP pulse, and orbit speed are factory defaults in `src/hit_target/config.json`; after provisioning, NVS runtime config is the source of truth.
+- FastLED hardware-profile fields (`led.pin`, `led.type`, `led.color_order`) remain build/profile-bound; remote config can tune gameplay/sensor/brightness/LED count up to the compiled capacity.
 
-See `src/hit_target/README.md` for serial commands and `BATTLEBANG_HIT_TARGET_*` tuning overrides.
+See `src/hit_target/README.md` for serial commands, MQTT topics, OTA manifest rules, and `BATTLEBANG_HIT_TARGET_*` factory-default overrides.
 
 ---
 

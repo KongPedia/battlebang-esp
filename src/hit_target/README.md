@@ -122,3 +122,93 @@ If the analog line is not wired yet, use `BATTLEBANG_HIT_TARGET_PIEZO_AO_PIN=-1`
 - `defeat_rainbow_spins`: how many hue rotations the rainbow completes during that defeat window. Default `2`; higher feels more energetic but can become noisy.
 - Current default UX: hit 1-5 removes green in 12 LED chunks, hit 6-10 removes yellow in 12 LED chunks, hit 11-15 removes red in 12 LED chunks, then the last red chunk wipes away, a short HP=0 blackout beat lands, and the target plays a rainbow defeat sweep before blackout.
 - To make HP loss even more dramatic, lower `hits_per_phase` (for example 3). To make the target tougher without making each hit visually tiny, increase `hp_phase_count` instead of making one single-color ring have dozens of micro-steps.
+
+## Runtime config / NVS / MQTT / OTA model
+
+The firmware now boots with the values in `config.json` as **factory defaults**, then overlays any saved NVS runtime config. This means one generic `esp32dev_hit_target` image can be flashed once and later tuned without rebuilding.
+
+Serial provisioning commands:
+
+- `show-config`: print current runtime config with Wi-Fi/MQTT passwords masked.
+- `show-config-secrets`: print secrets too; use only on a trusted bench terminal.
+- `config {json}`: apply a versioned runtime config patch.
+- `provision {json}`: same as `config`, but also marks the target as configured.
+- `clear-config`: erase NVS and return to factory defaults.
+- `start-network` / `stop-network`: manually start or stop Wi-Fi/MQTT.
+- `check-ota [url]`: fetch and validate an OTA manifest.
+
+Example: make this target a 30-hit target without rebuilding:
+
+```json
+{
+  "type": "config",
+  "config_version": 2,
+  "hp": {
+    "phase_count": 3,
+    "hits_per_phase": 10,
+    "palette": ["#009600", "#BE8200", "#BE0000"]
+  },
+  "visual": {
+    "damage_chip_ms": 420,
+    "orbit_step_ms": 16
+  },
+  "sensor": {
+    "digital_hit_min_edges": 2,
+    "digital_isr_debounce_us": 4000,
+    "hit_cooldown_ms": 180
+  }
+}
+```
+
+What each common config value changes:
+
+| Field | Effect | Tuning warning |
+| --- | --- | --- |
+| `hp.phase_count` | Number of large full-ring HP phases. | More phases make a tougher target without tiny per-hit chunks. |
+| `hp.hits_per_phase` | Accepted hits needed to strip one phase. | `3 phases x 10` = 30 hits; gameplay config changes reset HP to full. |
+| `hp.palette` | Phase colors. Default green → yellow/orange → red. | Use readable high-contrast colors; dark colors reduce HP readability. |
+| `visual.damage_chip_ms` | How long the removed HP chunk sequentially wipes away. | Lower feels faster; too low makes HP loss hard to see. |
+| `visual.orbit_step_ms` | Orbit speed. Lower is faster. | Keep orbit moving even in green ready state so it reads as a target. |
+| `visual.hit_flash_ms` | Full white impact flash duration. | Keep around 40-60 ms so HP remains readable under rapid fire. |
+| `sensor.hit_cooldown_ms` | Lockout after one accepted hit. | Prevents one burst from dropping many HP steps. |
+| `sensor.digital_hit_min_edges` | DO comparator edges required inside capture window. | `1` is more sensitive but can false-trigger; default `2` is safer. |
+| `sensor.digital_isr_debounce_us` | DO edge debounce. | Lower feels more sensitive; too low can read wiring/comparator noise. |
+| `ota.desired_build` | Command Center-approved build for auto OTA. | With command-center control enabled, polled OTA applies only if manifest build matches exactly. |
+
+Hardware-profile fields `led.pin`, `led.type`, and `led.color_order` are intentionally not true remote-runtime fields in this step because FastLED binds them at compile time. They remain in config/status for visibility, but changing them requires a matching hardware-profile build.
+
+MQTT topics use device-level discovery plus hit-target-level control:
+
+```text
+{root}/devices/{device_id}/status
+{root}/devices/{device_id}/config
+{root}/devices/{device_id}/ota
+{root}/hit_targets/{target_id}/status
+{root}/hit_targets/{target_id}/config
+{root}/hit_targets/{target_id}/command
+{root}/hit_targets/{target_id}/ota
+{root}/hit_targets/all/ota
+```
+
+Supported MQTT commands on `{root}/hit_targets/{target_id}/command`:
+
+```json
+{"command":"reset"}
+{"command":"status"}
+{"command":"enable"}
+{"command":"disable"}
+```
+
+`{"command":"simulate_hit"}` is rejected unless `debug_allow_simulate_hit=true` is provisioned.
+
+OTA manifests for this firmware must use:
+
+```json
+{
+  "type": "firmware",
+  "app": "battlebang-hit-target",
+  "hardware": "esp32dev-hit-target-ring-v1"
+}
+```
+
+The default latest manifest URL is `https://github.com/KongPedia/battlebang-esp/releases/latest/download/hit-target-manifest.json`, intentionally separate from the turret fleet `manifest.json` asset.
