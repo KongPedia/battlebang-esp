@@ -12,7 +12,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "turret_fleet" / ".env.turret_fleet"
-DEFAULT_LATEST_MANIFEST_URL = "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json"
+DEFAULT_LATEST_MANIFEST_URL = "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json"
 
 
 class MqttCommandError(RuntimeError):

@@ -454,11 +454,14 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert 'BB_TURRET_FLEET_APP_NAME "battlebang-turret-fleet"' in firmware
     assert 'BB_TURRET_FLEET_HARDWARE "esp32dev-turret-v2"' in firmware
     assert 'BB_TURRET_FLEET_RELEASE_REPO "KongPedia/battlebang-esp"' in firmware
-    assert "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json" in firmware
+    assert '"https://github.com/" BB_TURRET_FLEET_RELEASE_REPO' in firmware
+    assert '"/releases/download/turret-fleet-latest/manifest.json"' in firmware
     assert 'default="battlebang-turret-fleet"' in script
     assert 'default="esp32dev-turret-v2"' in script
     assert "KongPedia/battlebang-esp" in provision
     assert "push:" in workflow
+    assert "pull_request:" not in workflow
+    assert 'GITHUB_EVENT_NAME" == "pull_request"' not in workflow
     assert "branches:" in workflow
     assert "- main" in workflow
     assert 'VERSION="0.1.${GITHUB_RUN_NUMBER}-main"' in workflow
@@ -469,6 +472,9 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert "steps.version.outputs.public_release_repo" in workflow
     assert 'if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then' in workflow
     assert 'export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"' in workflow
+    assert 'STABLE_TAG="turret-fleet-latest"' in workflow
+    assert '--latest=false' in workflow
+    assert 'releases/download/turret-fleet-latest/manifest.json' in workflow
     assert example["app"] == "battlebang-turret-fleet"
     assert example["hardware"] == "esp32dev-turret-v2"
 
@@ -1626,7 +1632,7 @@ def test_fleet_mqtt_helper_builds_direct_commands_and_config_patches() -> None:
         "--ota-desired-build",
         "2",
         "--ota-public-manifest-url",
-        "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+        "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
     ])
     suffix, payload = module.build_command_payload(args)
     assert suffix == "config"

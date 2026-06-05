@@ -14,7 +14,7 @@ Manifest requirements:
 Rollout model:
 
 - GitHub Actions publishes `manifest.json` and firmware `.bin` as public release assets.
-- Merge-to-main GitHub Actions releases update `https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json`.
+- Merge-to-main GitHub Actions releases update `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json`.
 - Direct MQTT `/ota` manifests are Command Center-approved immediate jobs.
 - Automatic polling is disabled by default; `./bin/turret fleet-mqtt <turret_id> update --desired-build N` enables polling against the stable latest URL and approves exactly build `N`. With `command_center_controlled=true`, the manifest build must exactly match `ota.desired_build`.
 - OTA applies only in safe state when `ota.apply_only_in_safe_state=true`.

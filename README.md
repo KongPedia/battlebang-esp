@@ -5,6 +5,7 @@ ESP32 펌웨어 저장소입니다. Go2-mounted ESP, 터렛 등 장치별 펌웨
 | PlatformIO env | Source entrypoint | Purpose |
 | --- | --- | --- |
 | `esp32dev`, `esp32dev_go2_*` | `src/go2_nixo/main.cpp` + `src/go2_nixo/**` | Go2-mounted hit sensor / ring LED + Nixo/game blaster fire firmware |
+| `esp32dev_hit_target` | `src/hit_target/main.cpp` + `src/hit_target/**` | Generic standalone piezo + circular LED ring hit target firmware |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
 | `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware with MQTT config + OTA |
 
@@ -129,6 +130,60 @@ Nixo/game blaster fire uses the same Go2 firmware and broker. Defaults:
 - second relay: disabled (`NIXO_RELAY2_PIN=-1`)
 - live mapping: `go2_03 -> nixo_go2_03`
 - MQTT topic: `battlebang/nixo/nixo_go2_03/command`
+
+---
+
+## Generic standalone hit target firmware
+
+`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from the Go2-mounted `src/go2_nixo/` firmware:
+
+- `src/go2_nixo/`: Go2-mounted battle robot ESP, MQTT-controlled by Command Center, robot IDs come from `robots.json`.
+- `src/hit_target/`: standalone/tutorial hit target, local HP/effect loop, `target_id` is derived at boot from the ESP32 eFuse MAC address (for example `hit_target_AABBCCDDEEFF`).
+
+Implemented local UX:
+
+- ready state starts as a full green circle
+- HP uses large readable color phases: green 5 hits, yellow 5 hits, red 5 hits by default; each accepted hit removes 1/5 of the current color ring instead of a tiny `1 / max_hits` slice
+- while green/yellow phases are partially damaged, the removed rear arc shows a dim next-phase color with black gap LEDs at both boundaries; phase transitions keep that existing dim next-phase rear arc visible while the last removed chunk wipes; the next color grows behind that shrinking chunk, then promotes into the next full ring
+- independent neutral-white orbit overlay keeps travelling the full 360° ring after damage without appearing green in dark HP sections
+- very short full-white hit confirmation, faster red/orange sequential recent-damage chip on the removed HP segment, remaining-HP pulse, lock-term input ignore, final HP chunk wipe, short blackout beat, rainbow defeat sweep, and blackout
+- ESP32 BOOT/GPIO0 long-press initialize/reset in addition to USB serial reset
+- JSON-line USB serial events with MAC-derived `target_id` / `device_mac` for bench debugging and future controller parsing
+- DO-only piezo input uses configurable multi-edge capture/debounce (`digital_hit_min_edges`, `digital_isr_debounce_us`) to balance sensitivity against idle comparator noise
+- NVS-backed runtime config: `show-config`, `config {json}`, `provision {json}`, and `clear-config` let HP/effect/sensor/network/OTA values change without rebuilding
+- MQTT remote config/status/commands on `battlebang/devices/{device_id}/...` and `battlebang/hit_targets/{target_id}/...` topics
+- hit-target-specific OTA manifests use app `battlebang-hit-target`, hardware `esp32dev-hit-target-ring-v1`, stable tag `hit-target-latest`, and asset `hit-target-manifest.json` so they do not collide with turret fleet `turret-fleet-latest/manifest.json`
+
+Build/upload:
+
+```bash
+./.venv-pio/bin/pio run -e esp32dev_hit_target
+./.venv-pio/bin/pio run -e esp32dev_hit_target -t upload --upload-port /dev/cu.usbserial-XXXX
+./.venv-pio/bin/pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
+```
+
+Local Wi-Fi / Command Center / MQTT settings are folder-owned, like `turret_fleet`:
+
+```bash
+cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
+# Edit HIT_TARGET_WIFI_* and HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS.
+./.venv-pio/bin/python scripts/hit_target/provision.py --print-json --no-serial
+./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
+```
+
+`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `src/go2_nixo/**` or `src/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index. OTA polling uses firmware-specific stable release tags (`hit-target-latest`, `turret-fleet-latest`) instead of the repo-wide latest release URL.
+
+Default pins are migrated from the wall-mounted target bench sketch and can be overridden while debugging hardware:
+
+- LED data: GPIO18
+- LED ring: 60 LEDs, WS2812B, GRB color order
+- piezo DO: GPIO27
+- piezo AO: disabled by default (`-1`; set an ADC1 GPIO such as GPIO34 if wired)
+- reset/initialize button: ESP32 BOOT/GPIO0 long-press after firmware boot
+- HP phases/hits-per-phase, AO threshold, DO noise/sensitivity filtering, cooldown, hit flash, damage-chip speed, remaining-HP pulse, and orbit speed are factory defaults in `src/hit_target/config.json`; after provisioning, NVS runtime config is the source of truth.
+- FastLED hardware-profile fields (`led.pin`, `led.type`, `led.color_order`) remain build/profile-bound; remote config can tune gameplay/sensor/brightness/LED count up to the compiled capacity.
+
+See `src/hit_target/README.md` for serial commands, MQTT topics, OTA manifest rules, and `BATTLEBANG_HIT_TARGET_*` factory-default overrides.
 
 ---
 

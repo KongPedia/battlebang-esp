@@ -155,12 +155,27 @@ jobs:
             exit 2
           fi
 
-          if gh release view "${TAG}" -R "${PUBLIC_REPO}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist/* -R "${PUBLIC_REPO}" --clobber
-          else
-            gh release create "${TAG}" dist/* \
-              -R "${PUBLIC_REPO}" \
-              --target "${TARGET_BRANCH}" \
-              --title "${TAG}" \
-              --notes "BattleBang turret fleet firmware built from private source commit ${GITHUB_SHA}."
-          fi
+          VERSION_TAG="${TAG}"
+          STABLE_TAG="turret-fleet-latest"
+
+          upload_release() {
+            local tag="$1"
+            local title="$2"
+            local notes="$3"
+            if gh release view "${tag}" -R "${PUBLIC_REPO}" >/dev/null 2>&1; then
+              gh release upload "${tag}" dist/* -R "${PUBLIC_REPO}" --clobber
+              gh release edit "${tag}" -R "${PUBLIC_REPO}" --latest=false --notes "${notes}"
+            else
+              gh release create "${tag}" dist/* \
+                -R "${PUBLIC_REPO}" \
+                --target "${TARGET_BRANCH}" \
+                --title "${title}" \
+                --latest=false \
+                --notes "${notes}"
+            fi
+          }
+
+          upload_release "${VERSION_TAG}" "${VERSION_TAG}" \
+            "BattleBang turret fleet firmware built from private source commit ${GITHUB_SHA}."
+          upload_release "${STABLE_TAG}" "BattleBang turret fleet latest" \
+            "Stable turret-fleet OTA manifest. Devices poll /releases/download/turret-fleet-latest/manifest.json; firmware URLs inside the manifest still point at versioned release assets."

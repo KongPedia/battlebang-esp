@@ -295,7 +295,7 @@ firmware `.bin` can both live in a GitHub Release. Merge-to-main Action builds
 update the stable latest manifest URL:
 
 ```text
-https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ```
 
 Exact release URLs also exist for debugging:
@@ -331,7 +331,7 @@ That command publishes a config patch to `battlebang/turrets/turret_2/config`:
     "command_center_controlled": true,
     "auto_check_enabled": true,
     "desired_build": 7,
-    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
     "check_interval_s": 30,
     "apply_only_in_safe_state": true
   }
@@ -400,7 +400,7 @@ Payload includes:
   "ota_auto_check_enabled": true,
   "ota_desired_build": 42,
   "ota_channel": "stable",
-  "ota_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+  "ota_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
   "wifi": "UP",
   "ip": "<ESP_IP>",
   "rssi": -54,

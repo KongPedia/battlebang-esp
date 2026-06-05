@@ -76,7 +76,7 @@ The ESP's default public polling URL is stable and does not require operators to
 type a release-specific manifest URL:
 
 ```text
-https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ```
 
 ## Post-merge OTA operator flow
@@ -94,7 +94,7 @@ https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.js
 4. Read the latest manifest/build:
 
    ```bash
-   curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+   curl -L https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
    ```
 
 5. Approve that exact build for a turret. This publishes an MQTT config patch to
@@ -108,7 +108,7 @@ https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.js
    Or read the latest build and approve it without typing the number:
 
    ```bash
-   BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
+   BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
    ./bin/turret fleet-mqtt turret_2 update --desired-build "$BUILD" --host "$MQTT_BROKER_HOST"
    ```
 
@@ -152,7 +152,7 @@ Runtime config keeps automatic polling disabled by default:
     "command_center_controlled": true,
     "auto_check_enabled": true,
     "desired_build": N,
-    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
     "check_interval_s": 30,
     "apply_only_in_safe_state": true
   }
