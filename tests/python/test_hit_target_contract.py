@@ -104,6 +104,13 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert "led pin/type/color_order are hardware-profile build values" in source
 
 
+def test_hit_target_uses_case_correct_arduino_esp_header_for_linux_ci() -> None:
+    assert "#include <ESP.h>" not in read("src/hit_target/main.cpp")
+    assert "#include <ESP.h>" not in read("src/hit_target/mqtt/mqtt_bus.cpp")
+    assert "#include <Esp.h>" in read("src/hit_target/main.cpp")
+    assert "#include <Esp.h>" in read("src/hit_target/mqtt/mqtt_bus.cpp")
+
+
 def test_hit_target_controller_uses_runtime_config_for_hp_sensor_and_effects() -> None:
     source = read("src/hit_target/target/hit_target_controller.cpp")
     header = read("src/hit_target/target/hit_target_controller.h")

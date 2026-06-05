@@ -1,7 +1,7 @@
 #include "mqtt_bus.h"
 
 #include <ArduinoJson.h>
-#include <ESP.h>
+#include <Esp.h>
 
 #include "hit_target/app/firmware_info.h"
 #include "hit_target/mqtt/topics.h"
