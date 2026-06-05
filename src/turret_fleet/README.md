@@ -101,7 +101,7 @@ By default, `check-ota` and `check-latest` point at the public firmware release
 repository:
 
 ```text
-https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ```
 
 For a specific GitHub Release based OTA smoke test, `check-ota` can point at a
@@ -233,10 +233,10 @@ safety failures are reject-on-ESP.
 
 ## OTA rollout
 
-Default public release host is this repository's latest fleet manifest:
+Default public release host is this repository's turret-fleet stable manifest:
 
 ```text
-https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ```
 
 After PR merge to `main`, the fleet firmware workflow automatically builds one
@@ -250,7 +250,7 @@ post-merge rollout is manifest-free for the operator:
 
 ```bash
 # read latest manifest, then approve its build by turret id
-curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+curl -L https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ./bin/turret fleet-mqtt turret_2 update --desired-build <LATEST_BUILD> --host "$MQTT_BROKER_HOST"
 ```
 
@@ -258,7 +258,7 @@ To avoid manually typing the build while still keeping the broker host local:
 
 ```bash
 export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
-BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
+BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
 ./bin/turret fleet-mqtt turret_2 update --desired-build "$BUILD" --host "$MQTT_BROKER_HOST"
 ```
 

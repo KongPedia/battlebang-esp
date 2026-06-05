@@ -152,7 +152,7 @@ Implemented local UX:
 - DO-only piezo input uses configurable multi-edge capture/debounce (`digital_hit_min_edges`, `digital_isr_debounce_us`) to balance sensitivity against idle comparator noise
 - NVS-backed runtime config: `show-config`, `config {json}`, `provision {json}`, and `clear-config` let HP/effect/sensor/network/OTA values change without rebuilding
 - MQTT remote config/status/commands on `battlebang/devices/{device_id}/...` and `battlebang/hit_targets/{target_id}/...` topics
-- hit-target-specific OTA manifests use app `battlebang-hit-target`, hardware `esp32dev-hit-target-ring-v1`, and default latest asset `hit-target-manifest.json` so they do not collide with turret fleet `manifest.json`
+- hit-target-specific OTA manifests use app `battlebang-hit-target`, hardware `esp32dev-hit-target-ring-v1`, stable tag `hit-target-latest`, and asset `hit-target-manifest.json` so they do not collide with turret fleet `turret-fleet-latest/manifest.json`
 
 Build/upload:
 
@@ -171,7 +171,7 @@ cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
 ./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
 ```
 
-`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `src/go2_nixo/**` or `src/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index.
+`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `src/go2_nixo/**` or `src/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index. OTA polling uses firmware-specific stable release tags (`hit-target-latest`, `turret-fleet-latest`) instead of the repo-wide latest release URL.
 
 Default pins are migrated from the wall-mounted target bench sketch and can be overridden while debugging hardware:
 

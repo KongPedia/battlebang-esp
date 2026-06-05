@@ -28,5 +28,5 @@
 
 #ifndef BB_HIT_TARGET_LATEST_MANIFEST_URL
 #define BB_HIT_TARGET_LATEST_MANIFEST_URL \
-  "https://github.com/" BB_HIT_TARGET_RELEASE_REPO "/releases/latest/download/hit-target-manifest.json"
+  "https://github.com/" BB_HIT_TARGET_RELEASE_REPO "/releases/download/hit-target-latest/hit-target-manifest.json"
 #endif

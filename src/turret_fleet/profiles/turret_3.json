@@ -88,7 +88,7 @@
     "auto_check_enabled": false,
     "channel": "boss-demo",
     "desired_build": 0,
-    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
     "local_mirror_url": "",
     "check_interval_s": 300,
     "apply_only_in_safe_state": true

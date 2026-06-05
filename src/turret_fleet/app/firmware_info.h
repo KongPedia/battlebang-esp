@@ -32,5 +32,5 @@
 
 #ifndef BB_TURRET_FLEET_LATEST_MANIFEST_URL
 #define BB_TURRET_FLEET_LATEST_MANIFEST_URL \
-  "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json"
+  "https://github.com/" BB_TURRET_FLEET_RELEASE_REPO "/releases/download/turret-fleet-latest/manifest.json"
 #endif

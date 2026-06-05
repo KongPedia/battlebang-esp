@@ -396,7 +396,7 @@ Release assets are reachable through either the exact tag or the stable latest U
 
 ```text
 https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/manifest.json
-https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ```
 
 ### Manifest-free Command Center-approved polling
@@ -406,7 +406,7 @@ the latest manifest build, then approve that build by turret id:
 
 ```bash
 # 1) after the merge Action completes, read the build from the latest release
-curl -L https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+curl -L https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 # or: gh release view --repo KongPedia/battlebang-esp --json tagName,publishedAt,url
 
 # 2) approve exactly that build for one turret; this publishes to /config
@@ -418,7 +418,7 @@ keep the broker IP outside git:
 
 ```bash
 export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
-BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
+BUILD=$(curl -fsSL https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json | python3 -c 'import sys,json; print(json.load(sys.stdin)["build"])')
 ./bin/turret fleet-mqtt turret_2 update --desired-build "$BUILD" --host "$MQTT_BROKER_HOST"
 ```
 
@@ -435,7 +435,7 @@ sends:
     "auto_check_enabled": true,
     "desired_build": 7,
     "channel": "stable",
-    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+    "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
     "local_mirror_url": "",
     "check_interval_s": 30,
     "apply_only_in_safe_state": true
@@ -473,7 +473,7 @@ Important status fields proving the ESP saw and accepted the rollout policy:
 firmware_version, firmware_build
 ota_auto_check_enabled=true
 ota_desired_build=<LATEST_BUILD>
-ota_manifest_url=https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json
+ota_manifest_url=https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json
 ```
 
 After successful OTA reboot, automatic HOME drive is inhibited to avoid motion

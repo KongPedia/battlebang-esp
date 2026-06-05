@@ -230,4 +230,4 @@ OTA manifests for this firmware must use:
 }
 ```
 
-The default latest manifest URL is `https://github.com/KongPedia/battlebang-esp/releases/latest/download/hit-target-manifest.json`, intentionally separate from the turret fleet `manifest.json` asset.
+The default stable manifest URL is `https://github.com/KongPedia/battlebang-esp/releases/download/hit-target-latest/hit-target-manifest.json`, intentionally separate from the turret fleet `turret-fleet-latest/manifest.json` asset. Do not use repo-wide `/releases/latest/download/...` for polling in this multi-firmware release repo.

@@ -301,7 +301,7 @@ def build_config(
             "public_manifest_url": env_first(
                 env,
                 "TURRET_FLEET_OTA_PUBLIC_MANIFEST_URL",
-                default="https://github.com/KongPedia/battlebang-esp/releases/latest/download/manifest.json",
+                default="https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
             ),
             "local_mirror_url": env_first(env, "TURRET_FLEET_OTA_LOCAL_MIRROR_URL", default=""),
             "check_interval_s": int(env_first(env, "TURRET_FLEET_OTA_CHECK_INTERVAL_S", default="300") or "300"),

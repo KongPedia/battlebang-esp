@@ -177,6 +177,8 @@ def test_hit_target_ota_has_separate_app_hardware_manifest_and_workflow() -> Non
     assert 'BB_HIT_TARGET_APP_NAME "battlebang-hit-target"' in firmware
     assert 'BB_HIT_TARGET_HARDWARE "esp32dev-hit-target-ring-v1"' in firmware
     assert "hit-target-manifest.json" in firmware
+    assert '"https://github.com/" BB_HIT_TARGET_RELEASE_REPO' in firmware
+    assert '"/releases/download/hit-target-latest/hit-target-manifest.json"' in firmware
     assert "manifest.app != BB_HIT_TARGET_APP_NAME" in manifest
     assert "manifest.hardware != BB_HIT_TARGET_HARDWARE" in manifest
     assert "manifest.build <= BB_HIT_TARGET_BUILD" in manifest
@@ -195,6 +197,9 @@ def test_hit_target_ota_has_separate_app_hardware_manifest_and_workflow() -> Non
     assert '--app "battlebang-hit-target"' in workflow
     assert '--hardware "esp32dev-hit-target-ring-v1"' in workflow
     assert "hit-target-v${{ steps.version.outputs.version }}" in workflow
+    assert 'STABLE_TAG="hit-target-latest"' in workflow
+    assert '--latest=false' in workflow
+    assert 'releases/download/hit-target-latest/hit-target-manifest.json' in workflow
     manifest_script = read("scripts/firmware/make_release_manifest.py")
     assert "Create a BattleBang firmware release manifest." in manifest_script
     assert "--app" in manifest_script
@@ -248,7 +253,7 @@ def test_hit_target_local_env_example_and_gitignore_keep_runtime_secrets_out_of_
     assert "HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS" in example
     assert "HIT_TARGET_MQTT_PORT=1883" in example
     assert "HIT_TARGET_MQTT_ROOT=battlebang" in example
-    assert "HIT_TARGET_OTA_PUBLIC_MANIFEST_URL=https://github.com/KongPedia/battlebang-esp/releases/latest/download/hit-target-manifest.json" in example
+    assert "HIT_TARGET_OTA_PUBLIC_MANIFEST_URL=https://github.com/KongPedia/battlebang-esp/releases/download/hit-target-latest/hit-target-manifest.json" in example
     assert "src/hit_target/.env.hit_target" in gitignore
     assert "src/*/.env.*" in gitignore
     assert "!src/*/.env*.example" in gitignore
@@ -314,3 +319,24 @@ def test_hit_target_github_action_is_scoped_to_hit_target_folder_changes() -> No
     assert '"src/turret_fleet/**"' not in workflow
     assert '"src/go2_nixo/**"' not in workflow
     assert "platformio.ini remains included" in workflow
+
+
+def test_src_docs_define_independent_firmware_env_and_ota_contract() -> None:
+    readme = read("src/README.md")
+    agents = read("src/AGENTS.md")
+    root_agents = read("AGENTS.md")
+
+    assert "Each production firmware folder owns its source" in readme
+    assert "src/hit_target/.env.hit_target" in readme
+    assert "src/turret_fleet/.env.turret_fleet" in readme
+    assert "hit-target-latest/hit-target-manifest.json" in readme
+    assert "turret-fleet-latest/manifest.json" in readme
+
+    assert "Applies to all firmware folders under `src/**`" in agents
+    assert "If copying values between ignored env files" in agents
+    assert "Do not use GitHub's repo-wide `/releases/latest/download/...`" in agents
+    assert "hit-target-latest" in agents
+    assert "turret-fleet-latest" in agents
+
+    assert "src/hit_target/.env.hit_target" in root_agents
+    assert "BB_HIT_TARGET" not in root_agents  # keep root guidance operational, not compile-flag specific
