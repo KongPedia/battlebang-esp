@@ -1,4 +1,4 @@
-#include "go2/sensors/piezo_sensor.h"
+#include "go2_nixo/sensors/piezo_sensor.h"
 
 namespace go2 {
 

@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "notes": "Per-Go2 hit ESP profiles. Secrets stay in gitignored src/go2_nixo/local_secrets.h or shell env, not in this file. Hit detection is digital DO based: ESP publishes hit=true and Command Center owns scoring/down/display policy.",
+  "defaults": {
+    "hit_cooldown_ms": 300,
+    "offline_hit_queue_capacity": 32,
+    "offline_hit_queue_flush_interval_ms": 50,
+    "led_pin": 4,
+    "num_leds": 40,
+    "led_brightness": 80,
+    "t1_do_pin": 27,
+    "nixo_mqtt_topic_prefix": "battlebang/nixo",
+    "nixo_relay1_pin": 23,
+    "nixo_relay2_pin": -1,
+    "nixo_relay_on_level": 1,
+    "nixo_relay_off_level": 0,
+    "nixo_fire_default_duration_ms": 1500,
+    "nixo_fire_min_duration_ms": 100,
+    "nixo_fire_max_duration_ms": 10000,
+    "nixo_fire_cooldown_ms": 2500,
+    "mqtt_topic_prefix": "battlebang/hit"
+  },
+  "robots": {
+    "go2_03": {
+      "configured": true
+    },
+    "go2_05": {
+      "configured": true
+    },
+    "go2_06": {
+      "configured": true
+    },
+    "go2_07": {
+      "configured": true
+    }
+  }
+}

@@ -2,18 +2,21 @@
 
 Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 
-이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 발사/릴레이/서보 제어는 이 펌웨어에서 제거되었고, Go2의 발사는 `src/nIxo/` Nixo/game blaster 펌웨어가 담당합니다.
+이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 피격/LED 링과 Nixo/game blaster
+발사/릴레이/서보 제어가 `src/go2_nixo` 펌웨어 하나로 통합되어 있습니다.
 
-현재 Go2 ESP의 책임은 두 가지뿐입니다.
+현재 Go2 ESP의 책임은 세 가지입니다.
 
 1. 피에조 센서 DO 디지털 입력에서 valid hit가 발생하면 `hit=true` 이벤트를 Command Center에 publish
 2. Command Center가 내려준 `ring_display` 명령을 LED 링에 렌더링
+3. Command Center가 내려준 Nixo `fire` 명령을 받아 servo/relay fire sequence 실행
 
 ESP는 타격 세기, 로컬 스코어, 로컬 down 상태를 계산하거나 저장하지 않습니다. 난이도/스코어/down 기준과 LED fill 비율은 Command Center 설정과 정책이 소유합니다. MQTT가 끊긴 동안의 hit는 RAM queue에 잠시 보관했다가 재연결 후 원래 `firmware_ts_ms`와 함께 재전송합니다.
 
 ```text
 Piezo DO -> ESP hit_candidate(hit=true) -> Command Center scoring/down policy
 Command Center ring_display command -> ESP LED ring render
+Command Center Nixo fire command -> ESP servo/relay fire sequence
 ```
 
 현재 코드 구조:
@@ -23,6 +26,7 @@ main.cpp   setup/loop runtime orchestration
 sensors/   piezo DO interrupt + cooldown/rearm gate
 display/   ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
+nixo_fire_client.*  battlebang/nixo/{nixo_id}/command 구독 + relay/servo fire
 ```
 
 - ESP → Command Center
@@ -31,12 +35,16 @@ mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 - Command Center → ESP
   - `battlebang/hit/{go2_id}/ring_display/command`
   - `ring_display`
+- Command Center → ESP
+  - `battlebang/nixo/{nixo_id}/command`
+  - `fire`
 
 예를 들어 `go2_03`용으로 업로드하면 topic은 자동으로 아래처럼 잡힙니다.
 
 ```text
 battlebang/hit/go2_03/events
 battlebang/hit/go2_03/ring_display/command
+battlebang/nixo/nixo_go2_03/command
 ```
 
 ---
@@ -62,10 +70,10 @@ cd battlebang-esp
 Wi-Fi / MQTT broker 주소는 git에 올리면 안 되므로 `local_secrets.h`에 따로 둡니다.
 
 ```bash
-cp src/go2/local_secrets.example.h src/go2/local_secrets.h
+cp src/go2_nixo/local_secrets.example.h src/go2_nixo/local_secrets.h
 ```
 
-그 다음 `src/go2/local_secrets.h`를 열어서 수정합니다.
+그 다음 `src/go2_nixo/local_secrets.h`를 열어서 수정합니다.
 
 ```cpp
 #define ESP_WIFI_SSID "YOUR_WIFI_SSID"
@@ -87,7 +95,7 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 
 주의:
 
-- `src/go2/local_secrets.h`는 `.gitignore` 대상입니다.
+- `src/go2_nixo/local_secrets.h`는 `.gitignore` 대상입니다.
 - 실제 Wi-Fi password는 커밋하지 않습니다.
 - 보통 `local_secrets.h`에는 `go2_03` 같은 robot id를 넣지 않습니다.
 - robot id는 업로드 명령의 `--target go2_03=...`로 정합니다.
@@ -157,9 +165,11 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 
 ```text
 [CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
+[NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1
 [WIFI] connecting ssid=...
 [MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
+[NIXO MQTT] subscribed battlebang/nixo/nixo_go2_03/command qos=1
 ```
 
 피에조 센서 DO 디지털 입력이 올라오면 ESP가 `hit_candidate`를 publish합니다.
@@ -176,11 +186,26 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 }
 ```
 
+Nixo fire MQTT command 예:
+
+```json
+{
+  "schema_version": 1,
+  "command": "fire",
+  "nixo_id": "nixo_go2_03",
+  "parent_robot_id": "go2_03",
+  "enabled": true,
+  "duration_ms": 1000,
+  "request_id": "manual-fire-001",
+  "ttl_ms": 1000
+}
+```
+
 ---
 
 ## 7. 설정 파일 구조
 
-### `src/go2/robots.json`
+### `src/go2_nixo/robots.json`
 
 Go2별 non-secret profile입니다.
 
@@ -194,6 +219,11 @@ Go2별 non-secret profile입니다.
     "num_leds": 40,
     "led_brightness": 80,
     "t1_do_pin": 27,
+    "nixo_mqtt_topic_prefix": "battlebang/nixo",
+    "nixo_relay1_pin": 23,
+    "nixo_relay2_pin": -1,
+    "nixo_relay_on_level": 1,
+    "nixo_relay_off_level": 0,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
@@ -205,7 +235,7 @@ Go2별 non-secret profile입니다.
 }
 ```
 
-### `src/go2/local_secrets.h`
+### `src/go2_nixo/local_secrets.h`
 
 Wi-Fi / MQTT broker secret입니다.
 
@@ -215,6 +245,9 @@ Wi-Fi / MQTT broker secret입니다.
 #define ESP_MQTT_HOST "..."
 #define ESP_MQTT_PORT 1883
 #define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
+// Optional; defaults to "nixo_" + robot id and battlebang/nixo.
+// #define NIXO_ID "nixo_go2_03"
+// #define NIXO_MQTT_TOPIC_PREFIX "battlebang/nixo"
 ```
 
 이 파일은 커밋하지 않습니다.

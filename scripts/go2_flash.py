@@ -18,10 +18,10 @@ from pathlib import Path
 from typing import Iterable
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-GO2_CONFIG_PATH = PROJECT_ROOT / "src" / "go2" / "robots.json"
-LOCAL_SECRETS_PATH = PROJECT_ROOT / "src" / "go2" / "local_secrets.h"
+GO2_CONFIG_PATH = PROJECT_ROOT / "src" / "go2_nixo" / "robots.json"
+LOCAL_SECRETS_PATH = PROJECT_ROOT / "src" / "go2_nixo" / "local_secrets.h"
 LEGACY_LOCAL_SECRETS_PATH = PROJECT_ROOT / "src" / "local_secrets.h"
-DEFAULT_PORT_MAP_PATH = PROJECT_ROOT / "src" / "go2" / "upload_targets.toml"
+DEFAULT_PORT_MAP_PATH = PROJECT_ROOT / "src" / "go2_nixo" / "upload_targets.toml"
 DEFAULT_PIO_PATH = PROJECT_ROOT / ".venv-pio" / "bin" / "pio"
 PLACEHOLDER_PREFIXES = ("YOUR_", "COMMAND_CENTER_OR_BROKER_HOST", "192.168.")
 REQUIRED_SECRET_KEYS = (
@@ -195,7 +195,7 @@ def build_secret_env(
             )
         else:
             raise FlashConfigError(
-                f"Missing required secret {key}. Set it in src/go2/local_secrets.h or pass --{key.lower().replace('esp_', '').replace('_', '-')}"
+                f"Missing required secret {key}. Set it in src/go2_nixo/local_secrets.h or pass --{key.lower().replace('esp_', '').replace('_', '-')}"
             )
 
     for key in OPTIONAL_SECRET_KEYS:
@@ -315,7 +315,7 @@ def ensure_targets_valid(
 ) -> None:
     if not targets:
         raise FlashConfigError(
-            "No targets selected. Use --target go2_05=/dev/... or --map-file src/go2/upload_targets.toml"
+            "No targets selected. Use --target go2_05=/dev/... or --map-file src/go2_nixo/upload_targets.toml"
         )
 
     seen: set[str] = set()

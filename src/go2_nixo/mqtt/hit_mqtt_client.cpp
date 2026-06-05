@@ -1,4 +1,4 @@
-#include "go2/mqtt/hit_mqtt_client.h"
+#include "go2_nixo/mqtt/hit_mqtt_client.h"
 
 namespace go2 {
 
