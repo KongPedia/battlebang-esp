@@ -27,7 +27,7 @@ cp src/go2_nixo/local_secrets.example.h src/go2_nixo/local_secrets.h
 - `hit_cooldown_ms`
 - offline hit queue capacity / flush interval
 - LED pin / LED count / brightness
-- piezo DO pin (`TargetModule_HWsystem_test.cpp` 기준 GPIO 27)
+- piezo DO pin (기본 GPIO 27)
 - MQTT topic prefix
 
 ESP에는 스코어/down 기준을 넣지 않습니다. 해당 정책은 Command Center config가 소유합니다.
