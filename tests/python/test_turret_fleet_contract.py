@@ -609,7 +609,7 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         expected_limits = {
             "yaw_min_deg": -50.0,
             "yaw_max_deg": 50.0,
-            "pitch_min_deg": -60.0,
+            "pitch_min_deg": -75.0 if turret_id == "turret_3" else -60.0,
             "pitch_max_deg": 70.0,
         }
 

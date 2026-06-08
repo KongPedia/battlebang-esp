@@ -135,6 +135,8 @@ class TurretControl {
   bool pendingFire_ = false;
   unsigned long pendingFireHoldMs_ = 0;
   unsigned long aimReachedSinceMs_ = 0;
+  unsigned long homeCommandStartedMs_ = 0;
+  unsigned long homeCloseEnoughSinceMs_ = 0;
 
   void ensureYawAttached(const char* reason);
   void ensurePitchAttached(const char* reason);
@@ -217,6 +219,8 @@ class TurretControl {
   void updateFireSequence();
   bool isFireSequenceActive() const;
   bool aimReached() const;
+  bool homeWithinTolerance(float yawToleranceDeg, float pitchToleranceDeg) const;
+  void completeFiniteMotionCommand(const char* reason);
   bool patternSweepYawReached() const;
   const char* fireSequenceName() const;
   float targetUnitToCm(float value) const;
