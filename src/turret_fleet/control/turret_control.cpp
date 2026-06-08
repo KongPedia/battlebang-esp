@@ -55,6 +55,16 @@ const float kYawDeadbandPseudo = 10.0f;
 const float kPitchDeadbandPseudo = 10.0f;
 const float kAimReachedToleranceDeg = 3.0f;
 const unsigned long kAimStableBeforeCompleteMs = 300;
+// HOME is an operator/safety pose, not an attack setpoint. Real turrets can
+// chatter around exact 0,0 because of servo backlash and noisy potentiometers,
+// so HOME may finish once it is visibly close enough instead of hunting
+// forever. TARGET/PATTERN still use the tighter aimReached() gate.
+const float kHomeCloseEnoughYawDeg = 8.0f;
+const float kHomeCloseEnoughPitchDeg = 12.0f;
+const unsigned long kHomeCloseEnoughStableMs = 450;
+const unsigned long kHomeHardTimeoutMs = 10000;
+const float kHomeTimeoutYawDeg = 12.0f;
+const float kHomeTimeoutPitchDeg = 18.0f;
 const float kAxisLockReleaseDeg = 5.0f;
 const float kAxisSwitchHysteresisDeg = 3.0f;
 const float kPitchUpPriorityBelowDeg = -35.0f;
@@ -275,6 +285,9 @@ void TurretControl::prepareForNewMotionCommand(const char* source) {
   yawTrackingSuppressed_ = false;
   selectedMotionAxis_ = 'N';
   lockedMotionAxis_ = 'N';
+  aimReachedSinceMs_ = 0;
+  homeCommandStartedMs_ = 0;
+  homeCloseEnoughSinceMs_ = 0;
   resetPidState();
   resetAxisGuard('A');
   Serial.print("[fleet][motion] preempted active motion for ");
@@ -1513,6 +1526,38 @@ bool TurretControl::aimReached() const {
          fabs(pitchFinal - pitchCurrentDeg_) <= kAimReachedToleranceDeg;
 }
 
+bool TurretControl::homeWithinTolerance(float yawToleranceDeg, float pitchToleranceDeg) const {
+  if (mode_ != "HOME") return false;
+  if (targetSlewActive_) return false;
+  const float yawErrorDeg = fabs(yawGoalDeg_ - yawCurrentDeg_);
+  const float pitchErrorDeg = fabs(pitchGoalDeg_ - pitchCurrentDeg_);
+  return yawErrorDeg <= yawToleranceDeg && pitchErrorDeg <= pitchToleranceDeg;
+}
+
+void TurretControl::completeFiniteMotionCommand(const char* reason) {
+  stopMotionOutputs();
+  resetPidState();
+  selectedMotionAxis_ = 'N';
+  lockedMotionAxis_ = 'N';
+  targetSlewActive_ = false;
+  yawTrackingSuppressed_ = false;
+  mode_ = "WAIT_COMMAND";
+  aimReachedSinceMs_ = 0;
+  homeCommandStartedMs_ = 0;
+  homeCloseEnoughSinceMs_ = 0;
+  if (strcmp(reason, "home_timeout_stop") == 0) {
+    lastError_ = "home timeout stop: motion stopped before exact home to avoid jitter hunt";
+  } else {
+    lastError_ = "";
+  }
+  Serial.print("[fleet][motion] finite command complete reason=");
+  Serial.print(reason);
+  Serial.print(" yaw_error=");
+  Serial.print(fabs(yawGoalDeg_ - yawCurrentDeg_), 2);
+  Serial.print(" pitch_error=");
+  Serial.println(fabs(pitchGoalDeg_ - pitchCurrentDeg_), 2);
+}
+
 bool TurretControl::patternSweepYawReached() const {
   // lane_sweep is a yaw-readable attack: fire should cut as soon as the yaw
   // sweep reaches the lane edge, even if pitch is still settling inside the
@@ -2005,19 +2050,47 @@ void TurretControl::loop() {
   }
 
   const bool finiteAimMode = mode_ == "HOME" || mode_ == "TARGET";
-  if (finiteAimMode && aimReached()) {
+  const bool exactAimReached = finiteAimMode && aimReached();
+  bool completeMotion = false;
+  const char* completeReason = nullptr;
+  if (exactAimReached) {
     if (aimReachedSinceMs_ == 0) aimReachedSinceMs_ = now;
     if (now - aimReachedSinceMs_ >= kAimStableBeforeCompleteMs) {
-      stopMotionOutputs();
-      resetPidState();
-      selectedMotionAxis_ = 'N';
-      lockedMotionAxis_ = 'N';
-      targetSlewActive_ = false;
-      mode_ = "WAIT_COMMAND";
-      lastError_ = "";
+      completeMotion = true;
+      completeReason = "aim_exact_stable";
     }
   } else {
     aimReachedSinceMs_ = 0;
+  }
+
+  if (!completeMotion && mode_ == "HOME") {
+    if (homeCommandStartedMs_ == 0) homeCommandStartedMs_ = now;
+
+    if (homeWithinTolerance(kHomeCloseEnoughYawDeg, kHomeCloseEnoughPitchDeg)) {
+      if (homeCloseEnoughSinceMs_ == 0) homeCloseEnoughSinceMs_ = now;
+      if (now - homeCloseEnoughSinceMs_ >= kHomeCloseEnoughStableMs) {
+        completeMotion = true;
+        completeReason = "home_close_enough";
+      }
+    } else {
+      homeCloseEnoughSinceMs_ = 0;
+    }
+
+    if (!completeMotion &&
+        homeCommandStartedMs_ != 0 &&
+        now - homeCommandStartedMs_ >= kHomeHardTimeoutMs) {
+      completeMotion = true;
+      completeReason = homeWithinTolerance(kHomeTimeoutYawDeg, kHomeTimeoutPitchDeg)
+                           ? "home_timeout_near"
+                           : "home_timeout_stop";
+    }
+  } else if (mode_ != "HOME") {
+    homeCommandStartedMs_ = 0;
+    homeCloseEnoughSinceMs_ = 0;
+  }
+
+  if (completeMotion) {
+    completeFiniteMotionCommand(completeReason);
   }
 
   if (patternPlan_.kind != PATTERN_NONE) {
@@ -3305,6 +3378,10 @@ void TurretControl::appendStatus(JsonObject doc) const {
   motion["pitch_attached"] = pitchServoAttached_;
   motion["selected_axis"] = String(selectedMotionAxis_);
   motion["locked_axis"] = String(lockedMotionAxis_);
+  motion["home_elapsed_ms"] =
+      (mode_ == "HOME" && homeCommandStartedMs_ != 0) ? static_cast<uint32_t>(now - homeCommandStartedMs_) : 0;
+  motion["home_close_enough_ms"] =
+      (mode_ == "HOME" && homeCloseEnoughSinceMs_ != 0) ? static_cast<uint32_t>(now - homeCloseEnoughSinceMs_) : 0;
   motion["yaw_raw"] = yawRawCurrent_;
   motion["pitch_raw"] = pitchRawCurrent_;
   motion["yaw_current_deg"] = yawCurrentDeg_;
