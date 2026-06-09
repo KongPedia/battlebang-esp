@@ -20,13 +20,13 @@ MQTT logs saying “fire” while the physical relay did not move.
 From the `battlebang-esp` repo root:
 
 ```bash
-pio run -e esp32dev_nixo
+pio run -e esp32dev_nixo_go2_03
 ```
 
 Upload only when the correct Nixo ESP32 is connected:
 
 ```bash
-pio run -e esp32dev_nixo -t upload --upload-port /dev/cu.usbserial-1130
+pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
 pio device monitor -p /dev/cu.usbserial-1130 -b 115200
 ```
 
@@ -50,7 +50,7 @@ NIXO_ID=nixo_go2_03 \
 NIXO_WIFI_SSID='...' \
 NIXO_WIFI_PASSWORD='...' \
 NIXO_MQTT_HOST=<BROKER_IP> \
-pio run -e esp32dev_nixo
+pio run -e esp32dev_nixo_go2_03
 ```
 
 ## MQTT command

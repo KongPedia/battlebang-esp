@@ -56,8 +56,8 @@ python3 scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-xxxx
 ## 5. PlatformIO 직접 사용
 
 ```bash
-pio run -e esp32dev_go2_05
-pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
+pio run -e esp32dev_go2_go2_05
+pio run -e esp32dev_go2_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
 ```
 
 ## 구조 메모

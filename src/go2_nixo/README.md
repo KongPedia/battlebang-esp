@@ -1,13 +1,13 @@
 # Go2 Hit ESP Firmware Setup Guide
 
-Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
+Go2 등에 장착되는 ESP32 피격/LED/Nixo 통합 보드용 fallback 펌웨어 가이드입니다.
 
 이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 피격/LED 링과 Nixo/game blaster
-발사/릴레이/서보 제어가 `src/go2_nixo` 펌웨어 하나로 통합되어 있습니다.
+발사/릴레이 제어가 `src/go2_nixo` 펌웨어 하나로 통합되어 있습니다. 서보 제어는 제거되었습니다.
 
-> 현재 Go2에 실제로 굽는 active 펌웨어는 `src/go2_nixo`입니다.
-> `src/go2`와 `src/nIxo`는 비교/복구를 위해 남겨둔 legacy/reference 경로이며,
-> `esp32dev_go2_*` PlatformIO env에는 포함되지 않습니다.
+> 현재 2-ESP split active 경로는 `src/go2` hit/LED ESP와 `src/nIxo` Nixo ESP입니다.
+> `src/go2_nixo`는 한 ESP로 hit/ring/Nixo를 같이 돌려야 할 때 쓰는 integrated fallback/reference 경로입니다.
+> PlatformIO env는 `esp32dev_go2_nixo_go2_*`를 사용합니다.
 
 현재 Go2 ESP의 책임은 세 가지입니다.
 
@@ -152,17 +152,17 @@ COM3
 
 ### 명령어
 
-현재 `go2_nixo` 통합 펌웨어를 직접 굽는 기본 명령은 아래입니다.
+`go2_nixo` 통합 fallback 펌웨어를 직접 굽는 기본 명령은 아래입니다.
 
 ```bash
 # ESP32 USB 포트 확인
 python3 scripts/go2_flash.py list-ports
 
 # go2_03용 통합 hit/ring LED/Nixo 펌웨어 빌드
-pio run -e esp32dev_go2_03
+pio run -e esp32dev_go2_nixo_go2_03
 
 # go2_03용 펌웨어 업로드/flash
-pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
 
 # 업로드 후 serial log 확인
 pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
@@ -171,32 +171,17 @@ pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 다른 Go2는 env만 바꿉니다.
 
 ```bash
-pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_nixo_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_nixo_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_nixo_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
-`pio` 경로가 꼬이면 아래 helper를 써도 됩니다. helper는 `pio`가 없을 때 `uvx platformio` fallback을 사용합니다.
-
-`esp_03`이 `/dev/cu.usbserial-21130`으로 잡혔고, 이 ESP가 `go2_03`에 붙는다면:
-
-```bash
-python3 scripts/go2_flash.py flash --target go2_03=/dev/cu.usbserial-21130
-```
+주의: `scripts/go2_flash.py`는 현재 active `src/go2` hit/LED 펌웨어용 helper입니다. `go2_nixo` fallback은 위의 `pio run -e esp32dev_go2_nixo_go2_*` 명령을 직접 사용하세요.
 
 업로드 없이 빌드만 확인하려면:
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_03 --build-only
-```
-
-다른 Go2에 올릴 때는 target만 바꾸면 됩니다.
-
-```bash
-python3 scripts/go2_flash.py flash --target go2_03=/dev/cu.usbserial-21130
-python3 scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-21130
-python3 scripts/go2_flash.py flash --target go2_06=/dev/cu.usbserial-21130
-python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
+pio run -e esp32dev_go2_nixo_go2_03
 ```
 
 ---
@@ -209,7 +194,7 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 [CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
 [NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1
 [WIFI] connecting ssid=...
-[MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03
+[MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03-go2_nixo-948C
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
 [NIXO MQTT] subscribed battlebang/nixo/nixo_go2_03/command qos=1
 ```
@@ -224,7 +209,17 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
   "sensor_id": "piezo_t1",
   "sequence": 1,
   "hit": true,
-  "firmware_ts_ms": 12345
+  "firmware_ts_ms": 12345,
+  "firmware": "go2_nixo",
+  "firmware_role": "integrated_hit_led_nixo",
+  "mac_suffix": "948C",
+  "client_id": "battlebang-hit-go2_03-go2_nixo-948C",
+  "metadata": {
+    "firmware": "go2_nixo",
+    "firmware_role": "integrated_hit_led_nixo",
+    "mac_suffix": "948C",
+    "client_id": "battlebang-hit-go2_03-go2_nixo-948C"
+  }
 }
 ```
 

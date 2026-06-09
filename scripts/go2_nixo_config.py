@@ -1,9 +1,9 @@
 """Inject per-Go2 integrated Go2+Nixo ESP PlatformIO build macros from src/go2_nixo/robots.json.
 
 Usage:
-  pio run -e esp32dev_go2_05
-  GO2_ID=go2_05 pio run -e esp32dev_go2
-  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_05
+  pio run -e esp32dev_go2_nixo_go2_05
+  GO2_ID=go2_05 pio run -e esp32dev_go2_nixo
+  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_nixo_go2_05
 """
 
 from __future__ import annotations
@@ -191,8 +191,11 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
             defines.append((macro_name, str(int(value))))
 
 
+LOG_PREFIX = "[go2_nixo_config]"
+
+
 if not CONFIG_PATH.exists():
-    print(f"[go2_config] missing config: {CONFIG_PATH}")
+    print(f"{LOG_PREFIX} missing config: {CONFIG_PATH}")
     Exit(1)
 
 with CONFIG_PATH.open("r", encoding="utf-8") as f:
@@ -202,13 +205,13 @@ robot_id = detect_robot_id()
 robots = config.get("robots", {})
 entry = robots.get(robot_id)
 if entry is None:
-    print(f"[go2_config] unknown robot_id={robot_id!r}; edit {CONFIG_PATH}")
-    print(f"[go2_config] known: {', '.join(sorted(robots))}")
+    print(f"{LOG_PREFIX} unknown robot_id={robot_id!r}; edit {CONFIG_PATH}")
+    print(f"{LOG_PREFIX} known: {', '.join(sorted(robots))}")
     Exit(1)
 
 if not entry.get("configured", False):
-    print(f"[go2_config] {robot_id} is intentionally blank.")
-    print(f"[go2_config] Set configured=true in {CONFIG_PATH} before building it.")
+    print(f"{LOG_PREFIX} {robot_id} is intentionally blank.")
+    print(f"{LOG_PREFIX} Set configured=true in {CONFIG_PATH} before building it.")
     Exit(1)
 
 profile = deep_merge(config.get("defaults", {}), entry)
@@ -218,7 +221,7 @@ append_env_defines(defines)
 
 env.Append(CPPDEFINES=defines)
 print(
-    "[go2_config] "
+    f"{LOG_PREFIX} "
     f"{PIO_ENV}: robot_id={robot_id} "
         f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
         f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "

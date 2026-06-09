@@ -1,6 +1,6 @@
 # Go2 ESP 문서 인덱스
 
-Go2 등에 장착되는 ESP32 피격/LED 보드용 문서입니다. 터렛 펌웨어처럼 Go2도 `src/go2_nixo/` 아래에 빌드 설정, 펌웨어 진입점, 기능 모듈, 문서를 모아둡니다.
+Go2 등에 장착되는 ESP32 피격/LED/Nixo 통합 fallback 문서입니다. 현재 active 2-ESP split은 `src/go2/` hit/LED와 `src/nIxo/` relay fire를 사용하며, `src/go2_nixo/`는 한 ESP에 모두 넣어야 할 때만 사용합니다.
 
 - `build-upload-workflow.md`: 로컬 secrets 생성, robot id 선택, 빌드/업로드 흐름
 - `mqtt-hit-contract.md`: Command Center와 주고받는 MQTT topic/payload 계약
@@ -21,4 +21,4 @@ src/go2_nixo/
 ```
 
 피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 `hit=true` 이벤트를 보내고 `ring_display` 명령을 렌더링만 합니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다.
-Nixo/game blaster fire도 같은 Go2 firmware가 `battlebang/nixo/{nixo_id}/command`를 구독해서 처리합니다.
+이 integrated fallback에서는 Nixo/game blaster fire도 같은 firmware가 `battlebang/nixo/{nixo_id}/command`를 구독해서 처리합니다.

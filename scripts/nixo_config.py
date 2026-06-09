@@ -1,8 +1,8 @@
 """Inject optional Nixo PlatformIO build macros from shell environment.
 
 Examples:
-  pio run -e esp32dev_nixo
-  NIXO_ID=nixo_go2_05 NIXO_WIFI_SSID=... NIXO_MQTT_HOST=... pio run -e esp32dev_nixo
+  pio run -e esp32dev_nixo_go2_05
+  NIXO_ID=nixo_go2_05 NIXO_WIFI_SSID=... NIXO_MQTT_HOST=... pio run -e esp32dev_nixo_go2_05
 """
 
 from __future__ import annotations

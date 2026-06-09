@@ -157,7 +157,7 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 ```text
 [CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
 [WIFI] connecting ssid=...
-[MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03
+[MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03-go2-948C
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
 ```
 
@@ -173,7 +173,20 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
   "hit": true,
   "peak": 2140,
   "threshold": 1800,
-  "firmware_ts_ms": 12345
+  "firmware_ts_ms": 12345,
+  "firmware": "go2",
+  "firmware_role": "hit_led",
+  "mac_suffix": "948C",
+  "client_id": "battlebang-hit-go2_03-go2-948C",
+  "metadata": {
+    "firmware": "go2",
+    "firmware_role": "hit_led",
+    "mac_suffix": "948C",
+    "client_id": "battlebang-hit-go2_03-go2-948C",
+    "hit_source": "piezo_ao_adc_threshold",
+    "adc_peak_raw": 2140,
+    "adc_threshold_raw": 1800
+  }
 }
 ```
 

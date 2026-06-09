@@ -1,9 +1,9 @@
 """Inject per-Go2 hit ESP PlatformIO build macros from src/go2/robots.json.
 
 Usage:
-  pio run -e esp32dev_go2_05
+  pio run -e esp32dev_go2_go2_05
   GO2_ID=go2_05 pio run -e esp32dev_go2
-  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_05
+  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_go2_05
 """
 
 from __future__ import annotations

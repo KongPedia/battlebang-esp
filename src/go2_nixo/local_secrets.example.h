@@ -4,7 +4,7 @@
 // the Go2 hit ESP firmware. Do not commit src/go2_nixo/local_secrets.h.
 //
 // Robot identity is normally selected by PlatformIO env/custom_robot_id
-// (for example: esp32dev_go2_05) or GO2_ID. Keep it out of this file unless
+// (for example: esp32dev_go2_nixo_go2_05) or GO2_ID. Keep it out of this file unless
 // you intentionally need a manual robot id override for generic esp32dev builds.
 
 // #define ESP_ROBOT_ID "go2_05"

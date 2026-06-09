@@ -26,7 +26,17 @@ battlebang/hit/{robot_id}/ring_display/command
   "sensor_id": "piezo_t1",
   "sequence": 1,
   "hit": true,
-  "firmware_ts_ms": 12345
+  "firmware_ts_ms": 12345,
+  "firmware": "go2_nixo",
+  "firmware_role": "integrated_hit_led_nixo",
+  "mac_suffix": "948C",
+  "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
+  "metadata": {
+    "firmware": "go2_nixo",
+    "firmware_role": "integrated_hit_led_nixo",
+    "mac_suffix": "948C",
+    "client_id": "battlebang-hit-go2_05-go2_nixo-948C"
+  }
 }
 ```
 
@@ -41,9 +51,17 @@ battlebang/hit/{robot_id}/ring_display/command
   "sequence": 7,
   "hit": true,
   "firmware_ts_ms": 45678,
+  "firmware": "go2_nixo",
+  "firmware_role": "integrated_hit_led_nixo",
+  "mac_suffix": "948C",
+  "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
   "queued": true,
   "queued_for_ms": 1200,
   "metadata": {
+    "firmware": "go2_nixo",
+    "firmware_role": "integrated_hit_led_nixo",
+    "mac_suffix": "948C",
+    "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
     "queued": true,
     "queued_for_ms": 1200,
     "queue_depth": 3,
@@ -65,7 +83,15 @@ ESP 온라인 여부와 표시 경로 상태를 Command Center가 판단할 수 
   "sequence": 10,
   "firmware_ts_ms": 20000,
   "mode": "mqtt_connected",
+  "firmware": "go2_nixo",
+  "firmware_role": "integrated_hit_led_nixo",
+  "mac_suffix": "948C",
+  "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
   "metadata": {
+    "firmware": "go2_nixo",
+    "firmware_role": "integrated_hit_led_nixo",
+    "mac_suffix": "948C",
+    "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
     "offline_queue_count": 0,
     "offline_queue_capacity": 32,
     "offline_queue_dropped": 0
