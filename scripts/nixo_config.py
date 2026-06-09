@@ -38,7 +38,7 @@ def detect_go2_id() -> str:
         if env_override:
             return clean_string_value(env_override)
 
-    option_value = project_option("custom_robot_id")
+    option_value = clean_string_value(project_option("custom_robot_id"))
     if option_value:
         return option_value
 
@@ -74,17 +74,21 @@ int_env_macros = {
 
 defines: list[tuple[str, str]] = []
 go2_id = detect_go2_id()
-if os.environ.get("NIXO_ID") is None:
+nixo_id_env = clean_string_value(os.environ.get("NIXO_ID", ""))
+if not nixo_id_env:
     defines.append(("NIXO_BUILD_ID", c_string(f"nixo_{go2_id}")))
 
 for env_name, macro_name in string_env_macros.items():
     value = os.environ.get(env_name)
-    if value is not None:
-        defines.append((macro_name, c_string(value)))
+    if value is None:
+        continue
+    cleaned = clean_string_value(value)
+    if cleaned:
+        defines.append((macro_name, c_string(cleaned)))
 
 for env_name, macro_name in int_env_macros.items():
     value = os.environ.get(env_name)
-    if value is not None:
+    if value is not None and value.strip():
         defines.append((macro_name, str(int(value))))
 
 if defines:
