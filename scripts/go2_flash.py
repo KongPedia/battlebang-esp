@@ -18,10 +18,10 @@ from pathlib import Path
 from typing import Iterable
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-GO2_CONFIG_PATH = PROJECT_ROOT / "src" / "go2_nixo" / "robots.json"
-LOCAL_SECRETS_PATH = PROJECT_ROOT / "src" / "go2_nixo" / "local_secrets.h"
+GO2_CONFIG_PATH = PROJECT_ROOT / "src" / "go2" / "robots.json"
+LOCAL_SECRETS_PATH = PROJECT_ROOT / "src" / "go2" / "local_secrets.h"
 LEGACY_LOCAL_SECRETS_PATH = PROJECT_ROOT / "src" / "local_secrets.h"
-DEFAULT_PORT_MAP_PATH = PROJECT_ROOT / "src" / "go2_nixo" / "upload_targets.toml"
+DEFAULT_PORT_MAP_PATH = PROJECT_ROOT / "src" / "go2" / "upload_targets.toml"
 DEFAULT_PIO_PATH = PROJECT_ROOT / ".venv-pio" / "bin" / "pio"
 PLACEHOLDER_PREFIXES = ("YOUR_", "COMMAND_CENTER_OR_BROKER_HOST", "192.168.")
 REQUIRED_SECRET_KEYS = (
@@ -51,15 +51,15 @@ class Go2Config:
 
     @property
     def platformio_env(self) -> str:
-        return f"esp32dev_{self.robot_id}"
+        return f"esp32dev_go2_{self.robot_id}"
 
     def summary(self) -> str:
         if not self.configured:
             return f"{self.robot_id}: configured=false"
         fields = [
-            f"hp_max={self.profile.get('hp_max', 'default')}",
-            f"hit_threshold={self.profile.get('hit_threshold', 'default')}",
-            f"piezo_damage_divisor={self.profile.get('piezo_damage_divisor', 'default')}",
+            f"hit_cooldown_ms={self.profile.get('hit_cooldown_ms', 'default')}",
+            f"led_pin={self.profile.get('led_pin', 'default')}",
+            f"t1_do_pin={self.profile.get('t1_do_pin', 'default')}",
             f"topic_prefix={self.profile.get('mqtt_topic_prefix', 'default')}",
         ]
         return f"{self.robot_id}: " + ", ".join(fields)
@@ -195,7 +195,7 @@ def build_secret_env(
             )
         else:
             raise FlashConfigError(
-                f"Missing required secret {key}. Set it in src/go2_nixo/local_secrets.h or pass --{key.lower().replace('esp_', '').replace('_', '-')}"
+                f"Missing required secret {key}. Set it in src/go2/local_secrets.h or pass --{key.lower().replace('esp_', '').replace('_', '-')}"
             )
 
     for key in OPTIONAL_SECRET_KEYS:
@@ -315,7 +315,7 @@ def ensure_targets_valid(
 ) -> None:
     if not targets:
         raise FlashConfigError(
-            "No targets selected. Use --target go2_05=/dev/... or --map-file src/go2_nixo/upload_targets.toml"
+            "No targets selected. Use --target go2_05=/dev/... or --map-file src/go2/upload_targets.toml"
         )
 
     seen: set[str] = set()

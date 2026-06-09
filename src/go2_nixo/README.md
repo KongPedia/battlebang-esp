@@ -13,14 +13,14 @@ Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 
 1. 피에조 센서 DO 디지털 입력에서 valid hit가 발생하면 `hit=true` 이벤트를 Command Center에 publish
 2. Command Center가 내려준 `ring_display` 명령을 LED 링에 렌더링
-3. Command Center가 내려준 Nixo `fire` 명령을 받아 servo/relay fire sequence 실행
+3. Command Center가 내려준 Nixo `fire` 명령을 받아 relay-only fire sequence 실행
 
 ESP는 타격 세기, 로컬 스코어, 로컬 down 상태를 계산하거나 저장하지 않습니다. 난이도/스코어/down 기준과 LED fill 비율은 Command Center 설정과 정책이 소유합니다. MQTT가 끊긴 동안의 hit는 RAM queue에 잠시 보관했다가 재연결 후 원래 `firmware_ts_ms`와 함께 재전송합니다.
 
 ```text
 Piezo DO -> ESP hit_candidate(hit=true) -> Command Center scoring/down policy
 Command Center ring_display command -> ESP LED ring render
-Command Center Nixo fire command -> ESP servo/relay fire sequence
+Command Center Nixo fire command -> ESP relay-only fire sequence
 ```
 
 현재 코드 구조:
@@ -30,7 +30,7 @@ main.cpp   setup/loop runtime orchestration
 piezo/     piezo DO interrupt + cooldown/rearm gate
 ring_led/  ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
-nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay/servo fire
+nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay-only fire
 ```
 
 기본 핀맵 (`robots.json` defaults 기준, UART 제외):
@@ -42,7 +42,6 @@ nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay/servo fire
 | Piezo T2 DO | `-1` |
 | Nixo relay CH1 | `GPIO23` |
 | Nixo relay CH2 | `-1` |
-| Nixo servo PWM | `GPIO18` |
 
 - ESP → Command Center
   - `battlebang/hit/{go2_id}/events`

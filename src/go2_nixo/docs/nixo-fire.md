@@ -29,7 +29,6 @@ The current Go2-mounted Nixo relay invariants are:
 - relay 1: `GPIO23`
 - relay 2: disabled (`-1`)
 - relay polarity: active-HIGH (`HIGH` fires, `LOW` stops)
-- servo: `GPIO18`
 
 These defaults live in `src/go2_nixo/build_config.h` and can be overridden from
 `src/go2_nixo/robots.json`, `src/go2_nixo/local_secrets.h`, or build environment macros.

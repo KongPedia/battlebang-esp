@@ -4,11 +4,41 @@ namespace go2 {
 
 HitMqttClient* HitMqttClient::instance_ = nullptr;
 
+namespace {
+
+uint16_t macSuffix() {
+  return static_cast<uint16_t>(ESP.getEfuseMac() & 0xFFFF);
+}
+
+void formatMacSuffix(char* buffer, size_t length) {
+  snprintf(buffer, length, "%04X", macSuffix());
+}
+
+void addSourceMetadata(JsonDocument& doc, const char* clientId) {
+  char suffix[5];
+  formatMacSuffix(suffix, sizeof(suffix));
+
+  doc["firmware"] = FIRMWARE_NAME;
+  doc["firmware_role"] = FIRMWARE_ROLE;
+  doc["mac_suffix"] = suffix;
+  doc["client_id"] = clientId;
+
+  JsonObject metadata = doc.createNestedObject("metadata");
+  metadata["firmware"] = FIRMWARE_NAME;
+  metadata["firmware_role"] = FIRMWARE_ROLE;
+  metadata["mac_suffix"] = suffix;
+  metadata["client_id"] = clientId;
+}
+
+}  // namespace
+
 void HitMqttClient::begin(RingDisplayHandler ringHandler) {
   ringHandler_ = ringHandler;
   snprintf(eventTopic_, sizeof(eventTopic_), "%s/%s/events", MQTT_TOPIC_PREFIX, ROBOT_ID);
   snprintf(ringCommandTopic_, sizeof(ringCommandTopic_), "%s/%s/ring_display/command", MQTT_TOPIC_PREFIX, ROBOT_ID);
-  snprintf(clientId_, sizeof(clientId_), "battlebang-hit-%s", ROBOT_ID);
+  char suffix[5];
+  formatMacSuffix(suffix, sizeof(suffix));
+  snprintf(clientId_, sizeof(clientId_), "battlebang-hit-%s-%s-%s", ROBOT_ID, FIRMWARE_NAME, suffix);
   mqttClient_.setBufferSize(MQTT_BUFFER_SIZE);
   mqttClient_.setCallback(HitMqttClient::mqttMessageCallback);
   instance_ = this;
@@ -43,10 +73,12 @@ bool HitMqttClient::publishHitCandidate(int targetId,
                                         uint32_t firmwareTsMs,
                                         bool queued,
                                         uint32_t queuedForMs,
-                                        uint8_t queueDepth) {
+                                        uint8_t queueDepth,
+                                        int peakRaw,
+                                        int thresholdRaw) {
   if (!mqttClient_.connected()) return false;
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
   doc["schema_version"] = 1;
   doc["event"] = "hit_candidate";
   doc["robot_id"] = ROBOT_ID;
@@ -54,38 +86,59 @@ bool HitMqttClient::publishHitCandidate(int targetId,
   doc["sequence"] = sequence;
   doc["hit"] = hit;
   doc["firmware_ts_ms"] = firmwareTsMs;
+  addSourceMetadata(doc, clientId_);
+  JsonObject metadata = doc["metadata"].as<JsonObject>();
+  if (peakRaw >= 0) {
+    doc["peak"] = peakRaw;
+    metadata["adc_peak_raw"] = peakRaw;
+  }
+  if (thresholdRaw >= 0) {
+    doc["threshold"] = thresholdRaw;
+    metadata["adc_threshold_raw"] = thresholdRaw;
+  }
+  if (peakRaw >= 0 || thresholdRaw >= 0) {
+    metadata["hit_source"] = "piezo_ao_adc_threshold";
+  }
 
   if (queued) {
     doc["queued"] = true;
     doc["queued_for_ms"] = queuedForMs;
-    JsonObject metadata = doc.createNestedObject("metadata");
     metadata["queued"] = true;
     metadata["queued_for_ms"] = queuedForMs;
     metadata["queue_depth"] = queueDepth;
     metadata["queue_dropped"] = offlineQueueDropped_;
   }
 
-  char buffer[512];
+  char buffer[MQTT_BUFFER_SIZE];
   size_t size = serializeJson(doc, buffer, sizeof(buffer));
   bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
   if (ok) {
-    Serial.printf("[HIT] published candidate seq=%lu target=%d hit=%s queued=%s topic=%s\n",
+    Serial.printf("[HIT] published candidate seq=%lu target=%d hit=%s peak=%d threshold=%d queued=%s topic=%s\n",
                   (unsigned long)sequence,
                   targetId,
                   hit ? "true" : "false",
+                  peakRaw,
+                  thresholdRaw,
                   queued ? "true" : "false",
                   eventTopic_);
   } else {
-    Serial.printf("[HIT] candidate publish failed seq=%lu target=%d hit=%s queued=%s\n",
+    Serial.printf("[HIT] candidate publish failed seq=%lu target=%d hit=%s peak=%d threshold=%d queued=%s\n",
                   (unsigned long)sequence,
                   targetId,
                   hit ? "true" : "false",
+                  peakRaw,
+                  thresholdRaw,
                   queued ? "true" : "false");
   }
   return ok;
 }
 
-void HitMqttClient::queueHitCandidate(int targetId, bool hit, uint32_t sequence, uint32_t firmwareTsMs) {
+void HitMqttClient::queueHitCandidate(int targetId,
+                                      bool hit,
+                                      uint32_t sequence,
+                                      uint32_t firmwareTsMs,
+                                      int peakRaw,
+                                      int thresholdRaw) {
   if (!hit) return;
 
   if (offlineQueueCount_ >= OFFLINE_HIT_QUEUE_CAPACITY) {
@@ -105,11 +158,15 @@ void HitMqttClient::queueHitCandidate(int targetId, bool hit, uint32_t sequence,
   queued.hit = hit;
   queued.sequence = sequence;
   queued.firmwareTsMs = firmwareTsMs;
+  queued.peakRaw = peakRaw;
+  queued.thresholdRaw = thresholdRaw;
   offlineQueue_[insertIndex] = queued;
   offlineQueueCount_++;
-  Serial.printf("[HIT] queued offline candidate seq=%lu target=%d queue=%u/%u\n",
+  Serial.printf("[HIT] queued offline candidate seq=%lu target=%d peak=%d threshold=%d queue=%u/%u\n",
                 (unsigned long)sequence,
                 targetId,
+                peakRaw,
+                thresholdRaw,
                 offlineQueueCount_,
                 (unsigned int)OFFLINE_HIT_QUEUE_CAPACITY);
 }
@@ -216,7 +273,9 @@ void HitMqttClient::flushOfflineQueue(uint32_t now) {
                            candidate.firmwareTsMs,
                            true,
                            queuedForMs,
-                           queueDepthBeforePublish)) {
+                           queueDepthBeforePublish,
+                           candidate.peakRaw,
+                           candidate.thresholdRaw)) {
     return;
   }
 
@@ -237,7 +296,7 @@ void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   if (now - lastHeartbeatTxMs_ < HEARTBEAT_TX_PERIOD_MS) return;
   lastHeartbeatTxMs_ = now;
 
-  StaticJsonDocument<384> doc;
+  StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
   doc["schema_version"] = 1;
   doc["event"] = "heartbeat";
   doc["robot_id"] = ROBOT_ID;
@@ -245,12 +304,13 @@ void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   doc["sequence"] = ++heartbeatSequence_;
   doc["firmware_ts_ms"] = now;
   doc["mode"] = heartbeatMode(remoteDisplayActive);
-  JsonObject metadata = doc.createNestedObject("metadata");
+  addSourceMetadata(doc, clientId_);
+  JsonObject metadata = doc["metadata"].as<JsonObject>();
   metadata["offline_queue_count"] = offlineQueueCount_;
   metadata["offline_queue_capacity"] = OFFLINE_HIT_QUEUE_CAPACITY;
   metadata["offline_queue_dropped"] = offlineQueueDropped_;
 
-  char buffer[384];
+  char buffer[MQTT_BUFFER_SIZE];
   size_t size = serializeJson(doc, buffer, sizeof(buffer));
   mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
 }

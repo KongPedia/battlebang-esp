@@ -23,7 +23,7 @@ class NixoFireClient {
  private:
   enum FireState {
     FIRE_IDLE,
-    FIRE_SERVO_MOVING,
+    FIRE_PREFIRE_DELAY,
     FIRE_RELAY_WAIT1,
     FIRE_RELAY_WAIT2,
   };
@@ -39,9 +39,6 @@ class NixoFireClient {
   uint32_t fireTimerMs_ = 0;
   uint32_t lastFireStartMs_ = 0;
   uint32_t activeFireDurationMs_ = NIXO_FIRE_DEFAULT_DURATION_MS;
-  int servoCur_ = NIXO_SERVO_INITIAL_POS;
-  int servoTarget_ = NIXO_SERVO_INITIAL_POS;
-  uint32_t lastServoMs_ = 0;
   bool fireInhibited_ = false;
 
   static NixoFireClient* instance_;
@@ -49,10 +46,6 @@ class NixoFireClient {
 
   bool isFiring() const;
   void relayOff();
-  void setupServo();
-  void writeServoAngle(int angle);
-  void setServoTarget(int angle);
-  bool updateServoMove(uint32_t now);
   void updateFireSequence(uint32_t now);
   void ensureMqttConnected(uint32_t now);
   void handleMqttMessage(char* topic, byte* payload, unsigned int length);

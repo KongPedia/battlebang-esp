@@ -58,7 +58,7 @@ Go2 피격 펌웨어 구조:
 - `src/go2_nixo/piezo/piezo_sensor.*`: 피에조 DO 디지털 입력, ISR edge detection, debounce/cooldown
 - `src/go2_nixo/ring_led/ring_display.*`: Command Center `ring_display` 렌더링과 fallback LED 표시
 - `src/go2_nixo/mqtt/hit_mqtt_client.*`: MQTT hit_candidate/heartbeat publish, ring_display subscribe
-- `src/go2_nixo/nixo/nixo_fire_client.*`: MQTT Nixo fire command subscribe, servo/relay fire sequence
+- `src/go2_nixo/nixo/nixo_fire_client.*`: MQTT Nixo fire command subscribe, relay-only fire sequence
 - `src/go2_nixo/docs/`: 터렛 문서 구조와 맞춘 Go2 빌드/통신/fallback 문서
 
 Go2 Nixo 기본 핀맵 (`src/go2_nixo/robots.json` defaults 기준, UART 제외):
@@ -70,7 +70,6 @@ Go2 Nixo 기본 핀맵 (`src/go2_nixo/robots.json` defaults 기준, UART 제외)
 | Piezo T2 DO | `-1` |
 | Nixo relay CH1 | `GPIO23` |
 | Nixo relay CH2 | `-1` |
-| Nixo servo PWM | `GPIO18` |
 
 초기 설정:
 
