@@ -1,12 +1,12 @@
 # Integrated Nixo fire
 
-`src/go2_nixo` is the single Go2-mounted ESP firmware path. The same image owns:
+`src/go2_nixo` is the optional one-ESP integrated fallback path. The same image owns:
 
 - hit sensor events: `battlebang/hit/{robot_id}/events`
 - ring display commands: `battlebang/hit/{robot_id}/ring_display/command`
 - Nixo/game blaster fire commands: `battlebang/nixo/{nixo_id}/command`
 
-There is no separate `esp32dev_nixo` build path anymore.
+The active 2-ESP split uses `src/go2` for hit/LED and `src/nIxo` for Nixo relay fire. Use `esp32dev_nixo_go2_*` for the standalone Nixo ESP, and use `esp32dev_go2_nixo_go2_*` only when intentionally flashing this integrated fallback.
 
 ## Live mapping
 
@@ -29,7 +29,6 @@ The current Go2-mounted Nixo relay invariants are:
 - relay 1: `GPIO23`
 - relay 2: disabled (`-1`)
 - relay polarity: active-HIGH (`HIGH` fires, `LOW` stops)
-- servo: `GPIO18`
 
 These defaults live in `src/go2_nixo/build_config.h` and can be overridden from
 `src/go2_nixo/robots.json`, `src/go2_nixo/local_secrets.h`, or build environment macros.

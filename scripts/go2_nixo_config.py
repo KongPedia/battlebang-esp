@@ -1,9 +1,9 @@
-"""Inject per-Go2 hit ESP PlatformIO build macros from src/go2/robots.json.
+"""Inject per-Go2 integrated Go2+Nixo ESP PlatformIO build macros from src/go2_nixo/robots.json.
 
 Usage:
-  pio run -e esp32dev_go2_go2_05
-  GO2_ID=go2_05 pio run -e esp32dev_go2
-  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_go2_05
+  pio run -e esp32dev_go2_nixo_go2_05
+  GO2_ID=go2_05 pio run -e esp32dev_go2_nixo
+  ESP_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS pio run -e esp32dev_go2_nixo_go2_05
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ Import("env")
 
 PROJECT_DIR = Path(env.subst("$PROJECT_DIR"))
 PIO_ENV = env.subst("$PIOENV")
-CONFIG_PATH = PROJECT_DIR / "src" / "go2" / "robots.json"
+CONFIG_PATH = PROJECT_DIR / "src" / "go2_nixo" / "robots.json"
 
 
 def project_option(name: str) -> str:
@@ -74,6 +74,8 @@ def deep_merge(base: dict, override: dict) -> dict:
 def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> None:
     string_profile_macros = {
         "mqtt_topic_prefix": "BATTLEBANG_BUILD_MQTT_TOPIC_PREFIX",
+        "nixo_id": "BATTLEBANG_BUILD_NIXO_ID",
+        "nixo_mqtt_topic_prefix": "BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX",
     }
     int_profile_macros = {
         "hit_cooldown_ms": "BATTLEBANG_BUILD_HIT_COOLDOWN_MS",
@@ -84,11 +86,14 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "led_brightness": "BATTLEBANG_BUILD_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
-        "piezo_ao_pin": "BATTLEBANG_BUILD_PIEZO_AO_PIN",
-        "piezo_ao_threshold_raw": "BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW",
-        "piezo_ao_rearm_raw": "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW",
-        "piezo_ao_capture_window_ms": "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS",
-        "piezo_ao_debug_period_ms": "BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS",
+        "nixo_relay1_pin": "BATTLEBANG_BUILD_NIXO_RELAY1_PIN",
+        "nixo_relay2_pin": "BATTLEBANG_BUILD_NIXO_RELAY2_PIN",
+        "nixo_relay_on_level": "BATTLEBANG_BUILD_NIXO_RELAY_ON_LEVEL",
+        "nixo_relay_off_level": "BATTLEBANG_BUILD_NIXO_RELAY_OFF_LEVEL",
+        "nixo_fire_default_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS",
+        "nixo_fire_min_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_MIN_DURATION_MS",
+        "nixo_fire_max_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_MAX_DURATION_MS",
+        "nixo_fire_cooldown_ms": "BATTLEBANG_BUILD_NIXO_FIRE_COOLDOWN_MS",
     }
 
     for json_key, macro_name in string_profile_macros.items():
@@ -114,6 +119,11 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
             ("ESP_MQTT_TOPIC_PREFIX", "BATTLEBANG_MQTT_TOPIC_PREFIX"),
             "BATTLEBANG_BUILD_MQTT_TOPIC_PREFIX",
         ),
+        (("NIXO_ID", "BATTLEBANG_NIXO_ID"), "BATTLEBANG_BUILD_NIXO_ID"),
+        (
+            ("NIXO_MQTT_TOPIC_PREFIX", "BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX"),
+            "BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX",
+        ),
     ]
     int_env_macros = [
         (("ESP_MQTT_PORT", "BATTLEBANG_MQTT_PORT"), "BATTLEBANG_BUILD_MQTT_PORT"),
@@ -128,11 +138,32 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
-        (("BATTLEBANG_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_PIEZO_AO_PIN"),
-        (("BATTLEBANG_PIEZO_AO_THRESHOLD_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW"),
-        (("BATTLEBANG_PIEZO_AO_REARM_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW"),
-        (("BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS",), "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS"),
-        (("BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS",), "BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS"),
+        (("NIXO_RELAY1_PIN", "BATTLEBANG_NIXO_RELAY1_PIN"), "BATTLEBANG_BUILD_NIXO_RELAY1_PIN"),
+        (("NIXO_RELAY2_PIN", "BATTLEBANG_NIXO_RELAY2_PIN"), "BATTLEBANG_BUILD_NIXO_RELAY2_PIN"),
+        (
+            ("NIXO_RELAY_ON_LEVEL", "BATTLEBANG_NIXO_RELAY_ON_LEVEL"),
+            "BATTLEBANG_BUILD_NIXO_RELAY_ON_LEVEL",
+        ),
+        (
+            ("NIXO_RELAY_OFF_LEVEL", "BATTLEBANG_NIXO_RELAY_OFF_LEVEL"),
+            "BATTLEBANG_BUILD_NIXO_RELAY_OFF_LEVEL",
+        ),
+        (
+            ("NIXO_FIRE_DEFAULT_DURATION_MS", "BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS"),
+            "BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS",
+        ),
+        (
+            ("NIXO_FIRE_MIN_DURATION_MS", "BATTLEBANG_NIXO_FIRE_MIN_DURATION_MS"),
+            "BATTLEBANG_BUILD_NIXO_FIRE_MIN_DURATION_MS",
+        ),
+        (
+            ("NIXO_FIRE_MAX_DURATION_MS", "BATTLEBANG_NIXO_FIRE_MAX_DURATION_MS"),
+            "BATTLEBANG_BUILD_NIXO_FIRE_MAX_DURATION_MS",
+        ),
+        (
+            ("NIXO_FIRE_COOLDOWN_MS", "BATTLEBANG_NIXO_FIRE_COOLDOWN_MS"),
+            "BATTLEBANG_BUILD_NIXO_FIRE_COOLDOWN_MS",
+        ),
     ]
 
     for env_names, macro_name in string_env_macros:
@@ -160,8 +191,11 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
             defines.append((macro_name, str(int(value))))
 
 
+LOG_PREFIX = "[go2_nixo_config]"
+
+
 if not CONFIG_PATH.exists():
-    print(f"[go2_config] missing config: {CONFIG_PATH}")
+    print(f"{LOG_PREFIX} missing config: {CONFIG_PATH}")
     Exit(1)
 
 with CONFIG_PATH.open("r", encoding="utf-8") as f:
@@ -171,13 +205,13 @@ robot_id = detect_robot_id()
 robots = config.get("robots", {})
 entry = robots.get(robot_id)
 if entry is None:
-    print(f"[go2_config] unknown robot_id={robot_id!r}; edit {CONFIG_PATH}")
-    print(f"[go2_config] known: {', '.join(sorted(robots))}")
+    print(f"{LOG_PREFIX} unknown robot_id={robot_id!r}; edit {CONFIG_PATH}")
+    print(f"{LOG_PREFIX} known: {', '.join(sorted(robots))}")
     Exit(1)
 
 if not entry.get("configured", False):
-    print(f"[go2_config] {robot_id} is intentionally blank.")
-    print(f"[go2_config] Set configured=true in {CONFIG_PATH} before building it.")
+    print(f"{LOG_PREFIX} {robot_id} is intentionally blank.")
+    print(f"{LOG_PREFIX} Set configured=true in {CONFIG_PATH} before building it.")
     Exit(1)
 
 profile = deep_merge(config.get("defaults", {}), entry)
@@ -187,10 +221,10 @@ append_env_defines(defines)
 
 env.Append(CPPDEFINES=defines)
 print(
-    "[go2_config] "
+    f"{LOG_PREFIX} "
     f"{PIO_ENV}: robot_id={robot_id} "
         f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
-        f"ao_threshold={profile.get('piezo_ao_threshold_raw', 'default')} "
         f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "
-        f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')}"
+        f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')} "
+        f"nixo_id={profile.get('nixo_id', 'derived')}"
     )

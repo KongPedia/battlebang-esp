@@ -4,7 +4,8 @@
 
 #if __has_include("local_secrets.h") && !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
 #include "local_secrets.h"
-#elif __has_include("../local_secrets.h") && !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
+#elif __has_include("../local_secrets.h") &&                                   \
+                    !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
 // Compatibility include path used by older local operator setups.
 #include "../local_secrets.h"
 #endif
@@ -35,9 +36,9 @@
 #define BATTLEBANG_MQTT_TOPIC_PREFIX ESP_MQTT_TOPIC_PREFIX
 #endif
 
-// Overrides injected by scripts/go2_config.py from PlatformIO profile/shell env.
-// These intentionally apply after local_secrets.h so explicit env/profile builds
-// win without editing the gitignored local file.
+// Overrides injected by scripts/go2_config.py from PlatformIO profile/shell
+// env. These intentionally apply after local_secrets.h so explicit env/profile
+// builds win without editing the gitignored local file.
 #ifdef BATTLEBANG_BUILD_ROBOT_ID
 #undef BATTLEBANG_ROBOT_ID
 #define BATTLEBANG_ROBOT_ID BATTLEBANG_BUILD_ROBOT_ID
@@ -75,12 +76,14 @@
 
 #ifdef BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY
 #undef BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY
-#define BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY
+#define BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY                                  \
+  BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY
 #endif
 
 #ifdef BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
 #undef BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
-#define BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
+#define BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS                         \
+  BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
 #endif
 
 #ifdef BATTLEBANG_BUILD_LED_PIN
@@ -106,6 +109,34 @@
 #ifdef BATTLEBANG_BUILD_T2_DO_PIN
 #undef BATTLEBANG_T2_DO_PIN
 #define BATTLEBANG_T2_DO_PIN BATTLEBANG_BUILD_T2_DO_PIN
+#endif
+
+#ifdef BATTLEBANG_BUILD_PIEZO_AO_PIN
+#undef BATTLEBANG_PIEZO_AO_PIN
+#define BATTLEBANG_PIEZO_AO_PIN BATTLEBANG_BUILD_PIEZO_AO_PIN
+#endif
+
+#ifdef BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW
+#undef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW                                      \
+  BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW
+#endif
+
+#ifdef BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW
+#undef BATTLEBANG_PIEZO_AO_REARM_RAW
+#define BATTLEBANG_PIEZO_AO_REARM_RAW BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW
+#endif
+
+#ifdef BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS
+#undef BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS
+#define BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS                                  \
+  BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS
+#endif
+
+#ifdef BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS
+#undef BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS
+#define BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS                                    \
+  BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS
 #endif
 
 #ifndef BATTLEBANG_ROBOT_ID
@@ -164,9 +195,33 @@
 #define BATTLEBANG_T2_DO_PIN -1
 #endif
 
+#ifndef BATTLEBANG_PIEZO_AO_PIN
+#define BATTLEBANG_PIEZO_AO_PIN 34
+#endif
+
+#ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
+// Measured fire vibration reached ~1656 raw in bench tests, so default above
+// that range. Tune per harness/target with robots.json or env.
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 2400
+#endif
+
+#ifndef BATTLEBANG_PIEZO_AO_REARM_RAW
+#define BATTLEBANG_PIEZO_AO_REARM_RAW 400
+#endif
+
+#ifndef BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS
+#define BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS 30
+#endif
+
+#ifndef BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS
+#define BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS 100
+#endif
+
 namespace go2 {
 
-static constexpr const char* BT_NAME = "ESP32_GO2_HIT";
+static constexpr const char *FIRMWARE_NAME = "go2";
+static constexpr const char *FIRMWARE_ROLE = "hit_led";
+static constexpr const char *BT_NAME = "ESP32_GO2_HIT";
 
 static constexpr int UART_RX_PIN = 16;
 static constexpr int UART_TX_PIN = 17;
@@ -184,31 +239,54 @@ static constexpr uint32_t LED_BLINK_MS = 250;
 static constexpr uint32_t LED_DEAD_BLINK_MS = 300;
 
 static constexpr int PIEZO_DO_PIN = BATTLEBANG_T1_DO_PIN;
+static constexpr int PIEZO_AO_PIN = BATTLEBANG_PIEZO_AO_PIN;
 static constexpr int T1_DO = PIEZO_DO_PIN;
 static constexpr int T2_DO = BATTLEBANG_T2_DO_PIN;
+static constexpr int PIEZO_AO_THRESHOLD_RAW = BATTLEBANG_PIEZO_AO_THRESHOLD_RAW;
+static constexpr int PIEZO_AO_REARM_RAW = BATTLEBANG_PIEZO_AO_REARM_RAW;
+static constexpr uint32_t PIEZO_AO_CAPTURE_WINDOW_MS =
+    BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS;
+static constexpr uint32_t PIEZO_AO_DEBUG_PERIOD_MS =
+    BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS;
 static constexpr uint32_t ISR_DEBOUNCE_US = 20000;
 static constexpr uint32_t HIT_COOLDOWN_MS = BATTLEBANG_HIT_COOLDOWN_MS;
 static constexpr uint32_t HIT_REARM_STABLE_MS = 300;
 static constexpr uint32_t HIT_REARM_CHECK_MS = 50;
-static constexpr int OFFLINE_HIT_QUEUE_CAPACITY = BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY;
-static constexpr uint32_t OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS = BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS;
+static constexpr int OFFLINE_HIT_QUEUE_CAPACITY =
+    BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY;
+static constexpr uint32_t OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS =
+    BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS;
 
-static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0, "offline hit queue capacity must be positive");
-static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255, "offline hit queue capacity must fit uint8_t counters");
+static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0,
+              "offline hit queue capacity must be positive");
+static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255,
+              "offline hit queue capacity must fit uint8_t counters");
+static_assert(PIEZO_AO_PIN >= 0,
+              "piezo AO pin must be configured for ADC threshold hit firmware");
+static_assert(PIEZO_AO_THRESHOLD_RAW > 0,
+              "piezo AO threshold must be positive");
+static_assert(PIEZO_AO_THRESHOLD_RAW <= 4095,
+              "piezo AO threshold must fit 12-bit ADC raw range");
+static_assert(PIEZO_AO_REARM_RAW >= 0,
+              "piezo AO rearm raw must be non-negative");
+static_assert(PIEZO_AO_REARM_RAW < PIEZO_AO_THRESHOLD_RAW,
+              "piezo AO rearm raw must be below threshold");
+static_assert(PIEZO_AO_CAPTURE_WINDOW_MS > 0,
+              "piezo AO capture window must be positive");
 
-static constexpr const char* ROBOT_ID = BATTLEBANG_ROBOT_ID;
-static constexpr const char* WIFI_SSID = BATTLEBANG_WIFI_SSID;
-static constexpr const char* WIFI_PASSWORD = BATTLEBANG_WIFI_PASSWORD;
-static constexpr const char* MQTT_HOST = BATTLEBANG_MQTT_HOST;
+static constexpr const char *ROBOT_ID = BATTLEBANG_ROBOT_ID;
+static constexpr const char *WIFI_SSID = BATTLEBANG_WIFI_SSID;
+static constexpr const char *WIFI_PASSWORD = BATTLEBANG_WIFI_PASSWORD;
+static constexpr const char *MQTT_HOST = BATTLEBANG_MQTT_HOST;
 static constexpr uint16_t MQTT_PORT = BATTLEBANG_MQTT_PORT;
-static constexpr const char* MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
+static constexpr const char *MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
 static constexpr uint16_t MQTT_BUFFER_SIZE = 768;
 
-inline const char* targetIdToSensorId(int targetId) {
+inline const char *targetIdToSensorId(int targetId) {
   return (targetId == 1) ? "piezo_t1" : "piezo_t2";
 }
 
-}  // namespace go2
+} // namespace go2

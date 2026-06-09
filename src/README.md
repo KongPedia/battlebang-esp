@@ -4,10 +4,11 @@
 
 | Folder | PlatformIO env | Local config/env | Purpose |
 | --- | --- | --- | --- |
-| `go2_nixo/` | `esp32dev_go2_03`, `esp32dev_go2_05`, etc. | shell env / profiles documented in folder README | Go2-mounted battle robot ESP path. |
+| `go2/` | `esp32dev_go2_go2_03`, `esp32dev_go2_go2_05`, etc. | `src/go2/local_secrets.h` from example / `src/go2/robots.json` | Active Go2 hit/LED ESP path: piezo AO ADC threshold + Command Center ring display. |
+| `nIxo/` | `esp32dev_nixo_go2_03`, `esp32dev_nixo_go2_05`, etc. | `src/nIxo/local_secrets.h` from example | Active standalone Nixo/game blaster relay ESP path. |
+| `go2_nixo/` | `esp32dev_go2_nixo_go2_03`, `esp32dev_go2_nixo_go2_05`, etc. | shell env / profiles documented in folder README | Optional one-ESP integrated fallback path. |
 | `hit_target/` | `esp32dev_hit_target` | `src/hit_target/.env.hit_target` from `.env.hit_target.example` | Standalone generic piezo + circular LED hit target with local HP/effects, MQTT config, and OTA. |
 | `turret_fleet/` | `esp32dev_turret_fleet` | `src/turret_fleet/.env.turret_fleet` from `.env.turret_fleet.example` | Generic runtime-configured turret fleet firmware. |
-| `nIxo/` | `esp32dev_nixo` | `src/nIxo/local_secrets.h` from example | Legacy/current Nixo single-relay firmware path. |
 | `turret/` | legacy envs | `src/turret/local_secrets.h` | Legacy/reference turret firmware. |
 
 ## Independence rules

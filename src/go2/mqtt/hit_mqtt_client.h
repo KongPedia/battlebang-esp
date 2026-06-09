@@ -22,6 +22,8 @@ struct QueuedHitCandidate {
   bool hit = false;
   uint32_t sequence = 0;
   uint32_t firmwareTsMs = 0;
+  int peakRaw = -1;
+  int thresholdRaw = -1;
 };
 
 using RingDisplayHandler = void (*)(const RingDisplayUpdate& update);
@@ -38,8 +40,15 @@ class HitMqttClient {
                            uint32_t firmwareTsMs,
                            bool queued = false,
                            uint32_t queuedForMs = 0,
-                           uint8_t queueDepth = 0);
-  void queueHitCandidate(int targetId, bool hit, uint32_t sequence, uint32_t firmwareTsMs);
+                           uint8_t queueDepth = 0,
+                           int peakRaw = -1,
+                           int thresholdRaw = -1);
+  void queueHitCandidate(int targetId,
+                         bool hit,
+                         uint32_t sequence,
+                         uint32_t firmwareTsMs,
+                         int peakRaw = -1,
+                         int thresholdRaw = -1);
   void clearOfflineQueue();
   uint8_t offlineQueueCount() const;
   const char* eventTopic() const;

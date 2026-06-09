@@ -4,6 +4,27 @@
 // place for Wi-Fi/MQTT values when using PlatformIO on the operator laptop.
 #if __has_include("local_secrets.h") && !defined(NIXO_SKIP_LOCAL_SECRETS)
 #include "local_secrets.h"
+#elif __has_include("../local_secrets.h") && !defined(NIXO_SKIP_LOCAL_SECRETS)
+#include "../local_secrets.h"
+#endif
+
+
+// Compatibility with the shared repo-local src/local_secrets.h used by Go2.
+// Only network fields are aliased; the Nixo command topic remains battlebang/nixo.
+#if defined(ESP_WIFI_SSID) && !defined(NIXO_WIFI_SSID)
+#define NIXO_WIFI_SSID ESP_WIFI_SSID
+#endif
+
+#if defined(ESP_WIFI_PASSWORD) && !defined(NIXO_WIFI_PASSWORD)
+#define NIXO_WIFI_PASSWORD ESP_WIFI_PASSWORD
+#endif
+
+#if defined(ESP_MQTT_HOST) && !defined(NIXO_MQTT_HOST)
+#define NIXO_MQTT_HOST ESP_MQTT_HOST
+#endif
+
+#if defined(ESP_MQTT_PORT) && !defined(NIXO_MQTT_PORT)
+#define NIXO_MQTT_PORT ESP_MQTT_PORT
 #endif
 
 // Overrides injected by scripts/nixo_config.py from shell environment. These
@@ -47,6 +68,31 @@
 #ifdef NIXO_BUILD_MQTT_TOPIC_PREFIX
 #undef NIXO_MQTT_TOPIC_PREFIX
 #define NIXO_MQTT_TOPIC_PREFIX NIXO_BUILD_MQTT_TOPIC_PREFIX
+#endif
+
+#ifdef NIXO_BUILD_FIRE_DEFAULT_DURATION_MS
+#undef NIXO_FIRE_DEFAULT_DURATION_MS
+#define NIXO_FIRE_DEFAULT_DURATION_MS NIXO_BUILD_FIRE_DEFAULT_DURATION_MS
+#endif
+
+#ifdef NIXO_BUILD_FIRE_MIN_DURATION_MS
+#undef NIXO_FIRE_MIN_DURATION_MS
+#define NIXO_FIRE_MIN_DURATION_MS NIXO_BUILD_FIRE_MIN_DURATION_MS
+#endif
+
+#ifdef NIXO_BUILD_FIRE_MAX_DURATION_MS
+#undef NIXO_FIRE_MAX_DURATION_MS
+#define NIXO_FIRE_MAX_DURATION_MS NIXO_BUILD_FIRE_MAX_DURATION_MS
+#endif
+
+#ifdef NIXO_BUILD_FIRE_COOLDOWN_MS
+#undef NIXO_FIRE_COOLDOWN_MS
+#define NIXO_FIRE_COOLDOWN_MS NIXO_BUILD_FIRE_COOLDOWN_MS
+#endif
+
+#ifdef NIXO_BUILD_PREFIRE_DELAY_MS
+#undef NIXO_PREFIRE_DELAY_MS
+#define NIXO_PREFIRE_DELAY_MS NIXO_BUILD_PREFIRE_DELAY_MS
 #endif
 
 #ifndef NIXO_ID
@@ -103,6 +149,18 @@
 
 #ifndef NIXO_FIRE_MAX_DURATION_MS
 #define NIXO_FIRE_MAX_DURATION_MS 10000
+#endif
+
+#ifndef NIXO_FIRE_COOLDOWN_MS
+#define NIXO_FIRE_COOLDOWN_MS 2500
+#endif
+
+#ifndef NIXO_PREFIRE_DELAY_MS
+#define NIXO_PREFIRE_DELAY_MS 600
+#endif
+
+#ifndef NIXO_RELAY_DELAY1_MS
+#define NIXO_RELAY_DELAY1_MS 800
 #endif
 
 #ifndef NIXO_RELAY1_PIN

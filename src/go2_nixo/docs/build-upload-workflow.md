@@ -1,6 +1,6 @@
-# Go2 ESP 빌드 / 업로드 흐름
+# Integrated Go2/Nixo fallback ESP 빌드 / 업로드 흐름
 
-Go2 피격 ESP는 터렛과 동일하게 **장치별 non-secret profile + 로컬 secret + flash script** 구조로 빌드합니다.
+`src/go2_nixo`는 hit/ring/Nixo를 한 ESP에 통합한 fallback 경로입니다. 현재 active 2-ESP split은 `src/go2` + `src/nIxo`를 사용합니다.
 
 ## 1. 로컬 secrets
 
@@ -35,7 +35,7 @@ ESP에는 스코어/down 기준을 넣지 않습니다. 해당 정책은 Command
 ## 3. 빌드만 검증
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_05 --build-only
+pio run -e esp32dev_go2_nixo_go2_05
 ```
 
 ## 4. USB 업로드
@@ -43,20 +43,20 @@ python3 scripts/go2_flash.py flash --target go2_05 --build-only
 먼저 포트를 확인합니다.
 
 ```bash
-python3 scripts/go2_flash.py list-ports
+pio device list
 ```
 
 업로드 예:
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-xxxx
+pio run -e esp32dev_go2_nixo_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
 ```
 
 ## 5. PlatformIO 직접 사용
 
 ```bash
-pio run -e esp32dev_go2_05
-pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
+pio run -e esp32dev_go2_nixo_go2_05
+pio run -e esp32dev_go2_nixo_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
 ```
 
 ## 구조 메모

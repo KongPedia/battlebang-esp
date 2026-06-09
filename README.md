@@ -4,94 +4,92 @@ ESP32 펌웨어 저장소입니다. Go2-mounted ESP, 터렛 등 장치별 펌웨
 
 | PlatformIO env | Source entrypoint | Purpose |
 | --- | --- | --- |
-| `esp32dev`, `esp32dev_go2_*` | `src/go2_nixo/main.cpp` + `src/go2_nixo/**` | Go2-mounted hit sensor / ring LED + Nixo/game blaster fire firmware |
+| `esp32dev`, `esp32dev_go2`, `esp32dev_go2_go2_*` | `src/go2/main.cpp` + `src/go2/display/**` + `src/go2/mqtt/**` | Go2-mounted hit/LED ESP: piezo AO ADC threshold + Command Center ring display |
+| `esp32dev_go2_nixo`, `esp32dev_go2_nixo_go2_*` | `src/go2_nixo/main.cpp` + `src/go2_nixo/**` | Optional one-ESP fallback: hit/ring LED + Nixo relay |
+| `esp32dev_nixo`, `esp32dev_nixo_go2_*` | `src/nIxo/main.cpp` | Standalone Nixo/game blaster relay ESP |
 | `esp32dev_hit_target` | `src/hit_target/main.cpp` + `src/hit_target/**` | Generic standalone piezo + circular LED ring hit target firmware |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
 | `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware with MQTT config + OTA |
 
 ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
 
-## Active vs legacy Go2/Nixo firmware
+## Active Go2/Nixo firmware layout
 
-현재 Go2에 실제로 구워야 하는 펌웨어는 **`src/go2_nixo` 통합 펌웨어**입니다.
+현재 4층 테스트 기준 Go2는 **2-ESP split**이 active입니다.
 
-- Active: `src/go2_nixo/`
-  - hit sensor
-  - ring LED
-  - Nixo/game blaster fire
-  - 빌드/업로드 env: `esp32dev_go2_03`, `esp32dev_go2_05`, `esp32dev_go2_06`, `esp32dev_go2_07`
-- Legacy/reference: `src/go2/`
-  - 예전 Go2 hit/ring 전용 펌웨어 보관용
-  - 현재 `esp32dev_go2_*` 빌드에는 들어가지 않음
-- Legacy/reference: `src/nIxo/`
-  - 예전 Nixo 단독 펌웨어 보관용
-  - 현재 `esp32dev_go2_*` 빌드에는 들어가지 않음
+- Go2 hit/LED ESP: `src/go2/`
+  - piezo **AO ADC threshold** 기반 `hit_candidate` publish
+  - Command Center가 내려준 `ring_display` 렌더링
+  - 빌드/업로드 env: `esp32dev_go2_go2_03`, `esp32dev_go2_go2_05`, `esp32dev_go2_go2_06`, `esp32dev_go2_go2_07`
+- Nixo/game blaster ESP: `src/nIxo/`
+  - Command Center가 MQTT로 publish한 `battlebang/nixo/{nixo_id}/command` fire 명령 수신
+  - GPIO23 relay-only fire sequence
+  - 빌드/업로드 env: `esp32dev_nixo_go2_03`, `esp32dev_nixo_go2_05`, `esp32dev_nixo_go2_06`, `esp32dev_nixo_go2_07`
+- Optional one-ESP fallback/reference: `src/go2_nixo/`
+  - hit/ring/Nixo가 한 ESP에 통합된 경로
+  - 빌드/업로드 env: `esp32dev_go2_nixo_go2_03`, `esp32dev_go2_nixo_go2_05`, `esp32dev_go2_nixo_go2_06`, `esp32dev_go2_nixo_go2_07`
 
-`platformio.ini`의 Go2 env는 `build_src_filter = +<go2_nixo/**>`를 사용하므로, 아래처럼 굽는 명령은
-`src/go2_nixo`만 컴파일/업로드합니다.
+`esp32dev_go2_03` 같은 구형 env 이름은 의도적으로 제거했습니다. 잘못된 펌웨어를 굽는 것을 막기 위해 아래 canonical env만 사용합니다.
 
 ```bash
-pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+# Go2 hit/LED ESP, go2_03
+pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+
+# Nixo relay ESP, paired with go2_03
+pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-YYYY
+
+# 필요할 때만: one-ESP integrated fallback
+pio run -e esp32dev_go2_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-ZZZZ
 ```
 
 ---
 
-## Go2-mounted ESP firmware summary
+## Go2 hit/LED ESP firmware summary
 
-Go2-mounted ESP는 Command Center와 MQTT로 직접 통신합니다. Hit sensor/ring LED와 Nixo/game blaster fire가
-`src/go2_nixo` firmware 하나로 통합되어 있습니다.
+Go2 hit/LED ESP는 Command Center와 MQTT로 직접 통신합니다. 이 펌웨어는 발사/릴레이/서보를 하지 않고, AO ADC threshold를 넘은 피에조 입력을 `hit_candidate`로 보낸 뒤 서버의 `ring_display` 명령만 렌더링합니다.
 
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
   - `hit_candidate`
   - `heartbeat`
 - Command Center → ESP: `battlebang/hit/{robot_id}/ring_display/command`
   - `ring_display`
-- Command Center → ESP: `battlebang/nixo/{nixo_id}/command`
-  - `fire`
 
-Go2 피격 펌웨어 구조:
+Go2 hit/LED 펌웨어 구조:
 
-- `src/go2_nixo/main.cpp`: Arduino `setup/loop` 진입점 및 Go2 피격 ESP runtime 오케스트레이션
-- `src/go2_nixo/build_config.h`: 핀, MQTT topic, 빌드 설정
-- `src/go2_nixo/robots.json`: Go2별 non-secret 프로필. `robot_id`, LED/센서/Nixo relay 핀 등
-- `src/go2_nixo/local_secrets.h`: Wi-Fi/MQTT secret. **gitignore 대상**
-- `src/go2_nixo/piezo/piezo_sensor.*`: 피에조 DO 디지털 입력, ISR edge detection, debounce/cooldown
-- `src/go2_nixo/ring_led/ring_display.*`: Command Center `ring_display` 렌더링과 fallback LED 표시
-- `src/go2_nixo/mqtt/hit_mqtt_client.*`: MQTT hit_candidate/heartbeat publish, ring_display subscribe
-- `src/go2_nixo/nixo/nixo_fire_client.*`: MQTT Nixo fire command subscribe, servo/relay fire sequence
-- `src/go2_nixo/docs/`: 터렛 문서 구조와 맞춘 Go2 빌드/통신/fallback 문서
+- `src/go2/main.cpp`: Arduino `setup/loop` 진입점 및 Go2 hit/LED ESP runtime 오케스트레이션
+- `src/go2/build_config.h`: 핀, MQTT topic, 빌드 설정
+- `src/go2/robots.json`: Go2별 non-secret 프로필. `robot_id`, LED/센서 ADC threshold 등
+- `src/go2/local_secrets.h`: Wi-Fi/MQTT secret. **gitignore 대상**
+- `src/go2/display/`: Command Center `ring_display` 렌더링과 fallback LED 표시
+- `src/go2/mqtt/`: MQTT hit_candidate/heartbeat publish, ring_display subscribe
+- `src/go2/docs/`: Go2 hit/LED 빌드/통신 문서
 
-Go2 Nixo 기본 핀맵 (`src/go2_nixo/robots.json` defaults 기준, UART 제외):
+Go2 hit/LED 기본 핀맵 (`src/go2/robots.json` defaults 기준):
 
 | Part | Pin |
 | --- | --- |
 | LED ring data | `GPIO4` |
-| Piezo T1 DO | `GPIO27` |
-| Piezo T2 DO | `-1` |
-| Nixo relay CH1 | `GPIO23` |
-| Nixo relay CH2 | `-1` |
-| Nixo servo PWM | `GPIO18` |
+| Piezo AO | `GPIO34` |
+| Piezo D0 debug readback | `GPIO27` |
 
 초기 설정:
 
 ```bash
-cp src/go2_nixo/local_secrets.example.h src/go2_nixo/local_secrets.h
-# src/go2_nixo/local_secrets.h 안의 Wi-Fi / MQTT broker 수정
+cp src/go2/local_secrets.example.h src/go2/local_secrets.h
+# src/go2/local_secrets.h 안의 Wi-Fi / MQTT broker 수정
 ```
 
-### Go2 Nixo 코드 굽는 명령어
-
-현재 통합 Go2 ESP 펌웨어는 `src/go2_nixo/**`이고, 로봇별 PlatformIO env로 굽습니다.
+### Go2 hit/LED 코드 굽는 명령어
 
 ```bash
 # 1) ESP32 USB 포트 확인
 python3 scripts/go2_flash.py list-ports
 
-# 2) go2_03용 통합 hit/ring LED/Nixo 펌웨어 빌드
-pio run -e esp32dev_go2_03
+# 2) go2_03용 hit/LED 펌웨어 빌드
+pio run -e esp32dev_go2_go2_03
 
-# 3) go2_03용 펌웨어를 실제 ESP32에 업로드/flash
-pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+# 3) go2_03용 hit/LED 펌웨어 업로드/flash
+pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
 
 # 4) 업로드 후 serial log 확인
 pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
@@ -100,10 +98,10 @@ pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 다른 Go2에 굽는 경우 env만 바꿉니다.
 
 ```bash
-pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
 터렛 flash 스크립트와 같은 방식으로도 실행할 수 있습니다.
@@ -123,7 +121,9 @@ ESP_MQTT_HOST="<command-center-or-broker-ip>" \
 pio run -e esp32dev_go2
 ```
 
-Nixo/game blaster fire uses the same Go2 firmware and broker. Defaults:
+### Nixo relay ESP 기본값
+
+Nixo/game blaster fire는 별도 `src/nIxo` ESP가 같은 broker를 통해 처리합니다. Defaults:
 
 - relay pin: `GPIO23`
 - relay polarity: active-HIGH (`HIGH` = fire/on, `LOW` = off)
@@ -131,13 +131,19 @@ Nixo/game blaster fire uses the same Go2 firmware and broker. Defaults:
 - live mapping: `go2_03 -> nixo_go2_03`
 - MQTT topic: `battlebang/nixo/nixo_go2_03/command`
 
+```bash
+cp src/nIxo/local_secrets.example.h src/nIxo/local_secrets.h
+pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-YYYY
+```
+
 ---
 
 ## Generic standalone hit target firmware
 
-`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from the Go2-mounted `src/go2_nixo/` firmware:
+`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from the Go2-mounted `src/go2/` hit/LED firmware and the optional integrated `src/go2_nixo/` fallback:
 
-- `src/go2_nixo/`: Go2-mounted battle robot ESP, MQTT-controlled by Command Center, robot IDs come from `robots.json`.
+- `src/go2/`: Go2-mounted hit/LED ESP, MQTT-controlled by Command Center, robot IDs come from `robots.json`.
+- `src/go2_nixo/`: optional one-ESP integrated fallback, MQTT-controlled by Command Center.
 - `src/hit_target/`: standalone/tutorial hit target, local HP/effect loop, `target_id` is derived at boot from the ESP32 eFuse MAC address (for example `hit_target_AABBCCDDEEFF`).
 
 Implemented local UX:
@@ -192,11 +198,14 @@ See `src/hit_target/README.md` for serial commands, MQTT topics, OTA manifest ru
 From this repo root:
 
 ```bash
-# Build combined Go2 hit/ring/Nixo fire ESP firmware.
-pio run -e esp32dev_go2_05
+# Build Go2 hit/LED ESP firmware.
+pio run -e esp32dev_go2_go2_05
 
-# Upload to a specific connected board.
-pio run -e esp32dev_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
+# Upload Go2 hit/LED firmware to a specific connected board.
+pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
+
+# Upload paired Nixo relay firmware to the Nixo ESP.
+pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-1131
 
 # Serial monitor after upload.
 pio device monitor -p /dev/cu.usbserial-1130 -b 115200

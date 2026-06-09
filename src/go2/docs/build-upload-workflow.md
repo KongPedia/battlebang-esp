@@ -27,7 +27,8 @@ cp src/go2/local_secrets.example.h src/go2/local_secrets.h
 - `hit_cooldown_ms`
 - offline hit queue capacity / flush interval
 - LED pin / LED count / brightness
-- piezo DO pin (기본 GPIO 27)
+- piezo AO ADC pin / threshold / rearm raw / capture window
+- piezo D0 pin은 hit 판정에 쓰지 않고 debug readback 용도
 - MQTT topic prefix
 
 ESP에는 스코어/down 기준을 넣지 않습니다. 해당 정책은 Command Center config가 소유합니다.
@@ -55,8 +56,8 @@ python3 scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-xxxx
 ## 5. PlatformIO 직접 사용
 
 ```bash
-pio run -e esp32dev_go2_05
-pio run -e esp32dev_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
+pio run -e esp32dev_go2_go2_05
+pio run -e esp32dev_go2_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
 ```
 
 ## 구조 메모

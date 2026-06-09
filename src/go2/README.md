@@ -6,13 +6,13 @@ Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 
 현재 Go2 ESP의 책임은 두 가지뿐입니다.
 
-1. 피에조 센서 DO 디지털 입력에서 valid hit가 발생하면 `hit=true` 이벤트를 Command Center에 publish
+1. 피에조 센서 AO ADC raw 값이 threshold 이상으로 올라오면 `hit_candidate(hit=true)` 이벤트를 Command Center에 publish
 2. Command Center가 내려준 `ring_display` 명령을 LED 링에 렌더링
 
 ESP는 타격 세기, 로컬 스코어, 로컬 down 상태를 계산하거나 저장하지 않습니다. 난이도/스코어/down 기준과 LED fill 비율은 Command Center 설정과 정책이 소유합니다. MQTT가 끊긴 동안의 hit는 RAM queue에 잠시 보관했다가 재연결 후 원래 `firmware_ts_ms`와 함께 재전송합니다.
 
 ```text
-Piezo DO -> ESP hit_candidate(hit=true) -> Command Center scoring/down policy
+Piezo AO ADC threshold -> ESP hit_candidate(hit=true, peak, threshold) -> Command Center scoring/down policy
 Command Center ring_display command -> ESP LED ring render
 ```
 
@@ -20,7 +20,6 @@ Command Center ring_display command -> ESP LED ring render
 
 ```text
 main.cpp   setup/loop runtime orchestration
-sensors/   piezo DO interrupt + cooldown/rearm gate
 display/   ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 ```
@@ -158,11 +157,11 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 ```text
 [CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
 [WIFI] connecting ssid=...
-[MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03
+[MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03-go2-948C
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
 ```
 
-피에조 센서 DO 디지털 입력이 올라오면 ESP가 `hit_candidate`를 publish합니다.
+피에조 센서 AO ADC raw 값이 threshold 이상으로 올라오면 ESP가 `hit_candidate`를 publish합니다.
 
 ```json
 {
@@ -172,7 +171,22 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
   "sensor_id": "piezo_t1",
   "sequence": 1,
   "hit": true,
-  "firmware_ts_ms": 12345
+  "peak": 2140,
+  "threshold": 1800,
+  "firmware_ts_ms": 12345,
+  "firmware": "go2",
+  "firmware_role": "hit_led",
+  "mac_suffix": "948C",
+  "client_id": "battlebang-hit-go2_03-go2-948C",
+  "metadata": {
+    "firmware": "go2",
+    "firmware_role": "hit_led",
+    "mac_suffix": "948C",
+    "client_id": "battlebang-hit-go2_03-go2-948C",
+    "hit_source": "piezo_ao_adc_threshold",
+    "adc_peak_raw": 2140,
+    "adc_threshold_raw": 1800
+  }
 }
 ```
 
@@ -194,6 +208,11 @@ Go2별 non-secret profile입니다.
     "num_leds": 40,
     "led_brightness": 80,
     "t1_do_pin": 27,
+    "piezo_ao_pin": 34,
+    "piezo_ao_threshold_raw": 1800,
+    "piezo_ao_rearm_raw": 400,
+    "piezo_ao_capture_window_ms": 30,
+    "piezo_ao_debug_period_ms": 100,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
