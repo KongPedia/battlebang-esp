@@ -17,17 +17,19 @@ struct HpConfig {
 };
 
 struct VisualConfig {
-  uint32_t orbitStepMs = 20;
-  uint8_t orbitTailLeds = 6;
-  uint32_t cooldownBlinkMs = 60;
-  uint32_t hitFlashMs = 50;
-  uint32_t damageChipMs = 580;
+  uint32_t damageChipMs = 240;
   uint8_t phaseBackfillGapLeds = 1;
   uint8_t phaseBackfillScale = 96;
-  uint32_t hpHitPulseMs = 180;
   uint32_t defeatBlackoutMs = 90;
-  uint32_t defeatRainbowMs = 900;
+  uint32_t defeatRainbowMs = 1900;
   uint8_t defeatRainbowSpins = 2;
+};
+
+struct ActivationConfig {
+  String mode = "always_on";
+  String linkedDeviceKind = "turret";
+  String linkedDeviceId;
+  uint32_t staleMs = 3000;
 };
 
 struct SensorConfig {
@@ -73,6 +75,7 @@ struct RuntimeConfig {
   SensorConfig sensor;
   LedConfig led;
   ResetConfig reset;
+  ActivationConfig activation;
 
   String wifiSsid;
   String wifiPassword;
@@ -105,6 +108,7 @@ uint32_t phaseColorRgb(const RuntimeConfig& config, uint8_t phaseIndex);
 bool gameplayConfigChanged(const RuntimeConfig& before, const RuntimeConfig& after);
 bool sensorPinsChanged(const RuntimeConfig& before, const RuntimeConfig& after);
 bool ledHardwareChanged(const RuntimeConfig& before, const RuntimeConfig& after);
+bool activationSubscriptionChanged(const RuntimeConfig& before, const RuntimeConfig& after);
 
 class RuntimeConfigStore {
  public:

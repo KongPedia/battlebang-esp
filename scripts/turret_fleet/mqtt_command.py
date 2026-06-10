@@ -226,6 +226,7 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
             payload["frame_id"] = args.frame_id
         if args.ttl_ms is not None:
             payload["ttl_ms"] = args.ttl_ms
+            payload["issued_at_ms"] = int(time.time() * 1000)
         return "command", payload
 
     if action in {"update", "ota-update"}:

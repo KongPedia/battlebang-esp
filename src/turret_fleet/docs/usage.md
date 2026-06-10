@@ -225,6 +225,9 @@ Use `hold` or `dead` to interrupt an active pattern. A direct `target` is
 rejected during an active pattern unless the payload includes `interrupt=true`,
 which clears the pattern before applying the target. `calibration_no_fire` is
 reserved for operator alignment and never starts relay/ESC fire.
+When Command Center sends a pattern `ttl_ms`, it also includes `issued_at_ms`.
+Updated firmware rejects expired timestamped commands once a valid wall clock is
+available; live untimestamped commands still work on boards without SNTP time.
 
 ### Live MQTT E2E check
 

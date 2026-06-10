@@ -2,7 +2,9 @@
 
 #include <math.h>
 #include <Preferences.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 namespace battlebang {
 namespace turret_fleet {
@@ -207,6 +209,57 @@ unsigned long normalizeFireHoldMs(JsonDocument& doc, const RuntimeConfig& config
   if (durationMs < config.fireMinHoldMs) return config.fireMinHoldMs;
   if (durationMs > config.fireMaxHoldMs) return config.fireMaxHoldMs;
   return durationMs;
+}
+
+uint64_t jsonUnsigned64(JsonVariantConst value) {
+  if (value.isNull()) return 0;
+  if (value.is<uint64_t>()) return value.as<uint64_t>();
+  if (value.is<unsigned long>()) return value.as<unsigned long>();
+  if (value.is<unsigned int>()) return value.as<unsigned int>();
+  if (value.is<long>()) {
+    const long parsed = value.as<long>();
+    return parsed > 0 ? static_cast<uint64_t>(parsed) : 0;
+  }
+  const char* text = value | "";
+  if (text[0] == '\0') return 0;
+  char* end = nullptr;
+  const unsigned long long parsed = strtoull(text, &end, 10);
+  return end != text ? static_cast<uint64_t>(parsed) : 0;
+}
+
+bool wallClockLooksValid() {
+  // Only enforce absolute command TTL when SNTP or another wall-clock source has set
+  // a modern Unix time. Without that, a live Command Center command must remain usable.
+  return time(nullptr) > 1700000000;
+}
+
+uint64_t nowEpochMs() {
+  return static_cast<uint64_t>(time(nullptr)) * 1000ULL;
+}
+
+bool commandExpiredByTtl(JsonDocument& doc, String& reason) {
+  const uint64_t ttlMs = jsonUnsigned64(doc["ttl_ms"]);
+  if (ttlMs == 0) return false;
+
+  const uint64_t expiresAtMs = jsonUnsigned64(doc["expires_at_ms"]);
+  uint64_t issuedAtMs = jsonUnsigned64(doc["issued_at_ms"]);
+  if (issuedAtMs == 0) issuedAtMs = jsonUnsigned64(doc["timestamp_ms"]);
+  if (expiresAtMs == 0 && issuedAtMs == 0) return false;
+  if (!wallClockLooksValid()) return false;
+
+  const uint64_t nowMs = nowEpochMs();
+  if (expiresAtMs != 0 && nowMs > expiresAtMs) {
+    reason = String("command rejected: ttl expired expires_at_ms=") +
+             String(static_cast<unsigned long>(expiresAtMs % 1000000000ULL));
+    return true;
+  }
+  if (issuedAtMs != 0 && nowMs > issuedAtMs + ttlMs) {
+    reason = String("command rejected: ttl expired issued_at_ms=") +
+             String(static_cast<unsigned long>(issuedAtMs % 1000000000ULL)) +
+             " ttl_ms=" + String(static_cast<unsigned long>(ttlMs));
+    return true;
+  }
+  return false;
 }
 
 unsigned long fireHardOffDelayMs(const RuntimeConfig& config, unsigned long holdMs) {
@@ -3012,7 +3065,7 @@ void TurretControl::updatePattern() {
   }
 }
 
-void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) {
+bool TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) {
   if (brownoutLockoutActive_) {
     forceFireOutputsSafeOff();
     pendingFire_ = false;
@@ -3021,7 +3074,7 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
                  "; send recover after manually confirming pose/power";
     Serial.print("[fleet][safety] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
   if (mode_ == "DEAD") {
     lastError_ = "fire rejected in DEAD mode";
@@ -3029,19 +3082,19 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
     Serial.print(lastError_);
     Serial.print(" from ");
     Serial.println(source);
-    return;
+    return false;
   }
   if (!config_.configured) {
     lastError_ = "fire rejected: turret is unconfigured";
     Serial.print("[fleet][fire] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
   if (patternPlan_.kind != PATTERN_NONE) {
     lastError_ = "fire rejected during active pattern";
     Serial.print("[fleet][fire] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
   updateCurrentAngles();
   if (!motionInsideSoftWindow()) {
@@ -3053,7 +3106,7 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
                  String(yawRawCurrent_) + " pitch_raw=" + String(pitchRawCurrent_);
     Serial.print("[fleet][safety] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
   if (isFireSequenceActive()) {
     const unsigned long holdMs = normalizeFireHoldMs(doc, config_);
@@ -3071,7 +3124,7 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
     }
     Serial.print("[fleet][fire] keepalive refreshed hold_ms=");
     Serial.println(holdMs);
-    return;
+    return true;
   }
 
   const unsigned long holdMs = normalizeFireHoldMs(doc, config_);
@@ -3084,21 +3137,22 @@ void TurretControl::startFireFromCommand(JsonDocument& doc, const char* source) 
   Serial.print(" hold_ms=");
   Serial.println(holdMs);
   startFireSequence(holdMs, source);
+  return true;
 }
 
-void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) {
+bool TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) {
   if (!config_.configured) {
     lastError_ = "pattern rejected: turret is unconfigured";
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
-  if (!validateFrame(doc["frame_id"], "pattern", source)) return;
+  if (!validateFrame(doc["frame_id"], "pattern", source)) return false;
   if (mode_ == "DEAD" || brownoutLockoutActive_) {
     lastError_ = "pattern rejected: unsafe current state";
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
 
   const char* patternId = doc["pattern_id"] | "";
@@ -3106,7 +3160,7 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
     lastError_ = "pattern_id missing";
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
 
   const PatternKind nextKind = patternKindFromId(patternId);
@@ -3115,7 +3169,7 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
     lastPatternError_ = lastError_;
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
 
   if (hasActivePattern() || fireState_ == "FIRING" || isFireSequenceActive()) {
@@ -3134,12 +3188,12 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
     lastError_ = lastPatternError_;
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
   if (!validatePatternPlanEnvelope(nextPlan, patternId)) {
     Serial.print("[fleet][pattern] ");
     Serial.println(lastError_);
-    return;
+    return false;
   }
 
   // The motion safety gate must run after the first pattern point has populated
@@ -3175,18 +3229,31 @@ void TurretControl::handlePatternCommand(JsonDocument& doc, const char* source) 
   if (activePatternId_ == "calibration_no_fire") {
     Serial.println("[fleet][pattern] calibration_no_fire: relay/ESC fire disabled by contract");
   }
+  return true;
 }
 
-void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
+bool TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
+  lastError_ = "";
   const char* command = doc["command"] | "";
   lastCommandId_ = doc["command_id"] | "";
 
-  if (strcmp(command, "recover") == 0 || strcmp(command, "clear_brownout_lockout") == 0) {
-    clearBrownoutLockoutIfSafe(source);
-    return;
+  String ttlRejectReason;
+  if (commandExpiredByTtl(doc, ttlRejectReason)) {
+    lastError_ = ttlRejectReason;
+    Serial.print("[fleet][control] ");
+    Serial.print(lastError_);
+    Serial.print(" command=");
+    Serial.print(command);
+    Serial.print(" from ");
+    Serial.println(source);
+    return false;
   }
 
-  if (commandBlockedByBrownoutLockout(command, source)) return;
+  if (strcmp(command, "recover") == 0 || strcmp(command, "clear_brownout_lockout") == 0) {
+    return clearBrownoutLockoutIfSafe(source);
+  }
+
+  if (commandBlockedByBrownoutLockout(command, source)) return false;
 
   if (strcmp(command, "idle") == 0) {
     preemptActivePattern("idle", source, true);
@@ -3201,7 +3268,7 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
       bool pitchOnlyAllowed = false;
       if (!fullMotionAllowed) {
         pitchOnlyAllowed = ensurePitchSafetyForTracking(source);
-        if (!pitchOnlyAllowed) return;
+        if (!pitchOnlyAllowed) return false;
         detachYawOutput("idle_pitch_only_yaw_inhibited");
       }
       yawTrackingSuppressed_ = pitchOnlyAllowed;
@@ -3233,7 +3300,7 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
     bool pitchOnlyAllowed = false;
     if (!fullMotionAllowed) {
       pitchOnlyAllowed = ensurePitchSafetyForTracking(source);
-      if (!pitchOnlyAllowed) return;
+      if (!pitchOnlyAllowed) return false;
       detachYawOutput("dead_pitch_only_yaw_inhibited");
     }
     yawTrackingSuppressed_ = pitchOnlyAllowed;
@@ -3283,37 +3350,31 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
              strcmp(command, "initiate") == 0 || strcmp(command, "initialize") == 0) {
     preemptActivePattern("home", source, true);
     clearPatternState("home");
-    applyHomeCommand(source);
-    return;
+    return applyHomeCommand(source);
   } else if (strcmp(command, "target") == 0) {
-    if (!validateFrame(doc["frame_id"], "target", source)) return;
+    if (!validateFrame(doc["frame_id"], "target", source)) return false;
     preemptActivePattern("target", source, true);
     clearPatternState("target");
-    applyTargetObject(doc["target"].as<JsonObjectConst>(), source);
-    return;
+    return applyTargetObject(doc["target"].as<JsonObjectConst>(), source);
   } else if (strcmp(command, "aim") == 0 || strcmp(command, "manual_aim") == 0) {
     preemptActivePattern("aim", source, true);
     clearPatternState("aim");
-    applyDirectAimCommand(doc, source);
-    return;
+    return applyDirectAimCommand(doc, source);
   } else if (strcmp(command, "jog") == 0 || strcmp(command, "debug_jog") == 0) {
     preemptActivePattern("jog", source, true);
     clearPatternState("jog");
-    applyJogCommand(doc, source);
-    return;
+    return applyJogCommand(doc, source);
   } else if (strcmp(command, "fire") == 0) {
-    startFireFromCommand(doc, source);
-    return;
+    return startFireFromCommand(doc, source);
   } else if (strcmp(command, "pattern") == 0) {
-    handlePatternCommand(doc, source);
-    return;
+    return handlePatternCommand(doc, source);
   } else {
     lastError_ = String("unsupported command: ") + command;
     Serial.print("[fleet][control] unsupported command from ");
     Serial.print(source);
     Serial.print(": ");
     Serial.println(command);
-    return;
+    return false;
   }
 
   Serial.print("[fleet][control] command from ");
@@ -3326,6 +3387,7 @@ void TurretControl::handleCommandJson(JsonDocument& doc, const char* source) {
   Serial.print(yawTargetDeg_, 2);
   Serial.print(" pitch_tgt=");
   Serial.println(pitchTargetDeg_, 2);
+  return lastError_.indexOf("rejected") < 0;
 }
 
 void TurretControl::appendStatus(JsonObject doc) const {
@@ -3351,6 +3413,12 @@ void TurretControl::appendStatus(JsonObject doc) const {
   doc["pattern_last_error"] = lastPatternError_;
   doc["fire_state"] = fireState_;
   doc["fire_sequence"] = fireSequenceName();
+  const bool hitTargetActive = mode_ == "PATTERN" ||
+                               fireState_ == "FIRING" ||
+                               isFireSequenceActive() ||
+                               patternPlan_.kind != PATTERN_NONE;
+  doc["activation_active"] = hitTargetActive;
+  doc["hit_target_active"] = hitTargetActive;
   doc["fire_remaining_ms"] = isFireSequenceActive() ? deadlineRemainingMs(now, fireKeepAliveUntilMs_) : 0;
   doc["fire_hard_off_remaining_ms"] = isFireSequenceActive() ? deadlineRemainingMs(now, fireHardOffAtMs_) : 0;
   doc["last_error"] = lastError_;

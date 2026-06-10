@@ -9,10 +9,11 @@
 - **Next-phase backfill:** while phase 1/2 are partially damaged, the removed rear arc is filled with a dim next-phase color (green phase shows yellow/orange behind it; yellow phase shows red behind it). One black gap LED is left at both circular boundaries so the current HP edge remains readable.
 - **Phase transition:** when one color phase is depleted, the dim next-phase rear arc stays visible, and the last current-color chunk reveals the next phase color behind it as the damage chip shrinks. On hit 5 this means orange grows behind the disappearing green chunk; on hit 10 red grows behind the disappearing yellow chunk. Only after that wipe finishes does the same next-phase color become the full/current HP ring, so the “HP was stripped” animation is not covered by a sudden off/on refill.
 - **Recent damage chip:** the LEDs that just disappeared stay visible as a red/orange damage chip, then quickly sequentially wipe away from the old HP edge back toward the remaining HP. This keeps “HP is decreasing” readable even when players fire rapidly.
-- **Independent overlay layer:** a neutral-white orbit highlight keeps travelling the full 360° ring in both ready-green and damaged phase-HP states. The tail is intentionally neutral, not green/cyan, so dark HP gaps do not show a green orbit.
-- **Hit flash / HP blink:** a short full-ring white flash for `hit_flash_ms` confirms impact, then the remaining HP gets a brightness blink/pulse for `hp_hit_pulse_ms`. The blink beat is `cooldown_blink_ms`, so the perceived hit feedback can be slowed down from NVS/MQTT without rebuilding.
-- **Lock term:** hits are ignored for `hit_cooldown_ms` after an accepted hit while the orbit keeps moving. This prevents rapid-fire/ISR chatter from dropping multiple HP steps at once.
-- **Destroyed / defeat:** final hit keeps the short white confirmation, then the last red HP chunk still wipes away as the normal damage-chip animation. After a short `defeat_blackout_ms` HP=0 beat, a one-shot rainbow gradient sweep/fade plays for `defeat_rainbow_ms`, then both HP + orbit layers turn off. This makes “defeated” read as a reward/completion moment, not another damage blink.
+- **Compact hit feedback:** orbit, full-ring hit flash, and HP blink/pulse effects are intentionally removed. Accepted hits only decrement HP and run the fast damage-chip wipe.
+- **Activation gate:** default `always_on` keeps standalone/Go2-style targets damageable all the time. `linked_device` subscribes to the linked device status topic and turns LEDs/hit vulnerability on only while that device is active; `linked_device_kind=turret` follows turret command/pattern status, while waiting/idle/dead/stale status makes the target invulnerable and turns the ring off without losing the stored HP value.
+- **Linked device defeat bridge:** the firmware publishes `destroyed=true` plus `linked_device_kind`/`linked_device_id` on `{root}/hit_targets/{target_id}/status` when HP reaches 0. Command Center currently maps `kind=turret` to a turret `dead` command; the ESP hit target itself does not command linked devices directly.
+- **Lock term:** hits are ignored for `hit_cooldown_ms` after an accepted hit. This prevents rapid-fire/ISR chatter from dropping multiple HP steps at once.
+- **Destroyed / defeat:** final hit lets the last red HP chunk wipe away, then a short `defeat_blackout_ms` HP=0 beat lands, a one-shot rainbow gradient sweep/fade plays for `defeat_rainbow_ms`, and the ring blacks out.
 - **Initialize/reset:** USB serial `r`/`2` and ESP32 BOOT/GPIO0 long-press reset the target to green ready without power cycling.
 - **Non-blocking loop:** LED animation, cooldown, re-arm, capture window, and serial commands are all `millis()`-driven. No effect path uses `delay()` except the 1 ms loop yield and boot settle.
 
@@ -31,13 +32,11 @@ Defaults are migrated from the wall-mounted target bench sketch on `origin/Heavy
 | HP phases | config | Default `hp_phase_count=3`, `hits_per_phase=5`, `max_hits=15`. |
 | Hit cooldown | config | Lock term after one accepted hit. |
 | Hit threshold / re-arm threshold | config | AO sensitivity only. Lower `hit_threshold` is more sensitive; keep re-arm lower than hit threshold. |
-| Hit flash / blink | config | `hit_flash_ms` controls the full white impact flash; `cooldown_blink_ms` controls the remaining-HP blink beat; `hp_hit_pulse_ms` controls total pulse duration. |
-| Damage chip | config | Recommended 300-650 ms; lower values make HP loss feel faster. Current default is 580 ms for a clearer sequential wipe. |
-| Defeat rainbow | config | Final HP=0 completion beat/sweep. Default `defeat_blackout_ms=90`, `defeat_rainbow_ms=900`, `defeat_rainbow_spins=2`. |
+| Activation mode | config | `always_on` or `linked_device`; kind `turret` follows `{root}/turrets/{linked_device_id}/status`, other kinds use `{root}/devices/{linked_device_id}/status`. |
+| Damage chip | config | Current default is 240 ms for compact/faster HP loss. |
+| Defeat rainbow | config | Final HP=0 completion beat/sweep. Default `defeat_blackout_ms=90`, `defeat_rainbow_ms=1900`, `defeat_rainbow_spins=2`. |
 | Phase backfill gap/scale | config | Shows dim next-phase color behind missing HP with black edge gaps. |
-| HP hit pulse | config | Short brightness pulse on remaining HP after the hit flash. |
 | Digital hit min edges / ISR debounce | config | DO-only sensitivity/noise filter. Keep `2` edges but lower debounce to catch faster piezo ringing. |
-| Orbit step | config | Lower is faster. |
 
 The photo wiring still needs bench confirmation before upload. Keep the ring on a stable 5 V supply and share GND with the ESP32. Do not power a high-current ring only from the ESP32 3.3 V rail.
 
@@ -84,7 +83,7 @@ cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
 ./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
 ```
 
-The helper sends one `provision {json}` line over USB serial, so Wi-Fi, Command Center/MQTT host, HP phase count, visual/effect timings, LED/reset metadata, hit sensitivity, OTA policy, and target metadata are stored in ESP32 NVS without rebuilding firmware. Leave `HIT_TARGET_TARGET_ID` empty to use the ESP32 MAC-derived `target_id`; set only `group`/`location` for human-readable placement.
+The helper sends one `provision {json}` line over USB serial, so Wi-Fi, Command Center/MQTT host, HP phase count, activation mode, compact visual timings, LED/reset metadata, hit sensitivity, OTA policy, and target metadata are stored in ESP32 NVS without rebuilding firmware. Leave `HIT_TARGET_TARGET_ID` empty to use the ESP32 MAC-derived `target_id`; set only `group`/`location` for human-readable placement.
 
 The real env file is intentionally ignored by `.gitignore` (`src/hit_target/.env.hit_target` and generic `src/*/.env.*`). Commit only `src/hit_target/.env.hit_target.example`.
 
@@ -104,16 +103,12 @@ BATTLEBANG_HIT_TARGET_HIT_COOLDOWN_MS=200 \
 BATTLEBANG_HIT_TARGET_HIT_REARM_STABLE_MS=80 \
 BATTLEBANG_HIT_TARGET_DIGITAL_HIT_MIN_EDGES=2 \
 BATTLEBANG_HIT_TARGET_DIGITAL_ISR_DEBOUNCE_US=5000 \
-BATTLEBANG_HIT_TARGET_HIT_FLASH_MS=50 \
-BATTLEBANG_HIT_TARGET_DAMAGE_CHIP_MS=580 \
+BATTLEBANG_HIT_TARGET_DAMAGE_CHIP_MS=240 \
 BATTLEBANG_HIT_TARGET_PHASE_BACKFILL_GAP_LEDS=1 \
 BATTLEBANG_HIT_TARGET_PHASE_BACKFILL_SCALE=96 \
-BATTLEBANG_HIT_TARGET_HP_HIT_PULSE_MS=180 \
 BATTLEBANG_HIT_TARGET_DEFEAT_BLACKOUT_MS=90 \
-BATTLEBANG_HIT_TARGET_DEFEAT_RAINBOW_MS=900 \
+BATTLEBANG_HIT_TARGET_DEFEAT_RAINBOW_MS=1900 \
 BATTLEBANG_HIT_TARGET_DEFEAT_RAINBOW_SPINS=2 \
-BATTLEBANG_HIT_TARGET_COOLDOWN_BLINK_MS=60 \
-BATTLEBANG_HIT_TARGET_ORBIT_STEP_MS=20 \
 BATTLEBANG_HIT_TARGET_PIEZO_DO_PIN=27 \
 BATTLEBANG_HIT_TARGET_PIEZO_AO_PIN=-1 \
 BATTLEBANG_HIT_TARGET_RESET_BUTTON_PIN=0 \
@@ -137,12 +132,14 @@ If the analog line is not wired yet, use `BATTLEBANG_HIT_TARGET_PIEZO_AO_PIN=-1`
 - `phase_backfill_gap_leds`: black gap LEDs at both boundaries between current HP and the dim next-phase rear arc. Default `1`.
 - `phase_backfill_scale`: brightness scale for the next-phase rear arc, 0-255. Default `96` so it is readable but weaker than current HP.
 - `defeat_blackout_ms`: short all-off beat after the final HP chunk disappears and before the rainbow starts. Default `90`; set `0` for immediate rainbow, keep short so the target does not look broken.
-- `defeat_rainbow_ms`: duration of the final HP=0 rainbow gradient before blackout. Default `900`; shorten for snappier arcade feedback, lengthen only if the target is used as a celebratory tutorial marker.
+- `defeat_rainbow_ms`: duration of the final HP=0 rainbow gradient before blackout. Default `1900`.
 - `defeat_rainbow_spins`: how many hue rotations the rainbow completes during that defeat window. Default `2`; higher feels more energetic but can become noisy.
-- `hit_flash_ms`: full-ring white impact flash. Raise to `70-90` if the impact is not visible enough, but avoid very long values because it hides HP.
-- `hp_hit_pulse_ms`: total remaining-HP blink/pulse window after the white flash. Raise when the hit confirmation feels too brief.
-- `cooldown_blink_ms`: beat interval for the remaining-HP pulse. Higher is slower/more readable; lower is twitchier/arcade-like.
-- Current default UX: hit 1-5 removes green in 12 LED chunks, hit 6-10 removes yellow in 12 LED chunks, hit 11-15 removes red in 12 LED chunks, then the last red chunk wipes away, a short HP=0 blackout beat lands, and the target plays a rainbow defeat sweep before blackout.
+- `activation.mode`: `always_on` ignores linked device state and stays damageable whenever enabled; use this for standalone/Go2-style targets. `linked_device` gates LEDs/hits from a linked status topic.
+- `activation.linked_device_kind`: device kind to follow. Current production value is `turret`; future/generic devices use the `devices/{id}/status` extension point.
+- `activation.linked_device_id`: linked device id to follow in `linked_device` mode, for example `turret_4`.
+- `activation.stale_ms`: linked device status timeout. If no fresh linked status arrives within this window, LEDs turn off and piezo hits are ignored.
+- Command Center bridge: `destroyed=true` plus `linked_device_kind=turret` and `linked_device_id` is the only coupling needed for HP0 -> turret `dead`; repeated destroyed status with the same hit `sequence` is deduped by Command Center.
+- Current default UX: hit 1-5 removes green in 12 LED chunks, hit 6-10 removes yellow in 12 LED chunks, hit 11-15 removes red in 12 LED chunks, then the last red chunk wipes away, a short HP=0 blackout beat lands, and the target plays a longer rainbow defeat sweep before blackout.
 - To make HP loss even more dramatic, lower `hits_per_phase` (for example 3). To make the target tougher without making each hit visually tiny, increase `hp_phase_count` instead of making one single-color ring have dozens of micro-steps.
 
 ## Runtime config / NVS / MQTT / OTA model
@@ -171,11 +168,14 @@ Example: make this target a 30-hit target without rebuilding:
     "palette": ["#009600", "#BE8200", "#BE0000"]
   },
   "visual": {
-    "hit_flash_ms": 80,
-    "cooldown_blink_ms": 140,
-    "hp_hit_pulse_ms": 320,
-    "damage_chip_ms": 680,
-    "orbit_step_ms": 16
+    "damage_chip_ms": 180,
+    "defeat_rainbow_ms": 1900
+  },
+  "activation": {
+    "mode": "linked_device",
+    "linked_device_kind": "turret",
+    "linked_device_id": "turret_4",
+    "stale_ms": 3000
   },
   "sensor": {
     "digital_hit_min_edges": 2,
@@ -193,10 +193,10 @@ What each common config value changes:
 | `hp.hits_per_phase` | Accepted hits needed to strip one phase. | `3 phases x 10` = 30 hits; gameplay config changes reset HP to full. |
 | `hp.palette` | Phase colors. Default green → yellow/orange → red. | Use readable high-contrast colors; dark colors reduce HP readability. |
 | `visual.damage_chip_ms` | How long the removed HP chunk sequentially wipes away. | Lower feels faster; too low makes HP loss hard to see. |
-| `visual.orbit_step_ms` | Orbit speed. Lower is faster. | Keep orbit moving even in green ready state so it reads as a target. |
-| `visual.hit_flash_ms` | Full white impact flash duration. | Raise to ~70-90 ms if impact is too quick; do not overdo it because it hides HP. |
-| `visual.cooldown_blink_ms` | Beat interval of the remaining-HP blink/pulse after impact. | Larger values make the blink feel slower and more readable. |
-| `visual.hp_hit_pulse_ms` | Total remaining-HP pulse duration after the white flash. | Larger values make “I was hit” linger without hiding HP. |
+| `activation.mode` | `always_on` or `linked_device`. | Use `linked_device` only when a linked status topic exists. |
+| `activation.linked_device_kind` | Linked device kind. | `turret` maps to turret status; other kinds use generic device status. |
+| `activation.linked_device_id` | Device id to follow. | Required for linked mode. |
+| `activation.stale_ms` | Linked status freshness window. | Too high can keep vulnerability after a disconnected turret; too low can flicker if status heartbeat is slow. |
 | `sensor.hit_cooldown_ms` | Lockout after one accepted hit. | Prevents one burst from dropping many HP steps. |
 | `sensor.digital_hit_min_edges` | DO comparator edges required inside capture window. | `1` is more sensitive but can false-trigger; default `2` is safer. |
 | `sensor.digital_isr_debounce_us` | DO edge debounce. | Lower feels more sensitive; too low can read wiring/comparator noise. |
@@ -215,6 +215,8 @@ MQTT topics use device-level discovery plus hit-target-level control:
 {root}/hit_targets/{target_id}/command
 {root}/hit_targets/{target_id}/ota
 {root}/hit_targets/all/ota
+{root}/turrets/{linked_device_id}/status        # subscribed when linked_device_kind=turret
+{root}/devices/{linked_device_id}/status        # extension point for non-turret linked devices
 ```
 
 Supported MQTT commands on `{root}/hit_targets/{target_id}/command`:
@@ -228,14 +230,41 @@ Supported MQTT commands on `{root}/hit_targets/{target_id}/command`:
 
 `{"command":"simulate_hit"}` is rejected unless `debug_allow_simulate_hit=true` is provisioned.
 
+LED smoothness note: linked device status is consumed as a lightweight filtered MQTT
+message. The firmware deliberately does not print every linked status payload to
+USB serial because 115200-bps JSON logging can visibly stall WS2812 updates.
+
 Local helper examples using `src/hit_target/.env.hit_target`:
 
 ```bash
+# Turret-free physical bench test: open the target as always-on, then hit the piezo.
+./bin/turret hit-target-mqtt bench-open \
+  --host MQTT_BROKER_IP --root battlebang_btb731 \
+  --target-id hit_target_AABBCCDDEEFF
+
+# Restore normal turret-linked activation after the bench test.
+./bin/turret hit-target-mqtt bench-close \
+  --host MQTT_BROKER_IP --root battlebang_btb731 \
+  --target-id hit_target_AABBCCDDEEFF \
+  --linked-device-kind turret --linked-device-id turret_4
+
+# Turret-free linked-mode test: keep the target configured as linked_device,
+# then publish fake turret status to the exact topic the target subscribes to.
+# `active` uses PATTERN/busy and should turn LED/vulnerability on while it runs.
+./bin/turret hit-target-mqtt linked-device-status turret_4 active --device-kind turret \
+  --host MQTT_BROKER_IP --root battlebang_btb731 \
+  --duration-s 30 --interval-s 0.5
+
+# End the fake command window. idle/WAIT_COMMAND should turn LED/vulnerability off.
+./bin/turret hit-target-mqtt linked-device-status turret_4 idle --device-kind turret \
+  --host MQTT_BROKER_IP --root battlebang_btb731 \
+  --duration-s 3
+
 # Make the ring 3 hits per phase, save to NVS, and reset HP to full.
 ./.venv-pio/bin/python scripts/hit_target/mqtt_command.py config \
   --target-id hit_target_AABBCCDDEEFF \
   --phase-count 3 --hits-per-phase 3 \
-  --hit-flash-ms 80 --cooldown-blink-ms 140 --hp-hit-pulse-ms 320 --damage-chip-ms 680 \
+  --damage-chip-ms 240 \
   --debug-allow-simulate-hit true
 
 # Reset, then restore the default 5 hits per phase.

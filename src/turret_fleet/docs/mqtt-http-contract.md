@@ -163,6 +163,10 @@ Payload examples:
 {"command":"pattern","pattern_id":"two_point_bounce","pattern_instance_id":"boss-phase-1-a-b","frame_id":"boss_stage_v1","params":{"loop":2,"dwell_ms":1000,"fire_ms":1000,"move_timeout_ms":60000,"return_to":"wait_command","points":[{"x":0.0,"y":0.75,"z":-0.6},{"x":0.0,"y":-0.5,"z":-0.6}]}}
 ```
 
+Timestamped commands may include `ttl_ms` with `issued_at_ms` or `expires_at_ms`.
+The firmware rejects expired timestamped commands when its wall clock is valid;
+the Command Center turret pattern path adds `issued_at_ms` automatically.
+
 BTB-726 keeps the player-facing catalog intentionally small and readable:
 `lane_sweep`, `two_point_bounce`, and `telegraph_column`. Command Center
 compiles 1F/2F pair choreography into per-turret primitive commands. Operator

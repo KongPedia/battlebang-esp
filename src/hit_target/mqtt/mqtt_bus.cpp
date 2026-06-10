@@ -12,11 +12,16 @@
 namespace battlebang {
 namespace hit_target {
 namespace {
-constexpr size_t kPayloadLimit = 4096;
+constexpr size_t kPayloadLimit = 8192;
 constexpr unsigned long kMqttRetryMs = 5000;
 constexpr unsigned long kStatusIntervalMs = 5000;
 constexpr unsigned long kStatusChangeCheckMs = 250;
 constexpr size_t kStatusDocCapacity = 4096;
+// Real turret status payloads include motion/OTA/config metadata and are ~3.6 KB
+// on the current fleet firmware. ArduinoJson filtering keeps only the fields
+// needed for activation gating, but the filtered object still exceeds 1 KB.
+constexpr size_t kLinkedDeviceStatusDocCapacity = 2048;
+constexpr bool kVerboseMqttPayloadLog = false;
 }
 
 void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManager& wifi, HitTargetController& target) {
@@ -34,6 +39,7 @@ void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManage
 
 void MqttBus::reconfigure() {
   subscriptionsDirty_ = true;
+  subscribedTopics_.clear();
   if (client_.connected()) client_.disconnect();
   lastConnectAttemptMs_ = 0;
 }
@@ -99,12 +105,28 @@ bool MqttBus::connectIfNeeded() {
 void MqttBus::subscribeTopics() {
   if (!client_.connected()) return;
   std::vector<String> topics = buildSubscriptionTopics(*config_);
+  for (const String& previousTopic : subscribedTopics_) {
+    bool stillNeeded = false;
+    for (const String& topic : topics) {
+      if (topic == previousTopic) {
+        stillNeeded = true;
+        break;
+      }
+    }
+    if (!stillNeeded) {
+      const bool ok = client_.unsubscribe(previousTopic.c_str());
+      Serial.print("[hit_target][mqtt] ");
+      Serial.print(ok ? "unsubscribed " : "unsubscribe failed ");
+      Serial.println(previousTopic);
+    }
+  }
   for (const String& topic : topics) {
     const bool ok = client_.subscribe(topic.c_str());
     Serial.print("[hit_target][mqtt] ");
     Serial.print(ok ? "subscribed " : "subscribe failed ");
     Serial.println(topic);
   }
+  subscribedTopics_ = topics;
   subscriptionsDirty_ = false;
 }
 
@@ -149,14 +171,23 @@ void MqttBus::handleMessage(char* topic, byte* payload, unsigned int length) {
     Serial.println("[hit_target][mqtt] payload too large; dropped");
     return;
   }
+  const String topicStr(topic);
+  TopicSet topics = buildTopics(*config_);
+  if (topics.linkedDeviceStatus.length() > 0 && topicStr == topics.linkedDeviceStatus) {
+    handleLinkedDeviceStatusPayload(payload, length);
+    return;
+  }
+
   String body;
   body.reserve(length + 1);
   for (unsigned int i = 0; i < length; ++i) body += static_cast<char>(payload[i]);
-  const String topicStr(topic);
-  Serial.print("[hit_target][mqtt] topic=");
-  Serial.print(topicStr);
-  Serial.print(" payload=");
-  Serial.println(body);
+  if (kVerboseMqttPayloadLog) {
+    Serial.print("[hit_target][mqtt] topic=");
+    Serial.print(topicStr);
+    Serial.print(" bytes=");
+    Serial.println(length);
+  }
+
   if (topicStr.endsWith("/config")) {
     handleConfigPayload(body.c_str());
   } else if (topicStr.endsWith("/ota")) {
@@ -180,6 +211,7 @@ void MqttBus::handleConfigPayload(const char* payload) {
   const bool mqttChanged = next.mqttHost != config_->mqttHost || next.mqttPort != config_->mqttPort ||
                            next.mqttUsername != config_->mqttUsername || next.mqttPassword != config_->mqttPassword ||
                            next.mqttRoot != config_->mqttRoot || next.targetId != config_->targetId;
+  const bool activationChanged = activationSubscriptionChanged(*config_, next);
   const bool resetState = gameplayConfigChanged(previous, next) || sensorPinsChanged(previous, next);
   *config_ = next;
   const bool saved = store_->save(*config_);
@@ -191,6 +223,9 @@ void MqttBus::handleConfigPayload(const char* payload) {
   if (mqttChanged) {
     Serial.println("[hit_target][config] MQTT identity/settings changed; reconnecting/resubscribing");
     reconfigure();
+  } else if (activationChanged) {
+    Serial.println("[hit_target][config] activation subscription changed; resubscribing");
+    subscriptionsDirty_ = true;
   } else {
     subscriptionsDirty_ = true;
   }
@@ -245,6 +280,35 @@ void MqttBus::handleCommandPayload(const char* topic, const char* payload) {
   Serial.print(": ");
   Serial.println(command);
   publishStatus("command_rejected");
+}
+
+void MqttBus::handleLinkedDeviceStatusPayload(const byte* payload, unsigned int length) {
+  if (target_ == nullptr) return;
+  StaticJsonDocument<512> filter;
+  filter["device_id"] = true;
+  filter["turret_id"] = true;
+  filter["id"] = true;
+  filter["mode"] = true;
+  filter["state"] = true;
+  filter["life_state"] = true;
+  filter["command_state"] = true;
+  filter["fire_state"] = true;
+  filter["pattern_state"] = true;
+  filter["ready_for_next_command"] = true;
+  filter["activation_active"] = true;
+  filter["hit_target_active"] = true;
+  filter["vulnerable"] = true;
+  filter["active"] = true;
+  filter["active_command_id"] = true;
+  DynamicJsonDocument doc(kLinkedDeviceStatusDocCapacity);
+  DeserializationError err = deserializeJson(doc, payload, length, DeserializationOption::Filter(filter));
+  if (err) {
+    Serial.print("[hit_target][activation] invalid linked device status: ");
+    Serial.println(err.c_str());
+    return;
+  }
+  const bool changed = target_->applyLinkedDeviceStatus(doc.as<JsonObjectConst>(), millis());
+  if (changed) publishStatus("linked_device_status");
 }
 
 void MqttBus::handleOtaPayload(const char* payload) {

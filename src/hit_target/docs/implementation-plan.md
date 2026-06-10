@@ -12,8 +12,11 @@
   - phase HP: default green 5 hits → yellow/orange 5 hits → red 5 hits;
   - dim next-phase backfill behind missing phase HP with black boundary gaps;
   - phase-transition reveal so hit 5/10 grows the next phase behind the shrinking removed chunk;
-  - short white hit flash, sequential red/orange damage chip, remaining HP pulse, lockout, and independent neutral-white orbit;
+  - compact sequential red/orange damage chip, lockout, and no orbit/hit-flash/remaining-HP pulse;
   - final HP chunk wipe, short HP=0 blackout beat, rainbow defeat sweep, then blackout.
+- Runtime activation:
+  - `always_on` keeps standalone/Go2-style targets damageable whenever enabled;
+  - `linked_device` subscribes to a linked device status topic, lights the ring and accepts piezo hits only while that device is active; kind `turret` maps to `{root}/turrets/{linked_device_id}/status`, while other kinds use `{root}/devices/{linked_device_id}/status`.
 - Runtime config model:
   - factory defaults still come from `src/hit_target/config.json` via `scripts/hit_target_config.py`;
   - after provisioning, NVS namespace `bb_hit_target` is the source of truth;
@@ -32,9 +35,10 @@
 
 ## Runtime config rules
 
-- Gameplay/effect/sensor values are runtime-configurable:
+- Gameplay/activation/sensor values are runtime-configurable:
   - `hp.phase_count`, `hp.hits_per_phase`, `hp.palette`;
-  - `visual.orbit_step_ms`, `visual.damage_chip_ms`, `visual.hit_flash_ms`, `visual.defeat_*`;
+  - `visual.damage_chip_ms`, `visual.defeat_*`;
+  - `activation.mode`, `activation.linked_device_kind`, `activation.linked_device_id`, `activation.stale_ms`;
   - `sensor.hit_threshold`, `sensor.digital_hit_min_edges`, `sensor.digital_isr_debounce_us`, cooldown/rearm/capture timings;
   - Wi-Fi, MQTT, and OTA policy.
 - Gameplay or sensor-pin config changes reset the local HP state to full. This avoids ambiguous mid-game remapping when changing 15 hits to 30/50 hits.

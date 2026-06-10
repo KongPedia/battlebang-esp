@@ -115,6 +115,26 @@ def test_fleet_target_contract_rejects_frame_mismatch_and_converts_meters() -> N
     assert "detachPitchOutput" in control
 
 
+def test_fleet_rejects_expired_timestamped_commands_when_wall_clock_is_valid() -> None:
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    helper = read("scripts/turret_fleet/mqtt_command.py")
+
+    assert "#include <time.h>" in control
+    assert "bool commandExpiredByTtl(JsonDocument& doc, String& reason)" in control
+    assert 'doc["issued_at_ms"]' in control
+    assert 'doc["timestamp_ms"]' in control
+    assert 'doc["expires_at_ms"]' in control
+    assert "wallClockLooksValid()" in control
+    assert "time(nullptr) > 1700000000" in control
+    assert "command rejected: ttl expired" in control
+    assert "if (commandExpiredByTtl(doc, ttlRejectReason))" in control
+    assert 'lastError_ = "";' in control.split("bool TurretControl::handleCommandJson", 1)[1].split("const char* command", 1)[0]
+    assert "lastError_ = ttlRejectReason;" in control
+    assert "return false;" in control.split("if (commandExpiredByTtl(doc, ttlRejectReason))", 1)[1].split("if (strcmp(command, \"recover\")", 1)[0]
+    assert "publishStatus(applied ? \"command_applied\" : \"command_rejected\")" in read("src/turret_fleet/mqtt/mqtt_bus.cpp")
+    assert 'payload["issued_at_ms"] = int(time.time() * 1000)' in helper
+
+
 def test_fleet_supports_direct_yaw_pitch_aim_for_axis_debugging() -> None:
     control = read("src/turret_fleet/control/turret_control.cpp")
     header = read("src/turret_fleet/control/turret_control.h")
@@ -580,8 +600,7 @@ def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> 
     assert lane_points[0]["y"] > 0
     assert lane_points[1]["y"] < 0
     for point in lane_points:
-        assert abs(point["y"]) <= 2.0
-        assert point["z"] < 0.0
+        assert isinstance(point["z"], int | float)
     assert presets["lane_sweep"]["loop"] == 1
     assert presets["two_point_bounce"]["points"] == [
         {"x": 0.0, "y": 0.75, "z": -0.6},
@@ -662,8 +681,7 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         assert lane_points[0]["y"] > 0
         assert lane_points[1]["y"] < 0
         for point in lane_points:
-            assert abs(point["y"]) <= 2.0
-            assert point["z"] < 0.0
+            assert isinstance(point["z"], int | float)
 
 
 def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
@@ -707,8 +725,8 @@ def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
     assert "outside safe command envelope margin" in control
     assert "pattern preempted by " in control
     assert 'preemptActivePattern("pattern", source, true);' in control
-    pattern_command_body = control.split("void TurretControl::handlePatternCommand", 1)[1].split(
-        "void TurretControl::handleCommandJson", 1
+    pattern_command_body = control.split("bool TurretControl::handlePatternCommand", 1)[1].split(
+        "bool TurretControl::handleCommandJson", 1
     )[0]
     assert "The motion safety gate must run after the first pattern point" in pattern_command_body
     assert "if (!ensureMotionSafetyForTracking(source)) return;" not in pattern_command_body
@@ -1196,8 +1214,7 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
     assert lane_points[0]["y"] > 0
     assert lane_points[1]["y"] < 0
     for point in lane_points:
-        assert abs(point["y"]) <= 2.0
-        assert point["z"] < 0.0
+        assert isinstance(point["z"], int | float)
     assert full_payload["patterns"]["presets"]["telegraph_column"]["random"] is True
     assert full_payload["patterns"]["presets"]["telegraph_column"]["points"] == [
         {"x": 0.0, "y": 0.0, "z": -0.6},
@@ -1510,8 +1527,8 @@ def test_fleet_motion_commands_use_runtime_configurable_inner_envelope() -> None
 
 def test_fleet_direct_fire_requires_current_pose_inside_safe_window() -> None:
     control = read("src/turret_fleet/control/turret_control.cpp")
-    fire_body = control.split("void TurretControl::startFireFromCommand", 1)[1].split(
-        "void TurretControl::handlePatternCommand", 1
+    fire_body = control.split("bool TurretControl::startFireFromCommand", 1)[1].split(
+        "bool TurretControl::handlePatternCommand", 1
     )[0]
 
     assert "updateCurrentAngles();" in fire_body

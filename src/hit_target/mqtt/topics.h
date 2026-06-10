@@ -17,6 +17,7 @@ struct TopicSet {
   String targetConfig;
   String targetCommand;
   String targetOta;
+  String linkedDeviceStatus;
 };
 
 TopicSet buildTopics(const RuntimeConfig& config);
