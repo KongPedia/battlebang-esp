@@ -151,8 +151,10 @@ Implemented local UX:
 - ready state starts as a full green circle
 - HP uses large readable color phases: green 5 hits, yellow 5 hits, red 5 hits by default; each accepted hit removes 1/5 of the current color ring instead of a tiny `1 / max_hits` slice
 - while green/yellow phases are partially damaged, the removed rear arc shows a dim next-phase color with black gap LEDs at both boundaries; phase transitions keep that existing dim next-phase rear arc visible while the last removed chunk wipes; the next color grows behind that shrinking chunk, then promotes into the next full ring
-- independent neutral-white orbit overlay keeps travelling the full 360° ring after damage without appearing green in dark HP sections
-- very short full-white hit confirmation, faster red/orange sequential recent-damage chip on the removed HP segment, remaining-HP pulse, lock-term input ignore, final HP chunk wipe, short blackout beat, rainbow defeat sweep, and blackout
+- compact feedback: no orbit, no full-ring hit flash, no remaining-HP pulse; accepted hits only decrement HP and run the faster red/orange recent-damage chip
+- activation can be `always_on` for standalone/Go2-style targets or `linked_device`, which follows a linked device status topic; kind `turret` follows turret command/pattern status
+- final HP0 publishes `destroyed=true` plus `linked_device_kind`/`linked_device_id`; Command Center can subscribe to that status and send `dead` when the linked device kind is `turret`
+- lock-term input ignore, final HP chunk wipe, short blackout beat, longer rainbow defeat sweep, and blackout
 - ESP32 BOOT/GPIO0 long-press initialize/reset in addition to USB serial reset
 - JSON-line USB serial events with MAC-derived `target_id` / `device_mac` for bench debugging and future controller parsing
 - DO-only piezo input uses configurable multi-edge capture/debounce (`digital_hit_min_edges`, `digital_isr_debounce_us`) to balance sensitivity against idle comparator noise
@@ -186,7 +188,7 @@ Default pins are migrated from the wall-mounted target bench sketch and can be o
 - piezo DO: GPIO27
 - piezo AO: disabled by default (`-1`; set an ADC1 GPIO such as GPIO34 if wired)
 - reset/initialize button: ESP32 BOOT/GPIO0 long-press after firmware boot
-- HP phases/hits-per-phase, AO threshold, DO noise/sensitivity filtering, cooldown, hit flash, damage-chip speed, remaining-HP pulse, and orbit speed are factory defaults in `src/hit_target/config.json`; after provisioning, NVS runtime config is the source of truth.
+- HP phases/hits-per-phase, activation mode, AO threshold, DO noise/sensitivity filtering, cooldown, damage-chip speed, and defeat timing are factory defaults in `src/hit_target/config.json`; after provisioning, NVS runtime config is the source of truth.
 - FastLED hardware-profile fields (`led.pin`, `led.type`, `led.color_order`) remain build/profile-bound; remote config can tune gameplay/sensor/brightness/LED count up to the compiled capacity.
 
 See `src/hit_target/README.md` for serial commands, MQTT topics, OTA manifest rules, and `BATTLEBANG_HIT_TARGET_*` factory-default overrides.

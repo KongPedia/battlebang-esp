@@ -103,6 +103,19 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
     if hp_phase_count is None or hits_per_phase is None:
         raise HitTargetProvisionError("HP phase count and hits per phase are required")
 
+    linked_device_kind = env_first(env, "HIT_TARGET_LINKED_DEVICE_KIND", default="turret") or "turret"
+    linked_device_id = env_first(
+        env,
+        "HIT_TARGET_LINKED_DEVICE_ID",
+        "HIT_TARGET_LINKED_TURRET_ID",
+        default="",
+    )
+    activation_mode = env_first(
+        env,
+        "HIT_TARGET_ACTIVATION_MODE",
+        default="linked_device" if linked_device_id else "always_on",
+    )
+
     doc: dict[str, Any] = {
         "type": "provision",
         "schema": 1,
@@ -115,17 +128,18 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
             "palette": split_palette(env_first(env, "HIT_TARGET_HP_PALETTE")),
         },
         "visual": {
-            "orbit_step_ms": env_int(env, "HIT_TARGET_ORBIT_STEP_MS", 20),
-            "orbit_tail_leds": env_int(env, "HIT_TARGET_ORBIT_TAIL_LEDS", 6),
-            "cooldown_blink_ms": env_int(env, "HIT_TARGET_COOLDOWN_BLINK_MS", 60),
-            "hit_flash_ms": env_int(env, "HIT_TARGET_HIT_FLASH_MS", 50),
-            "damage_chip_ms": env_int(env, "HIT_TARGET_DAMAGE_CHIP_MS", 580),
+            "damage_chip_ms": env_int(env, "HIT_TARGET_DAMAGE_CHIP_MS", 240),
             "phase_backfill_gap_leds": env_int(env, "HIT_TARGET_PHASE_BACKFILL_GAP_LEDS", 1),
             "phase_backfill_scale": env_int(env, "HIT_TARGET_PHASE_BACKFILL_SCALE", 96),
-            "hp_hit_pulse_ms": env_int(env, "HIT_TARGET_HP_HIT_PULSE_MS", 180),
             "defeat_blackout_ms": env_int(env, "HIT_TARGET_DEFEAT_BLACKOUT_MS", 90),
-            "defeat_rainbow_ms": env_int(env, "HIT_TARGET_DEFEAT_RAINBOW_MS", 900),
+            "defeat_rainbow_ms": env_int(env, "HIT_TARGET_DEFEAT_RAINBOW_MS", 1900),
             "defeat_rainbow_spins": env_int(env, "HIT_TARGET_DEFEAT_RAINBOW_SPINS", 2),
+        },
+        "activation": {
+            "mode": activation_mode,
+            "linked_device_kind": linked_device_kind,
+            "linked_device_id": linked_device_id or "",
+            "stale_ms": env_int(env, "HIT_TARGET_ACTIVATION_STALE_MS", 3000),
         },
         "sensor": {
             "piezo_do_pin": env_int(env, "HIT_TARGET_PIEZO_DO_PIN", 27),

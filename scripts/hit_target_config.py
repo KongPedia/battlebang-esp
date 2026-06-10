@@ -74,7 +74,6 @@ INT_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "BATTLEBANG_HIT_TARGET_CAPTURE_WINDOW_MS",
         "BATTLEBANG_HIT_TARGET_BUILD_CAPTURE_WINDOW_MS",
     ),
-    ("hit_flash_ms", "BATTLEBANG_HIT_TARGET_HIT_FLASH_MS", "BATTLEBANG_HIT_TARGET_BUILD_HIT_FLASH_MS"),
     (
         "damage_chip_ms",
         "BATTLEBANG_HIT_TARGET_DAMAGE_CHIP_MS",
@@ -89,11 +88,6 @@ INT_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "phase_backfill_scale",
         "BATTLEBANG_HIT_TARGET_PHASE_BACKFILL_SCALE",
         "BATTLEBANG_HIT_TARGET_BUILD_PHASE_BACKFILL_SCALE",
-    ),
-    (
-        "hp_hit_pulse_ms",
-        "BATTLEBANG_HIT_TARGET_HP_HIT_PULSE_MS",
-        "BATTLEBANG_HIT_TARGET_BUILD_HP_HIT_PULSE_MS",
     ),
     (
         "defeat_rainbow_ms",
@@ -130,13 +124,6 @@ INT_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "BATTLEBANG_HIT_TARGET_RESET_BUTTON_HOLD_MS",
         "BATTLEBANG_HIT_TARGET_BUILD_RESET_BUTTON_HOLD_MS",
     ),
-    (
-        "cooldown_blink_ms",
-        "BATTLEBANG_HIT_TARGET_COOLDOWN_BLINK_MS",
-        "BATTLEBANG_HIT_TARGET_BUILD_COOLDOWN_BLINK_MS",
-    ),
-    ("orbit_step_ms", "BATTLEBANG_HIT_TARGET_ORBIT_STEP_MS", "BATTLEBANG_HIT_TARGET_BUILD_ORBIT_STEP_MS"),
-    ("orbit_tail_leds", "BATTLEBANG_HIT_TARGET_ORBIT_TAIL_LEDS", "BATTLEBANG_HIT_TARGET_BUILD_ORBIT_TAIL_LEDS"),
 )
 
 TOKEN_OPTIONS: tuple[tuple[str, str, str], ...] = (
@@ -196,19 +183,15 @@ print(
     f"hits_per_phase={defaults.get('hits_per_phase')} "
     f"threshold={defaults.get('hit_threshold')} "
     f"cooldown_ms={defaults.get('hit_cooldown_ms')} "
-    f"hit_flash_ms={defaults.get('hit_flash_ms')} "
     f"damage_chip_ms={defaults.get('damage_chip_ms')} "
-    f"cooldown_blink_ms={defaults.get('cooldown_blink_ms')} "
     f"phase_backfill_gap_leds={defaults.get('phase_backfill_gap_leds')} "
     f"phase_backfill_scale={defaults.get('phase_backfill_scale')} "
-    f"hp_hit_pulse_ms={defaults.get('hp_hit_pulse_ms')} "
     f"defeat_blackout_ms={defaults.get('defeat_blackout_ms')} "
     f"defeat_rainbow_ms={defaults.get('defeat_rainbow_ms')} "
     f"defeat_rainbow_spins={defaults.get('defeat_rainbow_spins')} "
     f"rearm_stable_ms={defaults.get('hit_rearm_stable_ms')} "
     f"digital_hit_min_edges={defaults.get('digital_hit_min_edges')} "
     f"digital_isr_debounce_us={defaults.get('digital_isr_debounce_us')} "
-    f"orbit_step_ms={defaults.get('orbit_step_ms')} "
     f"led_pin={defaults.get('led_pin')} "
     f"num_leds={defaults.get('num_leds')} "
     f"led_type={defaults.get('led_type')} "

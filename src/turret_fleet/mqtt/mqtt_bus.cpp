@@ -279,8 +279,8 @@ void MqttBus::handleCommandPayload(const char* topic, const char* payload) {
     Serial.println(err.c_str());
     return;
   }
-  control_->handleCommandJson(doc, topic);
-  publishStatus("command_applied");
+  const bool applied = control_->handleCommandJson(doc, topic);
+  publishStatus(applied ? "command_applied" : "command_rejected");
 }
 
 }  // namespace turret_fleet

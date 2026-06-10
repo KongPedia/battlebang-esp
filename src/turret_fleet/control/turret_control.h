@@ -19,7 +19,7 @@ class TurretControl {
   bool recoverBrownoutLockoutIfSafe(const char* source);
   void enterBootInitialTarget(bool motionAllowed = true);
   void loop();
-  void handleCommandJson(JsonDocument& doc, const char* source);
+  bool handleCommandJson(JsonDocument& doc, const char* source);
   void appendStatus(JsonObject doc) const;
   const char* mode() const;
   const char* fireState() const;
@@ -192,7 +192,7 @@ class TurretControl {
   bool applyJogCommand(JsonDocument& doc, const char* source);
   bool hasActivePattern() const;
   void preemptActivePattern(const char* command, const char* source, bool forceFireSafeOff = true);
-  void handlePatternCommand(JsonDocument& doc, const char* source);
+  bool handlePatternCommand(JsonDocument& doc, const char* source);
   void updatePattern();
   void beginPatternStep(unsigned long now);
   void advancePatternStep();
@@ -202,7 +202,7 @@ class TurretControl {
   bool validatePatternPlanEnvelope(const PatternPlan& plan, const char* patternId);
   bool validatePatternPointEnvelope(const PatternPoint& point, uint8_t pointIndex, const char* patternId);
   bool applyPatternPoint(uint8_t pointIndex, const char* source, bool allowDuringFire = false);
-  void startFireFromCommand(JsonDocument& doc, const char* source);
+  bool startFireFromCommand(JsonDocument& doc, const char* source);
   bool commandBlockedByBrownoutLockout(const char* command, const char* source);
   bool clearBrownoutLockoutIfSafe(const char* source);
   void parkRelayPinsSafeOff();

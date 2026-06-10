@@ -10,6 +10,101 @@ namespace hit_target {
 
 HitTargetController* HitTargetController::isrInstance_ = nullptr;
 
+namespace {
+String statusString(JsonObjectConst status, const char* key) {
+  const char* value = status[key] | "";
+  String out(value);
+  out.trim();
+  return out;
+}
+
+String normalizedStatusString(JsonObjectConst status, const char* key) {
+  String out = statusString(status, key);
+  out.toUpperCase();
+  return out;
+}
+
+bool statusBoolFlag(JsonObjectConst status, const char* key, bool& out) {
+  JsonVariantConst value = status[key];
+  if (value.isNull()) return false;
+  out = value.as<bool>();
+  return true;
+}
+
+bool activeTurretStatus(JsonObjectConst status) {
+  bool explicitActive = false;
+  if (statusBoolFlag(status, "activation_active", explicitActive) ||
+      statusBoolFlag(status, "hit_target_active", explicitActive) ||
+      statusBoolFlag(status, "vulnerable", explicitActive) ||
+      statusBoolFlag(status, "active", explicitActive)) {
+    return explicitActive;
+  }
+
+  const bool ready = status["ready_for_next_command"] | false;
+  if (ready) return false;
+
+  const String mode = normalizedStatusString(status, "mode");
+  if (mode == "WAIT_COMMAND" || mode == "IDLE" || mode == "DEAD" || mode == "UNCONFIGURED") return false;
+  if (mode == "PATTERN" || mode == "FIRING") return true;
+
+  const String fireState = normalizedStatusString(status, "fire_state");
+  if (fireState == "FIRING" || fireState == "ARMING" || fireState == "ACTIVE") return true;
+
+  const String patternState = normalizedStatusString(status, "pattern_state");
+  if (patternState.length() > 0 && patternState != "IDLE" && patternState != "DONE" && patternState != "COMPLETE" &&
+      patternState != "FAILED") {
+    return true;
+  }
+  return false;
+}
+
+bool activeGenericDeviceStatus(JsonObjectConst status) {
+  bool flag = false;
+  if (statusBoolFlag(status, "activation_active", flag) ||
+      statusBoolFlag(status, "hit_target_active", flag) ||
+      statusBoolFlag(status, "vulnerable", flag) ||
+      statusBoolFlag(status, "active", flag)) {
+    return flag;
+  }
+
+  const String lifeState = normalizedStatusString(status, "life_state");
+  if (lifeState == "DEAD" || lifeState == "DOWN" || lifeState == "DISABLED") return false;
+
+  const bool ready = status["ready_for_next_command"] | false;
+  if (ready) return false;
+
+  const String mode = normalizedStatusString(status, "mode");
+  if (mode == "WAIT_COMMAND" || mode == "IDLE" || mode == "DEAD" || mode == "UNCONFIGURED" ||
+      mode == "DISABLED") {
+    return false;
+  }
+  if (mode == "ACTIVE" || mode == "ENGAGED" || mode == "BUSY" || mode == "MOVING" ||
+      mode == "TARGET" || mode == "PATTERN" || mode == "FIRING" || mode == "HOME") {
+    return true;
+  }
+
+  const String state = normalizedStatusString(status, "state");
+  if (state == "ACTIVE" || state == "ENGAGED" || state == "BUSY" || state == "MOVING") return true;
+  if (state == "IDLE" || state == "READY" || state == "DEAD" || state == "DISABLED") return false;
+
+  const String commandState = normalizedStatusString(status, "command_state");
+  if (commandState == "ACTIVE" || commandState == "RUNNING" || commandState == "IN_PROGRESS" ||
+      commandState == "BUSY") {
+    return true;
+  }
+
+  return false;
+}
+
+bool activeLinkedDeviceStatus(const String& kind, JsonObjectConst status) {
+  String normalizedKind = kind;
+  normalizedKind.trim();
+  normalizedKind.toLowerCase();
+  if (normalizedKind == "turret") return activeTurretStatus(status);
+  return activeGenericDeviceStatus(status);
+}
+}  // namespace
+
 void HitTargetController::begin(const RuntimeConfig& config, EventCallback callback, void* ctx) {
   callback_ = callback;
   callbackCtx_ = ctx;
@@ -33,11 +128,17 @@ void HitTargetController::begin(const RuntimeConfig& config, EventCallback callb
 void HitTargetController::applyConfig(const RuntimeConfig& config, bool resetState, const char* source) {
   const RuntimeConfig previous = config_;
   config_ = config;
+  frameRendered_ = false;
   FastLED.setBrightness(config_.led.brightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(::hit_target::LED_MAX_VOLTS, config_.led.maxMa);
   if (sensorPinsChanged(previous, config_)) {
     configurePins(previous, config_);
     clearPiezoDoFlag();
+  }
+  if (previous.activation.mode != config_.activation.mode ||
+      previous.activation.linkedDeviceKind != config_.activation.linkedDeviceKind ||
+      previous.activation.linkedDeviceId != config_.activation.linkedDeviceId) {
+    linkedDevice_ = LinkedDeviceState{};
   }
   if (resetState) {
     reset(source);
@@ -67,11 +168,14 @@ void HitTargetController::clearRuntimeState() {
   target_.hpRemaining = maxHits();
   target_.damaged = false;
   target_.destroyed = false;
+  frameRendered_ = false;
+  lastFrameSignature_ = 0;
   capture_ = CaptureState{};
   resetSensorRuntime();
   resetButton_ = ResetButtonState{};
   resetEffects();
   resetDamageChip();
+  wasVulnerable_ = false;
   clearPiezoDoFlag();
 }
 
@@ -83,10 +187,10 @@ void HitTargetController::resetSensorRuntime() {
 
 void HitTargetController::resetEffects() {
   timers_.lockoutUntilMs = 0;
-  timers_.hitFlashUntilMs = 0;
-  timers_.hpPulseUntilMs = 0;
   timers_.defeatStartedMs = 0;
   timers_.defeatUntilMs = 0;
+  frameRendered_ = false;
+  lastFrameSignature_ = 0;
 }
 
 void HitTargetController::resetDamageChip() {
@@ -103,12 +207,25 @@ void HitTargetController::reset(const char* source) {
 }
 
 void HitTargetController::simulateHit(const char* source) {
-  registerHit(millis(), readPiezoAnalog(), source);
+  const uint32_t now = millis();
+  if (!vulnerableNow(now)) return;
+  registerHit(now, readPiezoAnalog(), source);
 }
 
 void HitTargetController::loop(uint32_t now) {
   pollResetButton(now);
-  if (hitEnabled_) pollPiezo(now);
+  const bool vulnerable = vulnerableNow(now);
+  if (vulnerable) {
+    wasVulnerable_ = true;
+    pollPiezo(now);
+  } else {
+    if (wasVulnerable_ || capture_.active || !sensor_.armed) {
+      capture_ = CaptureState{};
+      resetSensorRuntime();
+      clearPiezoDoFlag();
+    }
+    wasVulnerable_ = false;
+  }
   renderLeds(now);
 }
 
@@ -119,10 +236,64 @@ void HitTargetController::prepareForOta() {
   resetSensorRuntime();
   fill_solid(leds_, ::hit_target::NUM_LEDS, CRGB::Black);
   FastLED.show();
+  frameRendered_ = true;
+  lastFrameSignature_ = renderFrameSignature(millis());
 }
 
 bool HitTargetController::isSafeForOta() const {
   return !capture_.active;
+}
+
+bool HitTargetController::linkedDeviceStatusFresh(uint32_t now) const {
+  if (linkedDevice_.lastStatusMs == 0) return false;
+  return now - linkedDevice_.lastStatusMs <= config_.activation.staleMs;
+}
+
+bool HitTargetController::vulnerableNow(uint32_t now) const {
+  if (!hitEnabled_ || target_.destroyed || target_.hpRemaining <= 0) return false;
+  if (config_.activation.mode != "linked_device") return true;
+  return linkedDeviceStatusFresh(now) && linkedDevice_.active;
+}
+
+bool HitTargetController::applyLinkedDeviceStatus(JsonObjectConst status, uint32_t now) {
+  if (config_.activation.mode != "linked_device") return false;
+
+  String linkedDeviceKind = config_.activation.linkedDeviceKind;
+  linkedDeviceKind.trim();
+  linkedDeviceKind.toLowerCase();
+
+  String incomingDeviceId;
+  if (linkedDeviceKind == "turret") {
+    incomingDeviceId = statusString(status, "turret_id");
+    if (incomingDeviceId.length() == 0) incomingDeviceId = statusString(status, "device_id");
+  } else {
+    incomingDeviceId = statusString(status, "device_id");
+  }
+  if (incomingDeviceId.length() == 0) incomingDeviceId = statusString(status, "id");
+  if (incomingDeviceId.length() > 0 && incomingDeviceId != config_.activation.linkedDeviceId) {
+    Serial.print("[hit_target][activation] ignoring status for linked_device_id=");
+    Serial.println(incomingDeviceId);
+    return false;
+  }
+
+  LinkedDeviceState previous = linkedDevice_;
+  linkedDevice_.lastStatusMs = now;
+  linkedDevice_.mode = statusString(status, "mode");
+  linkedDevice_.commandState = statusString(status, "command_state");
+  linkedDevice_.fireState = statusString(status, "fire_state");
+  linkedDevice_.patternState = statusString(status, "pattern_state");
+  linkedDevice_.activeCommandId = statusString(status, "active_command_id");
+  linkedDevice_.readyForNextCommand = status["ready_for_next_command"] | false;
+  linkedDevice_.active = activeLinkedDeviceStatus(config_.activation.linkedDeviceKind, status);
+
+  return previous.active != linkedDevice_.active ||
+         previous.readyForNextCommand != linkedDevice_.readyForNextCommand ||
+         previous.mode != linkedDevice_.mode ||
+         previous.commandState != linkedDevice_.commandState ||
+         previous.fireState != linkedDevice_.fireState ||
+         previous.patternState != linkedDevice_.patternState ||
+         previous.activeCommandId != linkedDevice_.activeCommandId ||
+         previous.lastStatusMs == 0;
 }
 
 int HitTargetController::ledCount() const {
@@ -167,20 +338,6 @@ CRGB HitTargetController::scaleColor(const CRGB& color, uint8_t scale) const {
   return CRGB(scale8(color.r, scale), scale8(color.g, scale), scale8(color.b, scale));
 }
 
-CRGB HitTargetController::applyHpHitPulse(const CRGB& color, uint32_t now) const {
-  if ((int32_t)(timers_.hitFlashUntilMs - now) > 0) return color;
-  if ((int32_t)(timers_.hpPulseUntilMs - now) <= 0) return color;
-  uint32_t remaining = timers_.hpPulseUntilMs - now;
-  if (remaining > config_.visual.hpHitPulseMs) remaining = config_.visual.hpHitPulseMs;
-  uint32_t elapsed = now > timers_.hitFlashUntilMs ? now - timers_.hitFlashUntilMs : 0;
-  uint32_t blinkMs = config_.visual.cooldownBlinkMs < 1 ? 1 : config_.visual.cooldownBlinkMs;
-  bool strongBeat = ((elapsed / blinkMs) % 2) == 0;
-  uint8_t beatBoost = strongBeat ? 105 : 28;
-  uint8_t fade = static_cast<uint8_t>((remaining * 255UL) / config_.visual.hpHitPulseMs);
-  uint8_t boost = scale8(beatBoost, fade);
-  return addBlend(color, CRGB(boost, boost, boost / 3));
-}
-
 bool HitTargetController::isLockedOut(uint32_t now) const {
   return (int32_t)(timers_.lockoutUntilMs - now) > 0;
 }
@@ -195,6 +352,29 @@ bool HitTargetController::phaseRevealPending(uint32_t now) const {
 
 bool HitTargetController::damageVisible(uint32_t now) const {
   return damageChip_.endLed > damageChip_.firstLed && (int32_t)(damageChip_.visibleUntilMs - now) > 0;
+}
+
+bool HitTargetController::renderFrameAnimated(uint32_t now) const {
+  if (damageVisible(now) || phaseRevealPending(now)) return true;
+  if (target_.hpRemaining <= 0 && (int32_t)(timers_.defeatStartedMs - now) <= 0 &&
+      (int32_t)(timers_.defeatUntilMs - now) > 0) {
+    return true;
+  }
+  return false;
+}
+
+uint32_t HitTargetController::renderFrameSignature(uint32_t now) const {
+  uint32_t sig = static_cast<uint32_t>(constrain(target_.hpRemaining, 0, maxHits()));
+  sig |= (static_cast<uint32_t>(phaseIndexForHp(target_.hpRemaining)) & 0x0F) << 8;
+  sig |= (static_cast<uint32_t>(phaseLitCount(target_.hpRemaining)) & 0xFF) << 12;
+  if (target_.destroyed) sig |= 1UL << 20;
+  if (vulnerableNow(now)) sig |= 1UL << 21;
+  if (hitEnabled_) sig |= 1UL << 22;
+  if (damageVisible(now)) sig |= 1UL << 23;
+  if (phaseRevealPending(now)) sig |= 1UL << 24;
+  if (target_.hpRemaining <= 0 && (int32_t)(timers_.defeatStartedMs - now) > 0) sig |= 1UL << 25;
+  if (target_.hpRemaining <= 0 && (int32_t)(timers_.defeatUntilMs - now) > 0) sig |= 1UL << 26;
+  return sig;
 }
 
 int HitTargetController::damageLength() const {
@@ -232,12 +412,6 @@ void HitTargetController::captureDamageChip(int previousHp, int currentHp, uint3
   }
   damageChip_.startedMs = now;
   damageChip_.visibleUntilMs = now + config_.visual.damageChipMs;
-}
-
-void HitTargetController::delayDamageChipUntil(uint32_t startMs) {
-  uint32_t duration = damageChip_.visibleUntilMs - damageChip_.startedMs;
-  damageChip_.startedMs = startMs;
-  damageChip_.visibleUntilMs = startMs + duration;
 }
 
 void HitTargetController::clearLayer(CRGB* layer) {
@@ -280,7 +454,7 @@ void HitTargetController::renderHpLayer(uint32_t now) {
   int phaseIndex = phaseIndexForHp(target_.hpRemaining);
   renderPhaseBackfill(phaseIndex, lit);
   if (lit <= 0) return;
-  CRGB color = applyHpHitPulse(phaseColor(phaseIndex), now);
+  CRGB color = phaseColor(phaseIndex);
   for (int i = 0; i < lit && i < ledCount(); i++) hpLayer_[i] = color;
 }
 
@@ -305,22 +479,6 @@ void HitTargetController::renderDamageLayer(uint32_t now) {
   }
 }
 
-void HitTargetController::renderOrbitLayer(uint32_t now) {
-  clearLayer(orbitLayer_);
-  if (target_.hpRemaining <= 0) return;
-  const int leds = ledCount();
-  uint32_t step = config_.visual.orbitStepMs < 1 ? 1 : config_.visual.orbitStepMs;
-  int head = (now / step) % leds;
-  int tail = constrain(static_cast<int>(config_.visual.orbitTailLeds), 0, leds - 1);
-  orbitLayer_[head] = CRGB::White;
-  for (int offset = 1; offset <= tail; offset++) {
-    int index = head - offset;
-    while (index < 0) index += leds;
-    uint8_t level = static_cast<uint8_t>(180 / (offset + 1));
-    orbitLayer_[index] = CRGB(level, level, level);
-  }
-}
-
 void HitTargetController::renderDefeatRainbow(uint32_t now) {
   const int leds = ledCount();
   uint32_t elapsed = now > timers_.defeatStartedMs ? now - timers_.defeatStartedMs : 0;
@@ -340,13 +498,10 @@ void HitTargetController::renderDefeatRainbow(uint32_t now) {
 void HitTargetController::renderLeds(uint32_t now) {
   if (now - timers_.lastShowMs < ::hit_target::LED_SHOW_PERIOD_MS) return;
   timers_.lastShowMs = now;
+  const bool animatedFrame = renderFrameAnimated(now);
+  const uint32_t frameSignature = renderFrameSignature(now);
+  if (!animatedFrame && frameRendered_ && frameSignature == lastFrameSignature_) return;
   const int leds = ledCount();
-  if ((int32_t)(timers_.hitFlashUntilMs - now) > 0) {
-    fill_solid(leds_, ::hit_target::NUM_LEDS, CRGB::Black);
-    for (int i = 0; i < leds; ++i) leds_[i] = CRGB::White;
-    FastLED.show();
-    return;
-  }
   if (target_.hpRemaining <= 0) {
     if (damageVisible(now) && (int32_t)(timers_.defeatStartedMs - now) > 0) {
       renderDamageLayer(now);
@@ -360,14 +515,24 @@ void HitTargetController::renderLeds(uint32_t now) {
       fill_solid(leds_, ::hit_target::NUM_LEDS, CRGB::Black);
     }
     FastLED.show();
+    frameRendered_ = true;
+    lastFrameSignature_ = frameSignature;
+    return;
+  }
+  if (!vulnerableNow(now)) {
+    fill_solid(leds_, ::hit_target::NUM_LEDS, CRGB::Black);
+    FastLED.show();
+    frameRendered_ = true;
+    lastFrameSignature_ = frameSignature;
     return;
   }
   renderHpLayer(now);
   renderDamageLayer(now);
-  renderOrbitLayer(now);
-  for (int i = 0; i < leds; i++) leds_[i] = addBlend(addBlend(hpLayer_[i], damageLayer_[i]), orbitLayer_[i]);
+  for (int i = 0; i < leds; i++) leds_[i] = addBlend(hpLayer_[i], damageLayer_[i]);
   for (int i = leds; i < ::hit_target::NUM_LEDS; ++i) leds_[i] = CRGB::Black;
   FastLED.show();
+  frameRendered_ = true;
+  lastFrameSignature_ = frameSignature;
 }
 
 void IRAM_ATTR HitTargetController::piezoDoIsrStatic() {
@@ -489,6 +654,7 @@ void HitTargetController::pollResetButton(uint32_t now) {
 
 void HitTargetController::registerHit(uint32_t now, uint16_t peak, const char* source, uint16_t digitalEdges) {
   if (target_.hpRemaining <= 0) return;
+  if (!vulnerableNow(now)) return;
   if (isLockedOut(now)) return;
   target_.damaged = true;
   target_.sequence++;
@@ -496,8 +662,6 @@ void HitTargetController::registerHit(uint32_t now, uint16_t peak, const char* s
   target_.hpRemaining--;
   captureDamageChip(previousHp, target_.hpRemaining, now);
   if (peak == 0 && config_.sensor.piezoAoPin < 0) peak = config_.sensor.hitThreshold;
-  timers_.hitFlashUntilMs = now + config_.visual.hitFlashMs;
-  timers_.hpPulseUntilMs = timers_.hitFlashUntilMs + config_.visual.hpHitPulseMs;
   timers_.lockoutUntilMs = now + config_.sensor.hitCooldownMs;
   sensor_.armed = false;
   sensor_.quietStartedMs = 0;
@@ -506,7 +670,6 @@ void HitTargetController::registerHit(uint32_t now, uint16_t peak, const char* s
   if (target_.hpRemaining <= 0) {
     target_.hpRemaining = 0;
     target_.destroyed = true;
-    delayDamageChipUntil(timers_.hitFlashUntilMs);
     timers_.defeatStartedMs = damageChip_.visibleUntilMs + config_.visual.defeatBlackoutMs;
     timers_.defeatUntilMs = timers_.defeatStartedMs + config_.visual.defeatRainbowMs;
     emit("destroyed", peak, source, digitalEdges);
@@ -526,6 +689,7 @@ void HitTargetController::emit(const char* name, uint16_t peak, const char* sour
 }
 
 void HitTargetController::appendStatus(JsonObject obj) const {
+  const uint32_t now = millis();
   const int hpPhase = target_.hpRemaining > 0 ? phaseIndexForHp(target_.hpRemaining) + 1 : activePhaseCount(config_);
   obj["target_id"] = config_.targetId;
   obj["device_id"] = config_.deviceId;
@@ -546,10 +710,7 @@ void HitTargetController::appendStatus(JsonObject obj) const {
   obj["digital_isr_debounce_us"] = config_.sensor.digitalIsrDebounceUs;
   obj["threshold"] = config_.sensor.hitThreshold;
   obj["cooldown_ms"] = config_.sensor.hitCooldownMs;
-  obj["cooldown_blink_ms"] = config_.visual.cooldownBlinkMs;
-  obj["hit_flash_ms"] = config_.visual.hitFlashMs;
   obj["damage_chip_ms"] = config_.visual.damageChipMs;
-  obj["hp_hit_pulse_ms"] = config_.visual.hpHitPulseMs;
   obj["defeat_blackout_ms"] = config_.visual.defeatBlackoutMs;
   obj["defeat_rainbow_ms"] = config_.visual.defeatRainbowMs;
   obj["defeat_rainbow_spins"] = config_.visual.defeatRainbowSpins;
@@ -559,11 +720,40 @@ void HitTargetController::appendStatus(JsonObject obj) const {
   obj["damaged"] = target_.damaged;
   obj["destroyed"] = target_.destroyed;
   obj["hit_enabled"] = hitEnabled_;
+  obj["vulnerable"] = vulnerableNow(now);
+  obj["activation_mode"] = config_.activation.mode;
+  obj["linked_device_kind"] = config_.activation.linkedDeviceKind;
+  obj["linked_device_id"] = config_.activation.linkedDeviceId;
+  obj["activation_stale_ms"] = config_.activation.staleMs;
+  obj["linked_device_status_fresh"] = linkedDeviceStatusFresh(now);
+  obj["linked_device_active"] = linkedDevice_.active;
+  obj["linked_device_ready_for_next_command"] = linkedDevice_.readyForNextCommand;
+  obj["linked_device_mode"] = linkedDevice_.mode;
+  obj["linked_device_command_state"] = linkedDevice_.commandState;
+  obj["linked_device_fire_state"] = linkedDevice_.fireState;
+  obj["linked_device_pattern_state"] = linkedDevice_.patternState;
+  obj["linked_device_active_command_id"] = linkedDevice_.activeCommandId;
+  obj["linked_device_age_ms"] = linkedDevice_.lastStatusMs == 0 ? 0 : now - linkedDevice_.lastStatusMs;
+  if (config_.activation.linkedDeviceKind == "turret") {
+    obj["linked_turret_id"] = config_.activation.linkedDeviceId;
+    obj["linked_turret_status_fresh"] = linkedDeviceStatusFresh(now);
+    obj["linked_turret_active"] = linkedDevice_.active;
+    obj["linked_turret_ready_for_next_command"] = linkedDevice_.readyForNextCommand;
+    obj["linked_turret_mode"] = linkedDevice_.mode;
+    obj["linked_turret_command_state"] = linkedDevice_.commandState;
+    obj["linked_turret_fire_state"] = linkedDevice_.fireState;
+    obj["linked_turret_pattern_state"] = linkedDevice_.patternState;
+    obj["linked_turret_active_command_id"] = linkedDevice_.activeCommandId;
+    obj["linked_turret_age_ms"] = linkedDevice_.lastStatusMs == 0 ? 0 : now - linkedDevice_.lastStatusMs;
+  }
   obj["analog"] = readPiezoAnalog();
 }
 
 String HitTargetController::statusSignature() const {
-  return String(target_.sequence) + ":" + target_.hpRemaining + ":" + target_.destroyed + ":" + hitEnabled_;
+  const uint32_t now = millis();
+  return String(target_.sequence) + ":" + target_.hpRemaining + ":" + (target_.destroyed ? "1" : "0") + ":" +
+         (hitEnabled_ ? "1" : "0") + ":" + (vulnerableNow(now) ? "1" : "0") + ":" +
+         (linkedDevice_.active ? "1" : "0") + ":" + (linkedDeviceStatusFresh(now) ? "1" : "0");
 }
 
 void HitTargetController::printBootBanner() const {
@@ -593,10 +783,18 @@ void HitTargetController::printBootBanner() const {
   Serial.print(config_.sensor.hitRearmThreshold);
   Serial.print(" cooldown_ms=");
   Serial.print(config_.sensor.hitCooldownMs);
-  Serial.print(" cooldown_blink_ms=");
-  Serial.print(config_.visual.cooldownBlinkMs);
-  Serial.print(" orbit_step_ms=");
-  Serial.println(config_.visual.orbitStepMs);
+  Serial.print(" activation_mode=");
+  Serial.print(config_.activation.mode);
+  Serial.print(" linked_device_kind=");
+  Serial.print(config_.activation.linkedDeviceKind);
+  Serial.print(" linked_device_id=");
+  Serial.print(config_.activation.linkedDeviceId);
+  Serial.print(" activation_stale_ms=");
+  Serial.print(config_.activation.staleMs);
+  Serial.print(" damage_chip_ms=");
+  Serial.print(config_.visual.damageChipMs);
+  Serial.print(" defeat_rainbow_ms=");
+  Serial.println(config_.visual.defeatRainbowMs);
   Serial.print("[PIN] LED=");
   Serial.print(::hit_target::LED_PIN);
   Serial.print(" NUM_LEDS=");

@@ -8,6 +8,14 @@ String cleanRoot(const String& root) {
   while (out.endsWith("/")) out.remove(out.length() - 1);
   return out.length() == 0 ? String("battlebang") : out;
 }
+
+String linkedDeviceCollection(const String& kind) {
+  String normalized = kind;
+  normalized.trim();
+  normalized.toLowerCase();
+  if (normalized == "turret") return "turrets";
+  return "devices";
+}
 }
 
 TopicSet buildTopics(const RuntimeConfig& config) {
@@ -24,6 +32,10 @@ TopicSet buildTopics(const RuntimeConfig& config) {
     topics.targetCommand = base + "/command";
     topics.targetOta = base + "/ota";
   }
+  if (config.activation.mode == "linked_device" && config.activation.linkedDeviceId.length() > 0) {
+    topics.linkedDeviceStatus = root + "/" + linkedDeviceCollection(config.activation.linkedDeviceKind) + "/" +
+                                config.activation.linkedDeviceId + "/status";
+  }
   return topics;
 }
 
@@ -36,6 +48,7 @@ std::vector<String> buildSubscriptionTopics(const RuntimeConfig& config) {
   if (topics.targetConfig.length() > 0) result.push_back(topics.targetConfig);
   if (topics.targetCommand.length() > 0) result.push_back(topics.targetCommand);
   if (topics.targetOta.length() > 0) result.push_back(topics.targetOta);
+  if (topics.linkedDeviceStatus.length() > 0) result.push_back(topics.linkedDeviceStatus);
   return result;
 }
 

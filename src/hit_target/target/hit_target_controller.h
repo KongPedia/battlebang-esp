@@ -31,6 +31,8 @@ class HitTargetController {
   bool destroyed() const { return target_.destroyed; }
   bool hitEnabled() const { return hitEnabled_; }
   void setHitEnabled(bool enabled) { hitEnabled_ = enabled; }
+  bool vulnerableNow(uint32_t now) const;
+  bool applyLinkedDeviceStatus(JsonObjectConst status, uint32_t now);
 
   void appendStatus(JsonObject obj) const;
   String statusSignature() const;
@@ -68,8 +70,6 @@ class HitTargetController {
 
   struct EffectTimers {
     uint32_t lockoutUntilMs = 0;
-    uint32_t hitFlashUntilMs = 0;
-    uint32_t hpPulseUntilMs = 0;
     uint32_t defeatStartedMs = 0;
     uint32_t defeatUntilMs = 0;
     uint32_t lastShowMs = 0;
@@ -84,6 +84,17 @@ class HitTargetController {
     int previousPhaseIndex = 0;
   };
 
+  struct LinkedDeviceState {
+    bool active = false;
+    bool readyForNextCommand = false;
+    uint32_t lastStatusMs = 0;
+    String mode;
+    String commandState;
+    String fireState;
+    String patternState;
+    String activeCommandId;
+  };
+
   static void IRAM_ATTR piezoDoIsrStatic();
   void onPiezoDoIsr();
 
@@ -95,7 +106,6 @@ class HitTargetController {
   CRGB phaseColor(int phaseIndex) const;
   CRGB addBlend(const CRGB& base, const CRGB& overlay) const;
   CRGB scaleColor(const CRGB& color, uint8_t scale) const;
-  CRGB applyHpHitPulse(const CRGB& color, uint32_t now) const;
 
   void clearRuntimeState();
   void resetSensorRuntime();
@@ -106,18 +116,19 @@ class HitTargetController {
   bool resetButtonPressed() const;
   bool phaseRevealPending(uint32_t now) const;
   bool damageVisible(uint32_t now) const;
+  bool linkedDeviceStatusFresh(uint32_t now) const;
+  bool renderFrameAnimated(uint32_t now) const;
+  uint32_t renderFrameSignature(uint32_t now) const;
   int damageLength() const;
   int damageVisibleCount(uint32_t now) const;
   int damageExpiredCount(uint32_t now) const;
   void captureDamageChip(int previousHp, int currentHp, uint32_t now);
-  void delayDamageChipUntil(uint32_t startMs);
 
   void clearLayer(CRGB* layer);
   void renderPhaseBackfill(int phaseIndex, int lit);
   void renderPhaseTransitionReveal(uint32_t now);
   void renderHpLayer(uint32_t now);
   void renderDamageLayer(uint32_t now);
-  void renderOrbitLayer(uint32_t now);
   void renderDefeatRainbow(uint32_t now);
   void renderLeds(uint32_t now);
 
@@ -141,15 +152,18 @@ class HitTargetController {
   ResetButtonState resetButton_;
   EffectTimers timers_;
   DamageChipState damageChip_;
+  LinkedDeviceState linkedDevice_;
   bool hitEnabled_ = true;
   bool pinsConfigured_ = false;
+  bool wasVulnerable_ = false;
+  bool frameRendered_ = false;
+  uint32_t lastFrameSignature_ = 0;
   EventCallback callback_ = nullptr;
   void* callbackCtx_ = nullptr;
 
   CRGB leds_[::hit_target::NUM_LEDS];
   CRGB hpLayer_[::hit_target::NUM_LEDS];
   CRGB damageLayer_[::hit_target::NUM_LEDS];
-  CRGB orbitLayer_[::hit_target::NUM_LEDS];
 
   static HitTargetController* isrInstance_;
 };

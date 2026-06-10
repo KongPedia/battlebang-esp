@@ -22,6 +22,7 @@ using battlebang::hit_target::OtaResult;
 using battlebang::hit_target::RuntimeConfig;
 using battlebang::hit_target::RuntimeConfigStore;
 using battlebang::hit_target::WifiManager;
+using battlebang::hit_target::activationSubscriptionChanged;
 using battlebang::hit_target::applyRuntimeConfigJson;
 using battlebang::hit_target::fetchHttpText;
 using battlebang::hit_target::gameplayConfigChanged;
@@ -231,6 +232,7 @@ void applyAndPersistConfig(const char* json, const char* source) {
   const bool mqttChanged = next.mqttHost != config.mqttHost || next.mqttPort != config.mqttPort ||
                            next.mqttUsername != config.mqttUsername || next.mqttPassword != config.mqttPassword ||
                            next.mqttRoot != config.mqttRoot || next.targetId != config.targetId;
+  const bool activationChanged = activationSubscriptionChanged(config, next);
   const bool resetState = gameplayConfigChanged(previous, next) || sensorPinsChanged(previous, next);
   const bool hardwareChanged = ledHardwareChanged(previous, next);
   config = next;
@@ -240,7 +242,12 @@ void applyAndPersistConfig(const char* json, const char* source) {
     Serial.println("[hit_target][config] LED pin/type/order are hardware-profile values; reboot/rebuild may be required for those fields");
   }
   if (wifiChanged && networkStarted) wifi.begin(config);
-  if (mqttChanged && mqttStarted) mqtt.reconfigure();
+  if (mqttStarted && (mqttChanged || activationChanged)) {
+    Serial.println(mqttChanged
+                       ? "[hit_target][serial] MQTT identity/settings changed; reconnecting/resubscribing"
+                       : "[hit_target][serial] activation subscription changed; reconnecting/resubscribing");
+    mqtt.reconfigure();
+  }
   if (!networkStarted && config.networkAutoStart && millis() >= config.networkStartDelayMs) startNetwork("config_auto_start");
   Serial.print("[hit_target][serial] config applied saved=");
   Serial.println(saved ? "yes" : "no");

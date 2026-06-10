@@ -172,31 +172,12 @@ bool validateConfig(RuntimeConfig& config, String& error) {
     error = "sensor.capture_window_ms must be 10..500";
     return false;
   }
-  if (config.visual.orbitStepMs < 1 || config.visual.orbitStepMs > 1000) {
-    error = "visual.orbit_step_ms must be 1..1000";
-    return false;
-  }
-  if (config.visual.orbitTailLeds >= config.led.numLeds) {
-    config.visual.orbitTailLeds = config.led.numLeds > 0 ? config.led.numLeds - 1 : 0;
-  }
-  if (config.visual.cooldownBlinkMs < 20 || config.visual.cooldownBlinkMs > 1000) {
-    error = "visual.cooldown_blink_ms must be 20..1000";
-    return false;
-  }
-  if (config.visual.hitFlashMs < 10 || config.visual.hitFlashMs > 250) {
-    error = "visual.hit_flash_ms must be 10..250";
-    return false;
-  }
   if (config.visual.damageChipMs < 50 || config.visual.damageChipMs > 2000) {
     error = "visual.damage_chip_ms must be 50..2000";
     return false;
   }
   if (config.visual.phaseBackfillScale < 1) {
     error = "visual.phase_backfill_scale must be positive";
-    return false;
-  }
-  if (config.visual.hpHitPulseMs < 10 || config.visual.hpHitPulseMs > 1000) {
-    error = "visual.hp_hit_pulse_ms must be 10..1000";
     return false;
   }
   if (config.visual.defeatBlackoutMs > 1000) {
@@ -213,6 +194,29 @@ bool validateConfig(RuntimeConfig& config, String& error) {
   }
   if (config.reset.buttonHoldMs < 100 || config.reset.buttonHoldMs > 10000) {
     error = "reset.button_hold_ms must be 100..10000";
+    return false;
+  }
+  config.activation.mode.trim();
+  config.activation.linkedDeviceKind.trim();
+  config.activation.linkedDeviceId.trim();
+  config.activation.mode.toLowerCase();
+  config.activation.linkedDeviceKind.toLowerCase();
+  if (config.activation.mode.length() == 0) config.activation.mode = "always_on";
+  if (config.activation.mode == "linked_turret") {
+    config.activation.mode = "linked_device";
+    if (config.activation.linkedDeviceKind.length() == 0) config.activation.linkedDeviceKind = "turret";
+  }
+  if (config.activation.linkedDeviceKind.length() == 0) config.activation.linkedDeviceKind = "turret";
+  if (config.activation.mode != "always_on" && config.activation.mode != "linked_device") {
+    error = "activation.mode must be always_on or linked_device";
+    return false;
+  }
+  if (config.activation.mode == "linked_device" && config.activation.linkedDeviceId.length() == 0) {
+    error = "activation.linked_device_id is required for linked_device mode";
+    return false;
+  }
+  if (config.activation.staleMs < 250 || config.activation.staleMs > 60000) {
+    error = "activation.stale_ms must be 250..60000";
     return false;
   }
   if (config.mqttPort == 0) {
@@ -269,14 +273,9 @@ RuntimeConfig makeDefaultRuntimeConfig(const DeviceIdentity& identity) {
   config.hp.hitsPerPhase = ::hit_target::HITS_PER_PHASE;
   for (uint8_t i = 0; i < kMaxHpPhases; ++i) config.hp.palette[i] = 0;
   normalizePalette(config);
-  config.visual.orbitStepMs = ::hit_target::ORBIT_STEP_MS;
-  config.visual.orbitTailLeds = ::hit_target::ORBIT_TAIL_LEDS;
-  config.visual.cooldownBlinkMs = ::hit_target::COOLDOWN_BLINK_MS;
-  config.visual.hitFlashMs = ::hit_target::HIT_FLASH_MS;
   config.visual.damageChipMs = ::hit_target::DAMAGE_CHIP_MS;
   config.visual.phaseBackfillGapLeds = ::hit_target::PHASE_BACKFILL_GAP_LEDS;
   config.visual.phaseBackfillScale = ::hit_target::PHASE_BACKFILL_SCALE;
-  config.visual.hpHitPulseMs = ::hit_target::HP_HIT_PULSE_MS;
   config.visual.defeatBlackoutMs = ::hit_target::DEFEAT_BLACKOUT_MS;
   config.visual.defeatRainbowMs = ::hit_target::DEFEAT_RAINBOW_MS;
   config.visual.defeatRainbowSpins = ::hit_target::DEFEAT_RAINBOW_SPINS;
@@ -358,14 +357,9 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
 
   JsonObjectConst visual = doc["visual"].as<JsonObjectConst>();
   if (!visual.isNull()) {
-    next.visual.orbitStepMs = getUIntOr(visual["orbit_step_ms"], next.visual.orbitStepMs);
-    next.visual.orbitTailLeds = static_cast<uint8_t>(getUIntOr(visual["orbit_tail_leds"], next.visual.orbitTailLeds));
-    next.visual.cooldownBlinkMs = getUIntOr(visual["cooldown_blink_ms"], next.visual.cooldownBlinkMs);
-    next.visual.hitFlashMs = getUIntOr(visual["hit_flash_ms"], next.visual.hitFlashMs);
     next.visual.damageChipMs = getUIntOr(visual["damage_chip_ms"], next.visual.damageChipMs);
     next.visual.phaseBackfillGapLeds = static_cast<uint8_t>(getUIntOr(visual["phase_backfill_gap_leds"], next.visual.phaseBackfillGapLeds));
     next.visual.phaseBackfillScale = static_cast<uint8_t>(getUIntOr(visual["phase_backfill_scale"], next.visual.phaseBackfillScale));
-    next.visual.hpHitPulseMs = getUIntOr(visual["hp_hit_pulse_ms"], next.visual.hpHitPulseMs);
     next.visual.defeatBlackoutMs = getUIntOr(visual["defeat_blackout_ms"], next.visual.defeatBlackoutMs);
     next.visual.defeatRainbowMs = getUIntOr(visual["defeat_rainbow_ms"], next.visual.defeatRainbowMs);
     next.visual.defeatRainbowSpins = static_cast<uint8_t>(getUIntOr(visual["defeat_rainbow_spins"], next.visual.defeatRainbowSpins));
@@ -399,6 +393,19 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
   if (!reset.isNull()) {
     next.reset.buttonPin = static_cast<int8_t>(getIntOr(reset["button_pin"], next.reset.buttonPin));
     next.reset.buttonHoldMs = getUIntOr(reset["button_hold_ms"], next.reset.buttonHoldMs);
+  }
+
+  JsonObjectConst activation = doc["activation"].as<JsonObjectConst>();
+  if (!activation.isNull()) {
+    next.activation.mode = getStringOr(activation["mode"], next.activation.mode);
+    next.activation.linkedDeviceKind = getStringOr(activation["linked_device_kind"], next.activation.linkedDeviceKind);
+    next.activation.linkedDeviceId = getStringOr(activation["linked_device_id"], next.activation.linkedDeviceId);
+    const String legacyLinkedTurretId = getStringOr(activation["linked_turret_id"], "");
+    if (legacyLinkedTurretId.length() > 0) {
+      next.activation.linkedDeviceKind = "turret";
+      next.activation.linkedDeviceId = legacyLinkedTurretId;
+    }
+    next.activation.staleMs = getUIntOr(activation["stale_ms"], next.activation.staleMs);
   }
 
   JsonObjectConst wifi = doc["wifi"].as<JsonObjectConst>();
@@ -459,14 +466,9 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   serializePalette(config, hp.createNestedArray("palette"));
 
   JsonObject visual = doc.createNestedObject("visual");
-  visual["orbit_step_ms"] = config.visual.orbitStepMs;
-  visual["orbit_tail_leds"] = config.visual.orbitTailLeds;
-  visual["cooldown_blink_ms"] = config.visual.cooldownBlinkMs;
-  visual["hit_flash_ms"] = config.visual.hitFlashMs;
   visual["damage_chip_ms"] = config.visual.damageChipMs;
   visual["phase_backfill_gap_leds"] = config.visual.phaseBackfillGapLeds;
   visual["phase_backfill_scale"] = config.visual.phaseBackfillScale;
-  visual["hp_hit_pulse_ms"] = config.visual.hpHitPulseMs;
   visual["defeat_blackout_ms"] = config.visual.defeatBlackoutMs;
   visual["defeat_rainbow_ms"] = config.visual.defeatRainbowMs;
   visual["defeat_rainbow_spins"] = config.visual.defeatRainbowSpins;
@@ -495,6 +497,12 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   JsonObject reset = doc.createNestedObject("reset");
   reset["button_pin"] = config.reset.buttonPin;
   reset["button_hold_ms"] = config.reset.buttonHoldMs;
+
+  JsonObject activation = doc.createNestedObject("activation");
+  activation["mode"] = config.activation.mode;
+  activation["linked_device_kind"] = config.activation.linkedDeviceKind;
+  activation["linked_device_id"] = config.activation.linkedDeviceId;
+  activation["stale_ms"] = config.activation.staleMs;
 
   JsonObject wifi = doc.createNestedObject("wifi");
   wifi["ssid"] = config.wifiSsid;
@@ -547,6 +555,12 @@ bool ledHardwareChanged(const RuntimeConfig& before, const RuntimeConfig& after)
          before.led.colorOrder != after.led.colorOrder;
 }
 
+bool activationSubscriptionChanged(const RuntimeConfig& before, const RuntimeConfig& after) {
+  return before.activation.mode != after.activation.mode ||
+         before.activation.linkedDeviceKind != after.activation.linkedDeviceKind ||
+         before.activation.linkedDeviceId != after.activation.linkedDeviceId;
+}
+
 bool RuntimeConfigStore::load(RuntimeConfig& config) {
   RuntimeConfig fallback = config;
   Preferences prefs;
@@ -565,14 +579,9 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
     snprintf(key, sizeof(key), "pal%u", i);
     config.hp.palette[i] = prefs.getUInt(key, config.hp.palette[i]);
   }
-  config.visual.orbitStepMs = prefs.getUInt("orb_step", config.visual.orbitStepMs);
-  config.visual.orbitTailLeds = prefs.getUChar("orb_tail", config.visual.orbitTailLeds);
-  config.visual.cooldownBlinkMs = prefs.getUInt("cd_blink", config.visual.cooldownBlinkMs);
-  config.visual.hitFlashMs = prefs.getUInt("hit_flash", config.visual.hitFlashMs);
   config.visual.damageChipMs = prefs.getUInt("dmg_chip", config.visual.damageChipMs);
   config.visual.phaseBackfillGapLeds = prefs.getUChar("back_gap", config.visual.phaseBackfillGapLeds);
   config.visual.phaseBackfillScale = prefs.getUChar("back_scl", config.visual.phaseBackfillScale);
-  config.visual.hpHitPulseMs = prefs.getUInt("hp_pulse", config.visual.hpHitPulseMs);
   config.visual.defeatBlackoutMs = prefs.getUInt("def_blk", config.visual.defeatBlackoutMs);
   config.visual.defeatRainbowMs = prefs.getUInt("def_rain", config.visual.defeatRainbowMs);
   config.visual.defeatRainbowSpins = prefs.getUChar("def_spin", config.visual.defeatRainbowSpins);
@@ -594,6 +603,17 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.led.maxMa = prefs.getUShort("max_ma", config.led.maxMa);
   config.reset.buttonPin = prefs.getChar("rst_pin", config.reset.buttonPin);
   config.reset.buttonHoldMs = prefs.getUInt("rst_hold", config.reset.buttonHoldMs);
+  config.activation.mode = prefs.getString("act_mode", config.activation.mode);
+  config.activation.linkedDeviceKind = prefs.getString("act_kind", config.activation.linkedDeviceKind);
+  config.activation.linkedDeviceId = prefs.getString("act_device", config.activation.linkedDeviceId);
+  if (config.activation.linkedDeviceId.length() == 0) {
+    const String legacyLinkedTurretId = prefs.getString("act_turret", "");
+    if (legacyLinkedTurretId.length() > 0) {
+      config.activation.linkedDeviceKind = "turret";
+      config.activation.linkedDeviceId = legacyLinkedTurretId;
+    }
+  }
+  config.activation.staleMs = prefs.getUInt("act_stale", config.activation.staleMs);
   config.wifiSsid = prefs.getString("wifi_ssid", config.wifiSsid);
   config.wifiPassword = prefs.getString("wifi_pass", config.wifiPassword);
   config.networkAutoStart = prefs.getBool("net_auto", config.networkAutoStart);
@@ -641,14 +661,9 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
     snprintf(key, sizeof(key), "pal%u", i);
     ok &= prefs.putUInt(key, config.hp.palette[i]) > 0;
   }
-  ok &= prefs.putUInt("orb_step", config.visual.orbitStepMs) > 0;
-  ok &= prefs.putUChar("orb_tail", config.visual.orbitTailLeds) > 0;
-  ok &= prefs.putUInt("cd_blink", config.visual.cooldownBlinkMs) > 0;
-  ok &= prefs.putUInt("hit_flash", config.visual.hitFlashMs) > 0;
   ok &= prefs.putUInt("dmg_chip", config.visual.damageChipMs) > 0;
   ok &= prefs.putUChar("back_gap", config.visual.phaseBackfillGapLeds) > 0;
   ok &= prefs.putUChar("back_scl", config.visual.phaseBackfillScale) > 0;
-  ok &= prefs.putUInt("hp_pulse", config.visual.hpHitPulseMs) > 0;
   ok &= prefs.putUInt("def_blk", config.visual.defeatBlackoutMs) > 0;
   ok &= prefs.putUInt("def_rain", config.visual.defeatRainbowMs) > 0;
   ok &= prefs.putUChar("def_spin", config.visual.defeatRainbowSpins) > 0;
@@ -670,6 +685,11 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putUShort("max_ma", config.led.maxMa) > 0;
   ok &= prefs.putChar("rst_pin", config.reset.buttonPin) > 0;
   ok &= prefs.putUInt("rst_hold", config.reset.buttonHoldMs) > 0;
+  ok &= prefs.putString("act_mode", config.activation.mode) >= 0;
+  ok &= prefs.putString("act_kind", config.activation.linkedDeviceKind) >= 0;
+  ok &= prefs.putString("act_device", config.activation.linkedDeviceId) >= 0;
+  ok &= prefs.putString("act_turret", config.activation.linkedDeviceKind == "turret" ? config.activation.linkedDeviceId : "") >= 0;
+  ok &= prefs.putUInt("act_stale", config.activation.staleMs) > 0;
   ok &= prefs.putString("wifi_ssid", config.wifiSsid) >= 0;
   ok &= prefs.putString("wifi_pass", config.wifiPassword) >= 0;
   ok &= prefs.putBool("net_auto", config.networkAutoStart) > 0;

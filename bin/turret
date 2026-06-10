@@ -7,12 +7,14 @@ FLEET_PROVISION_SCRIPT="$ROOT_DIR/scripts/turret_fleet/provision.py"
 FLEET_MQTT_SCRIPT="$ROOT_DIR/scripts/turret_fleet/mqtt_command.py"
 FLEET_E2E_SCRIPT="$ROOT_DIR/scripts/turret_fleet/e2e_mqtt_test.py"
 FLEET_OTA_PUBLISH_SCRIPT="$ROOT_DIR/scripts/turret_fleet/publish_mqtt_manifest.py"
+HIT_TARGET_MQTT_SCRIPT="$ROOT_DIR/scripts/hit_target/mqtt_command.py"
 PIO_BIN="$ROOT_DIR/.venv-pio/bin/pio"
 PYTHON_BIN="$ROOT_DIR/.venv-pio/bin/python"
 TURRETS_JSON="$ROOT_DIR/src/turret/turrets.json"
 LOCAL_SECRETS="$ROOT_DIR/src/turret/local_secrets.h"
 UPLOAD_TARGETS="$ROOT_DIR/src/turret/upload_targets.toml"
 FLEET_ENV_FILE="${TURRET_FLEET_ENV_FILE:-$ROOT_DIR/src/turret_fleet/.env.turret_fleet}"
+HIT_TARGET_ENV_FILE="${HIT_TARGET_ENV_FILE:-$ROOT_DIR/src/hit_target/.env.hit_target}"
 declare -a SECRET_ARGS=()
 
 if [[ ! -x "$PIO_BIN" ]]; then
@@ -39,6 +41,7 @@ Usage:
   ./bin/turret fleet-mqtt <turret-number|turret_id> <idle|dead|hold|recover|target|aim|fire|pattern|config|update> [options]
   ./bin/turret fleet-e2e <turret-number|turret_id> [--host MQTT_BROKER] [--allow-live-fire]
   ./bin/turret fleet-ota-publish <manifest.json> [topic]
+  ./bin/turret hit-target-mqtt <config|command|bench-open|bench-hit|bench-close|linked-device-status|ota> [options]
   ./bin/turret monitor [port]
   ./bin/turret config
 
@@ -63,6 +66,10 @@ Examples:
   ./bin/turret fleet-mqtt turret_2 update --desired-build 7
   ./bin/turret fleet-mqtt turret_2 config --ota-auto-check-enabled true --ota-desired-build 2
   ./bin/turret fleet-ota-publish dist/manifest.json battlebang/turrets/all/ota
+  ./bin/turret hit-target-mqtt bench-open --host MQTT_BROKER_IP --root battlebang_btb731 --target-id hit_target_AABBCCDDEEFF
+  ./bin/turret hit-target-mqtt bench-close --host MQTT_BROKER_IP --root battlebang_btb731 --target-id hit_target_AABBCCDDEEFF --linked-device-kind turret --linked-device-id turret_4
+  ./bin/turret hit-target-mqtt linked-device-status turret_4 active --device-kind turret --host MQTT_BROKER_IP --root battlebang_btb731 --duration-s 30
+  ./bin/turret hit-target-mqtt linked-device-status turret_4 idle --device-kind turret --host MQTT_BROKER_IP --root battlebang_btb731 --duration-s 3
 
 Secrets:
   - Default: src/turret/local_secrets.h
@@ -308,6 +315,13 @@ case "$cmd" in
     turret_id="$(normalize_turret "${2:-}")"
     shift 2 || true
     exec "$PYTHON_BIN" "$FLEET_E2E_SCRIPT" "$turret_id" --env-file "$FLEET_ENV_FILE" "$@"
+    ;;
+  hit-target-mqtt)
+    if [[ "${2:-}" == "help" || "${2:-}" == "-h" || "${2:-}" == "--help" || -z "${2:-}" ]]; then
+      exec "$PYTHON_BIN" "$HIT_TARGET_MQTT_SCRIPT" --help
+    fi
+    shift || true
+    exec "$PYTHON_BIN" "$HIT_TARGET_MQTT_SCRIPT" "$@" --env-file "$HIT_TARGET_ENV_FILE"
     ;;
   fleet-ota-publish)
     shift || true

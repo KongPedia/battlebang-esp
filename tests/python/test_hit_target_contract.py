@@ -24,15 +24,21 @@ def test_hit_target_config_exposes_factory_defaults_for_runtime_config() -> None
     assert defaults["hit_rearm_stable_ms"] == 80
     assert defaults["digital_hit_min_edges"] == 2
     assert defaults["digital_isr_debounce_us"] == 5000
-    assert defaults["cooldown_blink_ms"] == 60
-    assert 40 <= defaults["hit_flash_ms"] <= 60
-    assert 300 <= defaults["damage_chip_ms"] <= 650
+    assert "cooldown_blink_ms" not in defaults
+    assert "hit_flash_ms" not in defaults
+    assert "hp_hit_pulse_ms" not in defaults
+    assert "orbit_step_ms" not in defaults
+    assert "orbit_tail_leds" not in defaults
+    assert defaults["damage_chip_ms"] == 240
     assert defaults["phase_backfill_gap_leds"] == 1
     assert 1 <= defaults["phase_backfill_scale"] <= 255
     assert defaults["defeat_blackout_ms"] == 90
-    assert defaults["defeat_rainbow_ms"] == 900
+    assert defaults["defeat_rainbow_ms"] == 1900
     assert defaults["defeat_rainbow_spins"] == 2
-    assert defaults["orbit_step_ms"] == 20
+    assert defaults["activation_mode"] == "always_on"
+    assert defaults["activation_linked_device_kind"] == "turret"
+    assert defaults["activation_linked_device_id"] == ""
+    assert defaults["activation_stale_ms"] == 3000
     assert defaults["led_pin"] == 18
     assert defaults["num_leds"] == 60
     assert defaults["led_type"] == "WS2812B"
@@ -70,9 +76,12 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert "String targetId" in header
     assert "HpConfig hp" in header
     assert "VisualConfig visual" in header
+    assert "ActivationConfig activation" in header
     assert "SensorConfig sensor" in header
     assert "LedConfig led" in header
-    assert "uint32_t cooldownBlinkMs = 60" in header
+    assert 'String mode = "always_on"' in header
+    assert 'String linkedDeviceKind = "turret"' in header
+    assert "String linkedDeviceId" in header
     assert "String wifiSsid" in header
     assert "String mqttHost" in header
     assert "bool otaCommandCenterControlled" in header
@@ -88,7 +97,10 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert 'prefs.getBool("ota_cc"' in source
     assert 'prefs.putUInt("ota_build"' in source
     assert 'prefs.putUShort("hp_per"' in source
-    assert 'prefs.putUInt("cd_blink"' in source
+    assert 'prefs.putString("act_mode"' in source
+    assert 'prefs.putString("act_kind"' in source
+    assert 'prefs.putString("act_device"' in source
+    assert 'prefs.putUInt("act_stale"' in source
     assert 'prefs.putUInt("dmg_chip"' in source
     assert 'prefs.putUShort("dig_edges"' in source
 
@@ -99,13 +111,17 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert 'hp["phase_count"]' in source
     assert 'hp["hits_per_phase"]' in source
     assert 'applyPalette(hp["palette"]' in source
-    assert 'visual["cooldown_blink_ms"]' in source
+    assert 'JsonObjectConst activation = doc["activation"]' in source
+    assert 'activation["linked_device_kind"]' in source
+    assert 'activation["linked_device_id"]' in source
+    assert '"activation.mode must be always_on or linked_device"' in source
     assert 'JsonObjectConst wifi = doc["wifi"]' in source
     assert 'JsonObjectConst mqtt = doc["mqtt"]' in source
     assert 'JsonObjectConst ota = doc["ota"]' in source
     assert 'wifi["password"] = includeSecrets ? config.wifiPassword : "***"' in source
     assert 'mqtt["password"] = includeSecrets ? config.mqttPassword : "***"' in source
     assert "led pin/type/color_order are hardware-profile build values" in source
+    assert "activationSubscriptionChanged" in source
 
 
 def test_hit_target_uses_case_correct_arduino_esp_header_for_linux_ci() -> None:
@@ -123,13 +139,25 @@ def test_hit_target_controller_uses_runtime_config_for_hp_sensor_and_effects() -
     assert "void applyConfig(const RuntimeConfig& config" in header
     assert "void appendStatus(JsonObject obj) const" in header
     assert "bool isSafeForOta() const" in header
+    assert "bool vulnerableNow(uint32_t now) const" in header
+    assert "bool applyLinkedDeviceStatus(JsonObjectConst status" in header
     assert "CRGB leds_[::hit_target::NUM_LEDS]" in header
 
     assert "return totalHits(config_);" in source
     assert "config_.hp.hitsPerPhase" in source
     assert "phaseColorRgb(config_" in source
-    assert "config_.visual.orbitStepMs" in source
-    assert "config_.visual.cooldownBlinkMs" in source
+    assert "config_.activation.mode" in source
+    assert "config_.activation.linkedDeviceKind" in source
+    assert "config_.activation.linkedDeviceId" in source
+    assert source.index('incomingDeviceId = statusString(status, "turret_id");') < source.index(
+        'incomingDeviceId = statusString(status, "device_id");'
+    )
+    assert "ready_for_next_command" in source
+    assert 'statusBoolFlag(status, "activation_active", explicitActive)' in source
+    assert 'statusBoolFlag(status, "hit_target_active", explicitActive)' in source
+    assert 'mode == "WAIT_COMMAND"' in source
+    assert 'mode == "PATTERN"' in source
+    assert 'mode == "HOME"' not in source.split("bool activeTurretStatus", 1)[1].split("bool activeGenericDeviceStatus", 1)[0]
     assert "config_.visual.damageChipMs" in source
     assert "config_.visual.defeatRainbowMs" in source
     assert "config_.sensor.hitThreshold" in source
@@ -145,11 +173,20 @@ def test_hit_target_controller_uses_runtime_config_for_hp_sensor_and_effects() -
     assert "renderPhaseBackfill" in source
     assert "renderPhaseTransitionReveal" in source
     assert "renderDefeatRainbow" in source
-    assert "delayDamageChipUntil(timers_.hitFlashUntilMs);" in source
+    assert "renderOrbitLayer" not in source
+    assert "hitFlashUntilMs" not in source
+    assert "hpPulseUntilMs" not in source
     assert "target_.hpRemaining--" in source
     assert "sensor_.armed = false" in source
+    assert "if (!vulnerableNow(now)) return;" in source
+    assert "const bool vulnerable = vulnerableNow(now);" in source
+    assert "wasVulnerable_" in header
+    assert "if (wasVulnerable_ || capture_.active || !sensor_.armed)" in source
     assert "if (isLockedOut(now)) return;" in source
     assert "digitalEdges >= config_.sensor.digitalHitMinEdges" in source
+    assert "renderFrameAnimated" in source
+    assert "renderFrameSignature" in source
+    assert "if (!animatedFrame && frameRendered_ && frameSignature == lastFrameSignature_) return;" in source
 
 
 def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
@@ -163,13 +200,23 @@ def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
     assert 'root + "/hit_targets/all/ota"' in topics
     assert 'root + "/hit_targets/" + config.targetId' in topics
     assert 'topics.targetCommand = base + "/command"' in topics
-    assert '"/turrets/' not in topics
+    assert 'if (normalized == "turret") return "turrets";' in topics
+    assert 'topics.linkedDeviceStatus = root + "/" + linkedDeviceCollection(config.activation.linkedDeviceKind)' in topics
+    assert "if (topics.linkedDeviceStatus.length() > 0) result.push_back(topics.linkedDeviceStatus);" in topics
 
     assert "PubSubClient" in read("src/hit_target/mqtt/mqtt_bus.h")
     assert "handleConfigPayload" in bus
     assert "applyRuntimeConfigJson" in bus
     assert "store_->save" in bus
     assert "target_->applyConfig" in bus
+    assert "handleLinkedDeviceStatusPayload" in bus
+    assert "activationSubscriptionChanged" in bus
+    assert "DeserializationOption::Filter(filter)" in bus
+    assert "deserializeJson(doc, payload, length" in bus
+    assert "kVerboseMqttPayloadLog = false" in bus
+    assert 'Serial.print(" payload=");' not in bus
+    assert "kLinkedDeviceStatusDocCapacity" in bus
+    assert "kLinkedDeviceStatusDocCapacity = 2048" in bus
     assert "command_reset" in bus
     assert "simulate_hit rejected" in bus
     assert "ota_downloading" in bus
@@ -233,6 +280,8 @@ def test_serial_provisioning_keeps_existing_local_reset_and_status() -> None:
     assert "target.reset(\"serial\")" in main
     assert "target.simulateHit(\"serial\")" in main
     assert "target.appendStatus" in main
+    assert "activationSubscriptionChanged(config, next)" in main
+    assert "activation subscription changed; reconnecting/resubscribing" in main
     assert "BOOT/GPIO0" in readme
     assert "show-config" in readme
     assert "provision" in readme
@@ -258,29 +307,53 @@ def test_legacy_target_module_experiment_is_removed_after_migration() -> None:
 
 def test_hit_target_mqtt_helper_can_publish_config_command_and_ota() -> None:
     helper = read("scripts/hit_target/mqtt_command.py")
+    bus = read("src/hit_target/mqtt/mqtt_bus.cpp")
     readme = read("src/hit_target/README.md")
 
     assert 'DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "hit_target" / ".env.hit_target"' in helper
     assert "def publish_mqtt" in helper
     assert "def build_config_payload" in helper
     assert "def build_command_payload" in helper
+    assert "def build_bench_open_payload" in helper
+    assert "def build_bench_close_payload" in helper
+    assert "def build_linked_device_status_payload" in helper
+    assert "def linked_device_status_topic" in helper
     assert "def build_ota_payload" in helper
     assert "hit_targets/all/ota" in helper
     assert "HIT_TARGET_MQTT_HOST" in helper
     assert "--hits-per-phase" in helper
-    assert "--cooldown-blink-ms" in helper
-    assert "--hit-flash-ms" in helper
-    assert "--hp-hit-pulse-ms" in helper
+    assert "--cooldown-blink-ms" not in helper
+    assert "--hit-flash-ms" not in helper
+    assert "--hp-hit-pulse-ms" not in helper
+    assert "--activation-mode" in helper
+    assert "--linked-device-kind" in helper
+    assert "--linked-device-id" in helper
+    assert "--activation-stale-ms" in helper
     assert "--hit-threshold" in helper
     assert "--led-brightness" in helper
     assert "--reset-button-hold-ms" in helper
     assert "--ota-desired-build" in helper
     assert "--debug-allow-simulate-hit" in helper
+    assert "bench-open" in helper
+    assert "bench-hit" in helper
+    assert "bench-close" in helper
+    assert "linked-device-status" in helper
+    assert "linked_device_collection" in helper
+    assert "client_.unsubscribe(previousTopic.c_str())" in bus
+    assert "subscribedTopics_ = topics" in bus
+    assert "StaticJsonDocument<512> filter" in bus
+    assert '"mode": "PATTERN"' in helper
+    assert '"mode": "WAIT_COMMAND"' in helper
+    assert "activation.mode to always_on" in helper
+    assert "hit-target-mqtt bench-open" in readme
+    assert "hit-target-mqtt bench-close" in readme
+    assert "hit-target-mqtt linked-device-status turret_4 active" in readme
+    assert "hit-target-mqtt linked-device-status turret_4 idle" in readme
     assert "scripts/hit_target/mqtt_command.py config" in readme
     assert "scripts/hit_target/mqtt_command.py ota" in readme
 
 
-def test_hit_target_serial_heartbeat_is_slow_enough_not_to_stutter_orbit() -> None:
+def test_hit_target_serial_heartbeat_is_slow_enough_not_to_stutter_leds() -> None:
     main = read("src/hit_target/main.cpp")
 
     assert "constexpr uint32_t SERIAL_STATUS_PERIOD_MS = 10000;" in main
@@ -298,7 +371,11 @@ def test_hit_target_local_env_example_and_gitignore_keep_runtime_secrets_out_of_
     assert "HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS" in example
     assert "HIT_TARGET_MQTT_PORT=1883" in example
     assert "HIT_TARGET_MQTT_ROOT=battlebang" in example
-    assert "HIT_TARGET_COOLDOWN_BLINK_MS=60" in example
+    assert "HIT_TARGET_COOLDOWN_BLINK_MS=60" not in example
+    assert "HIT_TARGET_DAMAGE_CHIP_MS=240" in example
+    assert "HIT_TARGET_ACTIVATION_MODE=always_on" in example
+    assert "HIT_TARGET_LINKED_DEVICE_KIND=turret" in example
+    assert "HIT_TARGET_LINKED_DEVICE_ID=" in example
     assert "HIT_TARGET_LED_BRIGHTNESS=80" in example
     assert "HIT_TARGET_RESET_BUTTON_HOLD_MS=1200" in example
     assert "HIT_TARGET_OTA_PUBLIC_MANIFEST_URL=https://github.com/KongPedia/battlebang-esp/releases/download/hit-target-latest/hit-target-manifest.json" in example
@@ -339,7 +416,10 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
             "HIT_TARGET_HP_PHASE_COUNT": "3",
             "HIT_TARGET_HITS_PER_PHASE": "10",
             "HIT_TARGET_HP_PALETTE": "#009600,#BE8200,#BE0000",
-            "HIT_TARGET_COOLDOWN_BLINK_MS": "140",
+            "HIT_TARGET_DAMAGE_CHIP_MS": "140",
+            "HIT_TARGET_ACTIVATION_MODE": "linked_device",
+            "HIT_TARGET_LINKED_DEVICE_KIND": "turret",
+            "HIT_TARGET_LINKED_DEVICE_ID": "turret_4",
             "HIT_TARGET_LED_BRIGHTNESS": "72",
             "HIT_TARGET_RESET_BUTTON_HOLD_MS": "1500",
             "HIT_TARGET_NETWORK_AUTO_START": "true",
@@ -352,7 +432,14 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
     assert doc["mqtt"]["host"] == "10.0.0.5"
     assert doc["mqtt"]["root"] == "battlebang-dev"
     assert doc["network"]["auto_start"] is True
-    assert doc["visual"]["cooldown_blink_ms"] == 140
+    assert doc["visual"]["damage_chip_ms"] == 140
+    assert doc["visual"]["defeat_rainbow_ms"] == 1900
+    assert doc["activation"] == {
+        "mode": "linked_device",
+        "linked_device_kind": "turret",
+        "linked_device_id": "turret_4",
+        "stale_ms": 3000,
+    }
     assert doc["led"]["brightness"] == 72
     assert doc["reset"]["button_hold_ms"] == 1500
     assert doc["hp"] == {

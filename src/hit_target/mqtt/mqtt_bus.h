@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <WiFiClient.h>
+#include <vector>
 
 #include "hit_target/config/runtime_config.h"
 #include "hit_target/net/wifi_manager.h"
@@ -25,6 +26,7 @@ class MqttBus {
   void handleMessage(char* topic, byte* payload, unsigned int length);
   void handleConfigPayload(const char* payload);
   void handleCommandPayload(const char* topic, const char* payload);
+  void handleLinkedDeviceStatusPayload(const byte* payload, unsigned int length);
   void handleOtaPayload(const char* payload);
 
   RuntimeConfig* config_ = nullptr;
@@ -37,6 +39,7 @@ class MqttBus {
   unsigned long lastStatusMs_ = 0;
   unsigned long lastStatusChangeCheckMs_ = 0;
   String lastStatusSignature_;
+  std::vector<String> subscribedTopics_;
   bool subscriptionsDirty_ = true;
 };
 
