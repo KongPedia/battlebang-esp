@@ -73,7 +73,9 @@ bool HitMqttClient::publishHitCandidate(int targetId,
                                         uint32_t firmwareTsMs,
                                         bool queued,
                                         uint32_t queuedForMs,
-                                        uint8_t queueDepth) {
+                                        uint8_t queueDepth,
+                                        int peakRaw,
+                                        int thresholdRaw) {
   if (!mqttClient_.connected()) return false;
 
   StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
@@ -85,11 +87,22 @@ bool HitMqttClient::publishHitCandidate(int targetId,
   doc["hit"] = hit;
   doc["firmware_ts_ms"] = firmwareTsMs;
   addSourceMetadata(doc, clientId_);
+  JsonObject metadata = doc["metadata"].as<JsonObject>();
+  if (peakRaw >= 0) {
+    doc["peak"] = peakRaw;
+    metadata["adc_peak_raw"] = peakRaw;
+  }
+  if (thresholdRaw >= 0) {
+    doc["threshold"] = thresholdRaw;
+    metadata["adc_threshold_raw"] = thresholdRaw;
+  }
+  if (peakRaw >= 0 || thresholdRaw >= 0) {
+    metadata["hit_source"] = "piezo_ao_adc_threshold";
+  }
 
   if (queued) {
     doc["queued"] = true;
     doc["queued_for_ms"] = queuedForMs;
-    JsonObject metadata = doc["metadata"].as<JsonObject>();
     metadata["queued"] = true;
     metadata["queued_for_ms"] = queuedForMs;
     metadata["queue_depth"] = queueDepth;
@@ -100,23 +113,32 @@ bool HitMqttClient::publishHitCandidate(int targetId,
   size_t size = serializeJson(doc, buffer, sizeof(buffer));
   bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
   if (ok) {
-    Serial.printf("[HIT] published candidate seq=%lu target=%d hit=%s queued=%s topic=%s\n",
+    Serial.printf("[HIT] published candidate seq=%lu target=%d hit=%s peak=%d threshold=%d queued=%s topic=%s\n",
                   (unsigned long)sequence,
                   targetId,
                   hit ? "true" : "false",
+                  peakRaw,
+                  thresholdRaw,
                   queued ? "true" : "false",
                   eventTopic_);
   } else {
-    Serial.printf("[HIT] candidate publish failed seq=%lu target=%d hit=%s queued=%s\n",
+    Serial.printf("[HIT] candidate publish failed seq=%lu target=%d hit=%s peak=%d threshold=%d queued=%s\n",
                   (unsigned long)sequence,
                   targetId,
                   hit ? "true" : "false",
+                  peakRaw,
+                  thresholdRaw,
                   queued ? "true" : "false");
   }
   return ok;
 }
 
-void HitMqttClient::queueHitCandidate(int targetId, bool hit, uint32_t sequence, uint32_t firmwareTsMs) {
+void HitMqttClient::queueHitCandidate(int targetId,
+                                      bool hit,
+                                      uint32_t sequence,
+                                      uint32_t firmwareTsMs,
+                                      int peakRaw,
+                                      int thresholdRaw) {
   if (!hit) return;
 
   if (offlineQueueCount_ >= OFFLINE_HIT_QUEUE_CAPACITY) {
@@ -136,11 +158,15 @@ void HitMqttClient::queueHitCandidate(int targetId, bool hit, uint32_t sequence,
   queued.hit = hit;
   queued.sequence = sequence;
   queued.firmwareTsMs = firmwareTsMs;
+  queued.peakRaw = peakRaw;
+  queued.thresholdRaw = thresholdRaw;
   offlineQueue_[insertIndex] = queued;
   offlineQueueCount_++;
-  Serial.printf("[HIT] queued offline candidate seq=%lu target=%d queue=%u/%u\n",
+  Serial.printf("[HIT] queued offline candidate seq=%lu target=%d peak=%d threshold=%d queue=%u/%u\n",
                 (unsigned long)sequence,
                 targetId,
+                peakRaw,
+                thresholdRaw,
                 offlineQueueCount_,
                 (unsigned int)OFFLINE_HIT_QUEUE_CAPACITY);
 }
@@ -248,7 +274,9 @@ void HitMqttClient::flushOfflineQueue(uint32_t now) {
                            candidate.firmwareTsMs,
                            true,
                            queuedForMs,
-                           queueDepthBeforePublish)) {
+                           queueDepthBeforePublish,
+                           candidate.peakRaw,
+                           candidate.thresholdRaw)) {
     return;
   }
 

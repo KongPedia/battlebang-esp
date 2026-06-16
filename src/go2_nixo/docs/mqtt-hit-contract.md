@@ -1,6 +1,6 @@
-# Go2 ESP ↔ Command Center MQTT 계약
+# Integrated Go2/Nixo ESP ↔ Command Center MQTT 계약
 
-Go2 ESP는 Command Center와 직접 MQTT로 통신합니다. ESP는 hit 여부만 보내고, scoring/down/LED 표시 정책은 Command Center가 소유합니다.
+Integrated Go2/Nixo ESP는 Command Center와 직접 MQTT로 통신합니다. ESP는 piezo AO ADC raw 값이 설정 threshold를 넘는 입력만 `hit_candidate`로 보내고, 최종 accept/reject, scoring/down/LED 표시 정책은 Command Center가 소유합니다.
 
 ## Topic
 
@@ -16,7 +16,7 @@ battlebang/hit/{robot_id}/ring_display/command
 
 ## ESP -> Command Center: hit_candidate
 
-피에조 센서 DO 디지털 입력이 올라오면 ESP가 후보 이벤트를 보냅니다. ESP는 타격 세기나 점수 변환을 계산하지 않고 `hit=true`만 보냅니다. 최종 hit 수락/거절, 플레이어 난이도별 score/down/display 계산은 Command Center가 담당합니다. MQTT publish가 실패한 hit는 RAM queue에 보관되고, 재연결 후 같은 event topic으로 다시 publish됩니다.
+피에조 센서 AO ADC raw 값이 firmware threshold 이상으로 올라오면 ESP가 후보 이벤트를 보냅니다. D0 디지털 출력은 hit 판정에 사용하지 않고 debug readback으로만 남깁니다. ESP는 점수/HP/down을 계산하지 않고 `hit=true` 후보와 관측된 `peak`/`threshold`를 보냅니다. 최종 hit 수락/거절, 플레이어 난이도별 score/down/display 계산은 Command Center가 담당합니다. MQTT publish가 실패한 hit는 RAM queue에 보관되고, 재연결 후 같은 event topic으로 다시 publish됩니다.
 
 ```json
 {
@@ -26,6 +26,8 @@ battlebang/hit/{robot_id}/ring_display/command
   "sensor_id": "piezo_t1",
   "sequence": 1,
   "hit": true,
+  "peak": 2140,
+  "threshold": 1800,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -35,7 +37,10 @@ battlebang/hit/{robot_id}/ring_display/command
     "firmware": "go2_nixo",
     "firmware_role": "integrated_hit_led_nixo",
     "mac_suffix": "948C",
-    "client_id": "battlebang-hit-go2_05-go2_nixo-948C"
+    "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
+    "hit_source": "piezo_ao_adc_threshold",
+    "adc_peak_raw": 2140,
+    "adc_threshold_raw": 1800
   }
 }
 ```
@@ -50,6 +55,8 @@ battlebang/hit/{robot_id}/ring_display/command
   "sensor_id": "piezo_t1",
   "sequence": 7,
   "hit": true,
+  "peak": 2188,
+  "threshold": 1800,
   "firmware_ts_ms": 45678,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -62,6 +69,9 @@ battlebang/hit/{robot_id}/ring_display/command
     "firmware_role": "integrated_hit_led_nixo",
     "mac_suffix": "948C",
     "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
+    "hit_source": "piezo_ao_adc_threshold",
+    "adc_peak_raw": 2188,
+    "adc_threshold_raw": 1800,
     "queued": true,
     "queued_for_ms": 1200,
     "queue_depth": 3,
@@ -127,3 +137,6 @@ ESP는 이 payload를 받아 ring LED를 갱신합니다.
 - `ring_display_mode`: `idle`, `active`, `hit_flash`, `down`, `stale`, `disabled` 등 semantic mode
 - `ttl_ms`: Command Center 표시가 유효한 시간
 - `reset_hit_state`: true면 ESP 센서 latch/flag와 현재 remote display를 초기화합니다. Command Center의 `POST /api/robots/{robot_id}/hit/reset` 응답 command에서 true로 내려옵니다.
+
+
+Nixo fire command는 별도 topic `battlebang/nixo/{nixo_id}/command`로 수신하며, hit/ring MQTT 계약은 Go2 AO hit ESP와 동일합니다.

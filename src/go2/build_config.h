@@ -164,7 +164,7 @@
 #endif
 
 #ifndef BATTLEBANG_HIT_COOLDOWN_MS
-#define BATTLEBANG_HIT_COOLDOWN_MS 300
+#define BATTLEBANG_HIT_COOLDOWN_MS 0
 #endif
 
 #ifndef BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY
@@ -202,7 +202,7 @@
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
 // Measured fire vibration reached ~1656 raw in bench tests, so default above
 // that range. Tune per harness/target with robots.json or env.
-#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 2400
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 1800
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_REARM_RAW

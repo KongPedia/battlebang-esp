@@ -86,6 +86,11 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "led_brightness": "BATTLEBANG_BUILD_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
+        "piezo_ao_pin": "BATTLEBANG_BUILD_PIEZO_AO_PIN",
+        "piezo_ao_threshold_raw": "BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW",
+        "piezo_ao_rearm_raw": "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW",
+        "piezo_ao_capture_window_ms": "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS",
+        "piezo_ao_debug_period_ms": "BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS",
         "nixo_relay1_pin": "BATTLEBANG_BUILD_NIXO_RELAY1_PIN",
         "nixo_relay2_pin": "BATTLEBANG_BUILD_NIXO_RELAY2_PIN",
         "nixo_relay_on_level": "BATTLEBANG_BUILD_NIXO_RELAY_ON_LEVEL",
@@ -138,6 +143,11 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
+        (("BATTLEBANG_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_PIEZO_AO_PIN"),
+        (("BATTLEBANG_PIEZO_AO_THRESHOLD_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW"),
+        (("BATTLEBANG_PIEZO_AO_REARM_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW"),
+        (("BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS",), "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS"),
+        (("BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS",), "BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS"),
         (("NIXO_RELAY1_PIN", "BATTLEBANG_NIXO_RELAY1_PIN"), "BATTLEBANG_BUILD_NIXO_RELAY1_PIN"),
         (("NIXO_RELAY2_PIN", "BATTLEBANG_NIXO_RELAY2_PIN"), "BATTLEBANG_BUILD_NIXO_RELAY2_PIN"),
         (
@@ -224,6 +234,7 @@ print(
     f"{LOG_PREFIX} "
     f"{PIO_ENV}: robot_id={robot_id} "
         f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
+        f"ao_threshold={profile.get('piezo_ao_threshold_raw', 'default')} "
         f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "
         f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')} "
         f"nixo_id={profile.get('nixo_id', 'derived')}"
