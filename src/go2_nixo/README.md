@@ -11,14 +11,14 @@ Go2 등에 장착되는 ESP32 피격/LED/Nixo 통합 보드용 fallback 펌웨�
 
 현재 Go2 ESP의 책임은 세 가지입니다.
 
-1. 피에조 센서 DO 디지털 입력에서 valid hit가 발생하면 `hit=true` 이벤트를 Command Center에 publish
+1. 피에조 센서 AO ADC raw 값이 threshold를 넘으면 `hit_candidate(hit=true, peak, threshold)` 이벤트를 Command Center에 publish
 2. Command Center가 내려준 `ring_display` 명령을 LED 링에 렌더링
 3. Command Center가 내려준 Nixo `fire` 명령을 받아 relay-only fire sequence 실행
 
 ESP는 타격 세기, 로컬 스코어, 로컬 down 상태를 계산하거나 저장하지 않습니다. 난이도/스코어/down 기준과 LED fill 비율은 Command Center 설정과 정책이 소유합니다. MQTT가 끊긴 동안의 hit는 RAM queue에 잠시 보관했다가 재연결 후 원래 `firmware_ts_ms`와 함께 재전송합니다.
 
 ```text
-Piezo DO -> ESP hit_candidate(hit=true) -> Command Center scoring/down policy
+Piezo AO ADC threshold -> ESP hit_candidate(hit=true, peak, threshold) -> Command Center scoring/down policy
 Command Center ring_display command -> ESP LED ring render
 Command Center Nixo fire command -> ESP relay-only fire sequence
 ```
@@ -27,7 +27,6 @@ Command Center Nixo fire command -> ESP relay-only fire sequence
 
 ```text
 main.cpp   setup/loop runtime orchestration
-piezo/     piezo DO interrupt + cooldown/rearm gate
 ring_led/  ring_display command renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay-only fire
@@ -38,8 +37,8 @@ nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay-only fire
 | Part | Pin |
 | --- | --- |
 | LED ring data | `GPIO4` |
-| Piezo T1 DO | `GPIO27` |
-| Piezo T2 DO | `-1` |
+| Piezo AO ADC | `GPIO34` |
+| Piezo DO debug readback | `GPIO27` |
 | Nixo relay CH1 | `GPIO23` |
 | Nixo relay CH2 | `-1` |
 
@@ -199,7 +198,7 @@ pio run -e esp32dev_go2_nixo_go2_03
 [NIXO MQTT] subscribed battlebang/nixo/nixo_go2_03/command qos=1
 ```
 
-피에조 센서 DO 디지털 입력이 올라오면 ESP가 `hit_candidate`를 publish합니다.
+피에조 센서 AO ADC raw 값이 firmware threshold 이상으로 올라오면 ESP가 `hit_candidate`를 publish합니다. D0는 hit 판정에 쓰지 않고 debug readback으로만 남깁니다.
 
 ```json
 {
@@ -248,13 +247,18 @@ Go2별 non-secret profile입니다.
 ```json
 {
   "defaults": {
-    "hit_cooldown_ms": 300,
+    "hit_cooldown_ms": 0,
     "offline_hit_queue_capacity": 32,
     "offline_hit_queue_flush_interval_ms": 50,
     "led_pin": 4,
     "num_leds": 40,
     "led_brightness": 80,
     "t1_do_pin": 27,
+    "piezo_ao_pin": 34,
+    "piezo_ao_threshold_raw": 1800,
+    "piezo_ao_rearm_raw": 400,
+    "piezo_ao_capture_window_ms": 30,
+    "piezo_ao_debug_period_ms": 100,
     "nixo_mqtt_topic_prefix": "battlebang/nixo",
     "nixo_relay1_pin": 23,
     "nixo_relay2_pin": -1,
@@ -308,7 +312,7 @@ MQTT 연결이 없거나 publish가 실패하면 ESP는 valid hit event를 RAM q
 
 주의:
 
-- ESP debounce/cooldown은 센서 bounce를 줄이는 1차 필터입니다.
+- ESP hit cooldown 기본값은 0ms이며, 센서 rearm gate와 Command Center 최종 중복 판정으로 처리합니다.
 - Command Center `hit_accept_cooldown_ms`가 중복 score 방지의 최종 기준입니다.
 
 ---

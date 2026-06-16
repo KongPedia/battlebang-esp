@@ -201,7 +201,7 @@ Go2별 non-secret profile입니다.
 ```json
 {
   "defaults": {
-    "hit_cooldown_ms": 300,
+    "hit_cooldown_ms": 0,
     "offline_hit_queue_capacity": 32,
     "offline_hit_queue_flush_interval_ms": 50,
     "led_pin": 4,
@@ -258,7 +258,7 @@ MQTT 연결이 없거나 publish가 실패하면 ESP는 valid hit event를 RAM q
 
 주의:
 
-- ESP debounce/cooldown은 센서 bounce를 줄이는 1차 필터입니다.
+- ESP hit cooldown 기본값은 0ms이며, 센서 rearm gate와 Command Center 최종 중복 판정으로 처리합니다.
 - Command Center `hit_accept_cooldown_ms`가 중복 score 방지의 최종 기준입니다.
 
 ---

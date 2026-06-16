@@ -2,7 +2,7 @@
   "schema": 1,
   "notes": "Per-Go2 hit ESP profiles. Secrets stay in gitignored src/go2/local_secrets.h or shell env, not in this file. Hit detection is piezo AO ADC threshold based: ESP publishes hit_candidate and Command Center owns final accept/scoring/down/display policy.",
   "defaults": {
-    "hit_cooldown_ms": 300,
+    "hit_cooldown_ms": 0,
     "offline_hit_queue_capacity": 32,
     "offline_hit_queue_flush_interval_ms": 50,
     "led_pin": 4,

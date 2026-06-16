@@ -14,7 +14,6 @@ src/go2_nixo/
 ├─ build_config.h                   # 핀, MQTT topic, build-time macro
 ├─ robots.json                      # Go2별 non-secret profile
 ├─ local_secrets.example.h          # gitignore local secret template
-├─ piezo/                           # piezo DO interrupt / hit candidate detection
 ├─ ring_led/                        # ring_display command renderer
 ├─ mqtt/                            # MQTT hit candidate / heartbeat / display command
 └─ nixo/                            # MQTT Nixo fire command / relay-only sequence
