@@ -263,6 +263,7 @@ void HitMqttClient::flushOfflineQueue(uint32_t now) {
   if (offlineQueueCount_ == 0) return;
   if (!mqttClient_.connected()) return;
   if (now - lastOfflineQueueFlushMs_ < OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS) return;
+  lastOfflineQueueFlushMs_ = now;
 
   QueuedHitCandidate candidate = offlineQueue_[offlineQueueHead_];
   uint32_t queuedForMs = now - candidate.firmwareTsMs;
@@ -280,7 +281,6 @@ void HitMqttClient::flushOfflineQueue(uint32_t now) {
   }
 
   popOfflineQueueHead();
-  lastOfflineQueueFlushMs_ = now;
   Serial.printf("[HIT] flushed offline candidate seq=%lu remaining=%u\n",
                 (unsigned long)candidate.sequence,
                 offlineQueueCount_);

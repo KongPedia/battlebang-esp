@@ -87,9 +87,7 @@ static void beginAnalogPiezo() {
 
   pinMode(PIEZO_AO_PIN, INPUT);
   analogReadResolution(12);
-#if defined(ADC_11db)
   analogSetPinAttenuation(PIEZO_AO_PIN, ADC_11db);
-#endif
 
   if (piezoDoDebugEnabled()) {
     pinMode(PIEZO_DO_PIN, INPUT_PULLDOWN);

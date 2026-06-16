@@ -61,7 +61,7 @@
 #define BATTLEBANG_NIXO_RELAY_OFF_LEVEL NIXO_RELAY_OFF_LEVEL
 #endif
 
-// Overrides injected by scripts/go2_config.py from PlatformIO profile/shell
+// Overrides injected by scripts/go2_nixo_config.py from PlatformIO profile/shell
 // env. These intentionally apply after local_secrets.h so explicit env/profile
 // builds win without editing the gitignored local file.
 #ifdef BATTLEBANG_BUILD_ROBOT_ID

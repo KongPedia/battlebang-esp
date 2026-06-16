@@ -208,6 +208,8 @@ pio run -e esp32dev_go2_nixo_go2_03
   "sensor_id": "piezo_t1",
   "sequence": 1,
   "hit": true,
+  "peak": 2140,
+  "threshold": 1800,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -217,7 +219,10 @@ pio run -e esp32dev_go2_nixo_go2_03
     "firmware": "go2_nixo",
     "firmware_role": "integrated_hit_led_nixo",
     "mac_suffix": "948C",
-    "client_id": "battlebang-hit-go2_03-go2_nixo-948C"
+    "client_id": "battlebang-hit-go2_03-go2_nixo-948C",
+    "hit_source": "piezo_ao_adc_threshold",
+    "adc_peak_raw": 2140,
+    "adc_threshold_raw": 1800
   }
 }
 ```
