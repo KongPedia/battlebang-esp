@@ -84,6 +84,9 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "led_pin": "BATTLEBANG_BUILD_LED_PIN",
         "num_leds": "BATTLEBANG_BUILD_NUM_LEDS",
         "led_brightness": "BATTLEBANG_BUILD_LED_BRIGHTNESS",
+        "ring_led_pin": "BATTLEBANG_BUILD_RING_LED_PIN",
+        "ring_num_leds": "BATTLEBANG_BUILD_RING_NUM_LEDS",
+        "ring_led_brightness": "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
         "piezo_ao_pin": "BATTLEBANG_BUILD_PIEZO_AO_PIN",
@@ -141,6 +144,9 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_LED_PIN",), "BATTLEBANG_BUILD_LED_PIN"),
         (("BATTLEBANG_NUM_LEDS",), "BATTLEBANG_BUILD_NUM_LEDS"),
         (("BATTLEBANG_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_LED_BRIGHTNESS"),
+        (("BATTLEBANG_RING_LED_PIN",), "BATTLEBANG_BUILD_RING_LED_PIN"),
+        (("BATTLEBANG_RING_NUM_LEDS",), "BATTLEBANG_BUILD_RING_NUM_LEDS"),
+        (("BATTLEBANG_RING_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
         (("BATTLEBANG_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_PIEZO_AO_PIN"),
@@ -236,6 +242,11 @@ print(
         f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
         f"ao_threshold={profile.get('piezo_ao_threshold_raw', 'default')} "
         f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "
+        f"led_pin={profile.get('led_pin', 'default')} "
+        f"num_leds={profile.get('num_leds', 'default')} "
+        f"led_brightness={profile.get('led_brightness', 'default')} "
+        f"ring_led_pin={profile.get('ring_led_pin', 'default')} "
+        f"ring_num_leds={profile.get('ring_num_leds', 'default')} "
         f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')} "
         f"nixo_id={profile.get('nixo_id', 'derived')}"
     )

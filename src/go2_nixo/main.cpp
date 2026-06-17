@@ -4,6 +4,7 @@
 #include "go2_nixo/mqtt/hit_mqtt_client.h"
 #include "go2_nixo/build_config.h"
 #include "go2_nixo/nixo/nixo_fire_client.h"
+#include "go2_nixo/ring_led/bar_display.h"
 #include "go2_nixo/ring_led/ring_display.h"
 
 using namespace go2;
@@ -11,13 +12,15 @@ using namespace go2;
 // Integrated Go2 hit/LED + Nixo fallback firmware:
 // - This ESP samples piezo AO (ADC) and publishes threshold crossings as
 //   hit_candidate events. Command Center owns final accept/reject, scoring,
-//   down state, and LED ring display commands.
-// - Nixo fire is handled on the same ESP through MQTT relay commands.
+//   down state, and legacy-named ring_display commands rendered on the HP bar.
+// - Nixo fire is handled on the same ESP through MQTT relay commands, and
+//   the original ring LED renders local Nixo firing/cooldown state.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
 HardwareSerial& JetsonSerial = Serial2;
 
+BarDisplay barDisplay;
 RingDisplay ringDisplay;
 HitMqttClient hitMqtt;
 NixoFireClient nixoFire;
@@ -239,7 +242,9 @@ static void resetAll() {
   resetAnalogPiezoState();
   hitMqtt.clearOfflineQueue();
   nixoFire.stopFire("reset");
-  ringDisplay.clearRemoteDisplay();
+  barDisplay.clearRemoteDisplay();
+  barDisplay.markDirty();
+  ringDisplay.clearCooldown();
   ringDisplay.markDirty();
   Serial.println("[RESET] ADC hit/display state cleared");
   if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC hit/display state cleared");
@@ -278,18 +283,18 @@ static void pollCommands() {
   }
 }
 
-static void onRingDisplayUpdate(const RingDisplayUpdate& update) {
+static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
   uint32_t now = millis();
   if (update.resetHitState) {
     resetAnalogPiezoState();
     hitMqtt.clearOfflineQueue();
     nixoFire.stopFire("mqtt-hit-reset");
-    ringDisplay.clearRemoteDisplay();
+    barDisplay.clearRemoteDisplay();
     Serial.println("[RESET] MQTT ADC hit/display state reset");
     if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC hit/display state reset");
   }
   nixoFire.setFireInhibited(update.down || update.mode == "down" || update.mode == "disabled");
-  ringDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
+  barDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
 
 void setup() {
@@ -299,18 +304,26 @@ void setup() {
   JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
   SerialBT.begin(BT_NAME);
 
+  barDisplay.begin();
   ringDisplay.begin();
   beginAnalogPiezo();
-  hitMqtt.begin(onRingDisplayUpdate);
+  hitMqtt.begin(onBarDisplayUpdate);
   nixoFire.begin();
 
+  barDisplay.markDirty();
   ringDisplay.markDirty();
+  barDisplay.tick(millis());
   ringDisplay.tick(millis());
 
-  Serial.printf("[PIN] UART2 RX=%d TX=%d | LED=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d\n",
+  Serial.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d\n",
                 UART_RX_PIN,
                 UART_TX_PIN,
-                LED_PIN,
+                HP_BAR_LED_PIN,
+                HP_BAR_NUM_LEDS,
+                HP_BAR_GROUP_COUNT,
+                HP_BAR_LEDS_PER_GROUP,
+                RING_LED_PIN,
+                RING_NUM_LEDS,
                 PIEZO_AO_PIN,
                 PIEZO_DO_PIN);
   Serial.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu\n",
@@ -341,9 +354,14 @@ void setup() {
 void loop() {
   uint32_t now = millis();
 
-  hitMqtt.tick(now, ringDisplay.remoteDisplayActive());
+  hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   nixoFire.tick(now);
+  ringDisplay.setCooldownState(nixoFire.isFiring(),
+                                       nixoFire.cooldownRemainingMs(now),
+                                       nixoFire.cooldownDurationMs(),
+                                       nixoFire.fireInhibited());
   pollCommands();
+  barDisplay.tick(now);
   ringDisplay.tick(now);
   pollAnalogPiezo(now);
   delay(1);

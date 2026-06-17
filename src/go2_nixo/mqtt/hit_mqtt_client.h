@@ -9,7 +9,7 @@
 
 namespace go2 {
 
-struct RingDisplayUpdate {
+struct BarDisplayUpdate {
   float fillRatio = 1.0f;
   String mode = "idle";
   bool down = false;
@@ -26,11 +26,11 @@ struct QueuedHitCandidate {
   int thresholdRaw = -1;
 };
 
-using RingDisplayHandler = void (*)(const RingDisplayUpdate& update);
+using BarDisplayHandler = void (*)(const BarDisplayUpdate& update);
 
 class HitMqttClient {
  public:
-  void begin(RingDisplayHandler ringHandler);
+  void begin(BarDisplayHandler barHandler);
   void tick(uint32_t now, bool remoteDisplayActive);
   bool configured() const;
   bool connected();
@@ -57,7 +57,7 @@ class HitMqttClient {
  private:
   WiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
-  RingDisplayHandler ringHandler_ = nullptr;
+  BarDisplayHandler barHandler_ = nullptr;
   QueuedHitCandidate offlineQueue_[OFFLINE_HIT_QUEUE_CAPACITY] = {};
   uint8_t offlineQueueHead_ = 0;
   uint8_t offlineQueueCount_ = 0;

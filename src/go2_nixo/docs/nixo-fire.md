@@ -80,3 +80,7 @@ mosquitto_pub -h <BROKER_IP> -p 1883 -q 1 \
   -t battlebang/nixo/nixo_go2_03/command \
   -m '{"schema_version":1,"command":"fire","nixo_id":"nixo_go2_03","parent_robot_id":"go2_03","enabled":true,"duration_ms":1000,"request_id":"direct-mqtt-smoke"}'
 ```
+
+## Cooldown ring
+
+The original ring LED remains on GPIO4 and displays only Nixo fire/cooldown: ready=full green, firing=full red, and the 10-second cooldown starts dark then fills 1/10 of the ring in green every second. Hit/down HP states are rendered separately on the 84-LED bar on GPIO18.

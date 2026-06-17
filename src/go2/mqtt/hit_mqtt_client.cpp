@@ -32,10 +32,12 @@ void addSourceMetadata(JsonDocument& doc, const char* clientId) {
 
 }  // namespace
 
-void HitMqttClient::begin(RingDisplayHandler ringHandler) {
-  ringHandler_ = ringHandler;
+void HitMqttClient::begin(BarDisplayHandler barHandler, NixoFireMirrorHandler nixoFireMirrorHandler) {
+  barHandler_ = barHandler;
+  nixoFireMirrorHandler_ = nixoFireMirrorHandler;
   snprintf(eventTopic_, sizeof(eventTopic_), "%s/%s/events", MQTT_TOPIC_PREFIX, ROBOT_ID);
   snprintf(ringCommandTopic_, sizeof(ringCommandTopic_), "%s/%s/ring_display/command", MQTT_TOPIC_PREFIX, ROBOT_ID);
+  snprintf(nixoCommandTopic_, sizeof(nixoCommandTopic_), "%s/%s/command", NIXO_MQTT_TOPIC_PREFIX_VALUE, NIXO_ID_VALUE);
   char suffix[5];
   formatMacSuffix(suffix, sizeof(suffix));
   snprintf(clientId_, sizeof(clientId_), "battlebang-hit-%s-%s-%s", ROBOT_ID, FIRMWARE_NAME, suffix);
@@ -190,12 +192,20 @@ const char* HitMqttClient::ringCommandTopic() const {
   return ringCommandTopic_;
 }
 
+const char* HitMqttClient::nixoCommandTopic() const {
+  return nixoCommandTopic_;
+}
+
 void HitMqttClient::mqttMessageCallback(char* topic, byte* payload, unsigned int length) {
   if (instance_ == nullptr) return;
   instance_->handleMqttMessage(topic, payload, length);
 }
 
 void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, nixoCommandTopic_) == 0) {
+    handleNixoCommandMessage(payload, length);
+    return;
+  }
   if (strcmp(topic, ringCommandTopic_) != 0) return;
 
   StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
@@ -213,13 +223,13 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
     return;
   }
 
-  RingDisplayUpdate update;
+  BarDisplayUpdate update;
   update.fillRatio = doc["ring_fill_ratio"] | 1.0f;
   update.mode = String(doc["ring_display_mode"] | "idle");
   update.down = doc["down"] | false;
   update.ttlMs = doc["ttl_ms"] | 1000;
   update.resetHitState = doc["reset_hit_state"] | false;
-  if (ringHandler_ != nullptr) ringHandler_(update);
+  if (barHandler_ != nullptr) barHandler_(update);
 
   Serial.printf("[MQTT] ring command mode=%s fill=%.3f down=%s ttl=%lu reset_hit_state=%s\n",
                 update.mode.c_str(),
@@ -227,6 +237,54 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
                 update.down ? "true" : "false",
                 (unsigned long)update.ttlMs,
                 update.resetHitState ? "true" : "false");
+}
+
+
+void HitMqttClient::handleNixoCommandMessage(byte* payload, unsigned int length) {
+  if (nixoFireMirrorHandler_ == nullptr) return;
+  if (length == 0) {
+    Serial.println("[NIXO MON] ignored empty retained command clear");
+    return;
+  }
+
+  StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
+  DeserializationError error = deserializeJson(doc, payload, length);
+  if (error) {
+    Serial.printf("[NIXO MON] invalid JSON: %s\n", error.c_str());
+    return;
+  }
+
+  const int schemaVersion = doc["schema_version"] | 0;
+  const char* command = doc["command"] | "";
+  const char* nixoId = doc["nixo_id"] | "";
+  const char* requestId = doc["request_id"] | "";
+  const bool enabled = doc["enabled"] | true;
+
+  if (schemaVersion != 1 || strcmp(command, "fire") != 0) return;
+  if (strcmp(nixoId, NIXO_ID_VALUE) != 0) {
+    Serial.printf("[NIXO MON] ignored nixo_id=%s expected=%s\n", nixoId, NIXO_ID_VALUE);
+    return;
+  }
+  if (!enabled) return;
+  if (requestId[0] == '\0') {
+    Serial.println("[NIXO MON] ignored fire command without request_id");
+    return;
+  }
+  if (lastNixoFireRequestId_ == requestId) {
+    Serial.printf("[NIXO MON] duplicate request_id=%s ignored\n", requestId);
+    return;
+  }
+
+  uint32_t durationMs = doc["duration_ms"] | NIXO_FIRE_DEFAULT_DURATION_MS;
+  durationMs = constrain(durationMs, NIXO_FIRE_MIN_DURATION_MS, NIXO_FIRE_MAX_DURATION_MS);
+
+  lastNixoFireRequestId_ = requestId;
+  nixoFireMirrorHandler_(durationMs, NIXO_FIRE_COOLDOWN_MS);
+  Serial.printf("[NIXO MON] fire mirror request_id=%s fire_duration_ms=%lu cooldown_ms=%lu topic=%s\n",
+                requestId,
+                (unsigned long)durationMs,
+                (unsigned long)NIXO_FIRE_COOLDOWN_MS,
+                nixoCommandTopic_);
 }
 
 void HitMqttClient::ensureWiFiConnected(uint32_t now) {
@@ -257,6 +315,12 @@ void HitMqttClient::ensureMqttConnected(uint32_t now) {
 
   bool ok = mqttClient_.subscribe(ringCommandTopic_, 1);
   Serial.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", ringCommandTopic_);
+  if (nixoFireMirrorHandler_ != nullptr) {
+    bool nixoOk = mqttClient_.subscribe(nixoCommandTopic_, 1);
+    Serial.printf("[MQTT] %s nixo cooldown %s\n",
+                  nixoOk ? "subscribed" : "subscribe failed",
+                  nixoCommandTopic_);
+  }
 }
 
 void HitMqttClient::flushOfflineQueue(uint32_t now) {

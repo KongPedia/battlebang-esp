@@ -2,32 +2,33 @@
 
 Go2 등에 장착되는 ESP32 피격/LED/Nixo 통합 보드용 fallback 펌웨어 가이드입니다.
 
-이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 피격/LED 링과 Nixo/game blaster
+이 펌웨어는 ESP가 Command Center와 MQTT로 직접 통신하도록 빌드됩니다. 피격/HP bar LED와 Nixo/game blaster
 발사/릴레이 제어가 `src/go2_nixo` 펌웨어 하나로 통합되어 있습니다. 서보 제어는 제거되었습니다.
 
 > 현재 2-ESP split active 경로는 `src/go2` hit/LED ESP와 `src/nIxo` Nixo ESP입니다.
-> `src/go2_nixo`는 한 ESP로 hit/ring/Nixo를 같이 돌려야 할 때 쓰는 integrated fallback/reference 경로입니다.
+> `src/go2_nixo`는 한 ESP로 hit/HP bar/Nixo를 같이 돌려야 할 때 쓰는 integrated fallback/reference 경로입니다.
 > PlatformIO env는 `esp32dev_go2_nixo_go2_*`를 사용합니다.
 
 현재 Go2 ESP의 책임은 세 가지입니다.
 
 1. 피에조 센서 AO ADC raw 값이 threshold를 넘으면 `hit_candidate(hit=true, peak, threshold)` 이벤트를 Command Center에 publish
-2. Command Center가 내려준 `ring_display` 명령을 LED 링에 렌더링
-3. Command Center가 내려준 Nixo `fire` 명령을 받아 relay-only fire sequence 실행
+2. Command Center가 내려준 legacy `ring_display` 명령을 84개 HP bar LED에 렌더링
+3. 기존 ring LED에 로컬 Nixo fire/cooldown 상태 표시
+4. Command Center가 내려준 Nixo `fire` 명령을 받아 relay-only fire sequence 실행
 
 ESP는 타격 세기, 로컬 스코어, 로컬 down 상태를 계산하거나 저장하지 않습니다. 난이도/스코어/down 기준과 LED fill 비율은 Command Center 설정과 정책이 소유합니다. MQTT가 끊긴 동안의 hit는 RAM queue에 잠시 보관했다가 재연결 후 원래 `firmware_ts_ms`와 함께 재전송합니다.
 
 ```text
 Piezo AO ADC threshold -> ESP hit_candidate(hit=true, peak, threshold) -> Command Center scoring/down policy
-Command Center ring_display command -> ESP LED ring render
-Command Center Nixo fire command -> ESP relay-only fire sequence
+Command Center ring_display command -> ESP HP bar LED render
+Command Center Nixo fire command -> ESP relay-only fire sequence + fire/cooldown ring render
 ```
 
 현재 코드 구조:
 
 ```text
 main.cpp   setup/loop runtime orchestration
-ring_led/  ring_display command renderer
+ring_led/  bar_display=HP bar renderer, ring_display=Nixo fire/cooldown ring renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay-only fire
 ```
@@ -36,7 +37,8 @@ nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay-only fire
 
 | Part | Pin |
 | --- | --- |
-| LED ring data | `GPIO4` |
+| HP bar LED data | `GPIO18` |
+| Ring LED data | `GPIO4` |
 | Piezo AO ADC | `GPIO34` |
 | Piezo DO debug readback | `GPIO27` |
 | Nixo relay CH1 | `GPIO23` |
@@ -157,7 +159,7 @@ COM3
 # ESP32 USB 포트 확인
 python3 scripts/go2_flash.py list-ports
 
-# go2_03용 통합 hit/ring LED/Nixo 펌웨어 빌드
+# go2_03용 통합 hit/HP bar LED/Nixo 펌웨어 빌드
 pio run -e esp32dev_go2_nixo_go2_03
 
 # go2_03용 펌웨어 업로드/flash
@@ -255,9 +257,12 @@ Go2별 non-secret profile입니다.
     "hit_cooldown_ms": 0,
     "offline_hit_queue_capacity": 32,
     "offline_hit_queue_flush_interval_ms": 50,
-    "led_pin": 4,
-    "num_leds": 40,
-    "led_brightness": 80,
+    "led_pin": 18,
+    "num_leds": 84,
+    "led_brightness": 120,
+    "ring_led_pin": 4,
+    "ring_num_leds": 40,
+    "ring_led_brightness": 80,
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
     "piezo_ao_threshold_raw": 1800,
@@ -269,6 +274,10 @@ Go2별 non-secret profile입니다.
     "nixo_relay2_pin": -1,
     "nixo_relay_on_level": 1,
     "nixo_relay_off_level": 0,
+    "nixo_fire_default_duration_ms": 1500,
+    "nixo_fire_min_duration_ms": 100,
+    "nixo_fire_max_duration_ms": 10000,
+    "nixo_fire_cooldown_ms": 10000,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
@@ -313,7 +322,8 @@ MQTT 연결이 없거나 publish가 실패하면 ESP는 valid hit event를 RAM q
 - ESP는 queue를 flush할 뿐, score/down/LED fill을 계산하지 않습니다.
 - queue가 꽉 차면 오래된 hit부터 버리고 최신 hit를 보관합니다.
 - 리셋 명령(`reset_hit_state=true` 또는 로컬 `2`)은 센서 latch와 queue를 같이 비웁니다.
-- Command Center/MQTT가 내려주는 `ring_display`가 없으면 ESP는 로컬 점수 계산 없이 full idle ring을 표시합니다.
+- Command Center/MQTT가 내려주는 `ring_display`가 없으면 ESP는 로컬 점수 계산 없이 full idle HP bar를 표시합니다.
+- 기존 ring LED는 HP/hit/down 표시를 하지 않고 Nixo cooldown 전용입니다. Ready는 green full, firing은 red full, fire 종료 후 10초 cooldown 동안 off에서 시작해 1초마다 ring의 1/10씩 green으로 채웁니다.
 
 주의:
 

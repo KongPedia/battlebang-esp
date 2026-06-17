@@ -70,10 +70,11 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
     Serial.printf("[FIRE] ignored source=%s reason=already_firing\n", source);
     return false;
   }
-  if (lastFireStartMs_ != 0 && now - lastFireStartMs_ < NIXO_FIRE_COOLDOWN_MS) {
+  uint32_t remainingMs = cooldownRemainingMs(now);
+  if (remainingMs > 0) {
     Serial.printf("[FIRE] ignored source=%s reason=cooldown remaining_ms=%lu\n",
                   source,
-                  (unsigned long)(NIXO_FIRE_COOLDOWN_MS - (now - lastFireStartMs_)));
+                  (unsigned long)remainingMs);
     return false;
   }
 
@@ -101,6 +102,21 @@ const char* NixoFireClient::commandTopic() const {
 
 bool NixoFireClient::isFiring() const {
   return fireState_ != FIRE_IDLE;
+}
+
+bool NixoFireClient::fireInhibited() const {
+  return fireInhibited_;
+}
+
+uint32_t NixoFireClient::cooldownRemainingMs(uint32_t now) const {
+  if (cooldownStartedMs_ == 0) return 0;
+  uint32_t elapsed = now - cooldownStartedMs_;
+  if (elapsed >= NIXO_FIRE_COOLDOWN_MS) return 0;
+  return NIXO_FIRE_COOLDOWN_MS - elapsed;
+}
+
+uint32_t NixoFireClient::cooldownDurationMs() const {
+  return NIXO_FIRE_COOLDOWN_MS;
 }
 
 void NixoFireClient::relayOff() {
@@ -138,6 +154,7 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
                         NIXO_RELAY_OFF_LEVEL_VALUE,
                         digitalRead(NIXO_RELAY1_PIN_VALUE));
           Serial.println("[RELAY] ALL OFF / FIRE done");
+          beginCooldown(now);
         }
         return;
       }
@@ -161,9 +178,15 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
                       NIXO_RELAY2_PIN_VALUE,
                       digitalRead(NIXO_RELAY2_PIN_VALUE));
         Serial.println("[RELAY] ALL OFF / FIRE done");
+        beginCooldown(now);
       }
       return;
   }
+}
+
+void NixoFireClient::beginCooldown(uint32_t now) {
+  cooldownStartedMs_ = now;
+  Serial.printf("[FIRE] cooldown start duration_ms=%lu\n", (unsigned long)NIXO_FIRE_COOLDOWN_MS);
 }
 
 void NixoFireClient::ensureMqttConnected(uint32_t now) {

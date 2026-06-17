@@ -1,6 +1,6 @@
 # Integrated Go2/Nixo fallback ESP 빌드 / 업로드 흐름
 
-`src/go2_nixo`는 hit/ring/Nixo를 한 ESP에 통합한 fallback 경로입니다. 현재 active 2-ESP split은 `src/go2` + `src/nIxo`를 사용합니다.
+`src/go2_nixo`는 hit/HP bar/Nixo를 한 ESP에 통합한 fallback 경로입니다. 현재 active 2-ESP split은 `src/go2` + `src/nIxo`를 사용합니다.
 
 ## 1. 로컬 secrets
 
@@ -26,7 +26,7 @@ cp src/go2_nixo/local_secrets.example.h src/go2_nixo/local_secrets.h
 
 - `hit_cooldown_ms`
 - offline hit queue capacity / flush interval
-- LED pin / LED count / brightness
+- HP bar LED pin/count/brightness (default GPIO18 / 84 / 120) and ring fire/cooldown LED pin/count/brightness (default GPIO4 / 40 / 80)
 - piezo AO ADC pin / threshold / rearm raw / capture window
 - piezo D0 pin은 hit 판정에 쓰지 않고 debug readback 용도
 - MQTT topic prefix

@@ -32,8 +32,8 @@ void addSourceMetadata(JsonDocument& doc, const char* clientId) {
 
 }  // namespace
 
-void HitMqttClient::begin(RingDisplayHandler ringHandler) {
-  ringHandler_ = ringHandler;
+void HitMqttClient::begin(BarDisplayHandler barHandler) {
+  barHandler_ = barHandler;
   snprintf(eventTopic_, sizeof(eventTopic_), "%s/%s/events", MQTT_TOPIC_PREFIX, ROBOT_ID);
   snprintf(ringCommandTopic_, sizeof(ringCommandTopic_), "%s/%s/ring_display/command", MQTT_TOPIC_PREFIX, ROBOT_ID);
   char suffix[5];
@@ -213,13 +213,13 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
     return;
   }
 
-  RingDisplayUpdate update;
+  BarDisplayUpdate update;
   update.fillRatio = doc["ring_fill_ratio"] | 1.0f;
   update.mode = String(doc["ring_display_mode"] | "idle");
   update.down = doc["down"] | false;
   update.ttlMs = doc["ttl_ms"] | 1000;
   update.resetHitState = doc["reset_hit_state"] | false;
-  if (ringHandler_ != nullptr) ringHandler_(update);
+  if (barHandler_ != nullptr) barHandler_(update);
 
   Serial.printf("[MQTT] ring command mode=%s fill=%.3f down=%s ttl=%lu reset_hit_state=%s\n",
                 update.mode.c_str(),
