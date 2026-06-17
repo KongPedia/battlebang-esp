@@ -151,10 +151,20 @@ void RingDisplay::renderCooldown(uint32_t now) {
                       0,
                       RING_NUM_LEDS);
   CRGB cooldownColor = scaled(0, 64, 0);
+  bool mismatch = false;
   for (int i = 0; i < RING_NUM_LEDS; i++) {
-    leds_[i] = (i < lit) ? cooldownColor : CRGB::Black;
+    CRGB expected = (i < lit) ? cooldownColor : CRGB::Black;
+    if (leds_[i] != expected) {
+      mismatch = true;
+      break;
+    }
   }
-  dirty_ = true;
+  if (mismatch) {
+    for (int i = 0; i < RING_NUM_LEDS; i++) {
+      leds_[i] = (i < lit) ? cooldownColor : CRGB::Black;
+    }
+    dirty_ = true;
+  }
 }
 
 CRGB RingDisplay::scaled(uint8_t r, uint8_t g, uint8_t b) const {

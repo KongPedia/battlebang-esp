@@ -36,6 +36,7 @@ void BarDisplay::setRemoteDisplay(float fillRatio, const String& mode, bool down
   remoteFillRatio_ = constrain(fillRatio, 0.0f, 1.0f);
   remoteMode_ = mode.length() > 0 ? mode : String("idle");
   if (ttlMs < 1) ttlMs = 1;
+  if (ttlMs > 0x7ffffffful) ttlMs = 0x7ffffffful;
   remoteExpiresMs_ = now + ttlMs;
   dirty_ = true;
 }

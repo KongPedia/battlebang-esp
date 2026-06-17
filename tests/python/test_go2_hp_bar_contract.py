@@ -114,6 +114,29 @@ def test_cooldown_ring_renders_fire_and_ten_step_green_fill() -> None:
         assert "if (remaining > 0)" in source, firmware
 
 
+def test_bar_remote_ttl_is_bounded_for_signed_expiry_math() -> None:
+    for firmware, bar_cpp, _ring_cpp, _build_config, _robots_json in FIRMWARES:
+        source = bar_cpp.read_text()
+        assert "if (ttlMs < 1) ttlMs = 1;" in source, firmware
+        assert "if (ttlMs > 0x7ffffffful) ttlMs = 0x7ffffffful;" in source, firmware
+        assert "remoteExpiresMs_ = now + ttlMs;" in source, firmware
+
+
+def test_cooldown_ring_marks_dirty_only_when_frame_changes() -> None:
+    for firmware, _bar_cpp, ring_cpp, _build_config, _robots_json in FIRMWARES:
+        source = ring_cpp.read_text()
+        assert "bool mismatch = false;" in source, firmware
+        assert "CRGB expected = (i < lit) ? cooldownColor : CRGB::Black;" in source, firmware
+        assert "if (leds_[i] != expected)" in source, firmware
+        assert "if (mismatch) {" in source, firmware
+        assert (
+            "for (int i = 0; i < RING_NUM_LEDS; i++) {\n"
+            "    leds_[i] = (i < lit) ? cooldownColor : CRGB::Black;\n"
+            "  }\n"
+            "  dirty_ = true;"
+        ) not in source, firmware
+
+
 def test_build_config_locks_bar_and_ring_shapes() -> None:
     for firmware, _bar_cpp, _ring_cpp, build_config, _robots_json in FIRMWARES:
         source = build_config.read_text()
