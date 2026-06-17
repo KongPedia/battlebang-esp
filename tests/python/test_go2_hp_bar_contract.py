@@ -132,11 +132,15 @@ def test_build_config_locks_bar_and_ring_shapes() -> None:
 
 def test_go2_mirrors_nixo_command_for_cooldown_ring() -> None:
     source = (ROOT / "src/go2/mqtt/hit_mqtt_client.cpp").read_text()
+    header = (ROOT / "src/go2/mqtt/hit_mqtt_client.h").read_text()
     main = (ROOT / "src/go2/main.cpp").read_text()
     assert "nixoCommandTopic_" in source
     assert "handleNixoCommandMessage" in source
+    assert "using NixoFireMirrorHandler = void (*)(bool enabled, uint32_t fireDurationMs, uint32_t cooldownMs);" in header
     assert 'uint32_t durationMs = doc["duration_ms"] | NIXO_FIRE_DEFAULT_DURATION_MS' in source
-    assert "nixoFireMirrorHandler_(durationMs, NIXO_FIRE_COOLDOWN_MS)" in source
+    assert "nixoFireMirrorHandler_(false, 0, NIXO_FIRE_COOLDOWN_MS)" in source
+    assert "nixoFireMirrorHandler_(true, durationMs, NIXO_FIRE_COOLDOWN_MS)" in source
+    assert "ringDisplay.clearCooldown()" in main
     assert "ringDisplay.startFire(fireDurationMs, cooldownMs, now)" in main
 
 
@@ -153,3 +157,10 @@ def test_go2_nixo_drives_ring_from_local_fire_state() -> None:
     assert "uint32_t remainingMs = cooldownRemainingMs(now)" in fire_source
     assert "beginCooldown(now)" in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
+    assert "cooldownStartedMs_ = 0;" in fire_source
+
+
+def test_standalone_nixo_stop_clears_local_cooldown_gate() -> None:
+    source = (ROOT / "src/nIxo/main.cpp").read_text()
+    assert "lastFireStartMs = 0;" in source
+    assert "stopFireSequence(\"mqtt\")" in source

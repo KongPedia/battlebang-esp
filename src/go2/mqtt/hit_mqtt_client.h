@@ -27,7 +27,7 @@ struct QueuedHitCandidate {
 };
 
 using BarDisplayHandler = void (*)(const BarDisplayUpdate& update);
-using NixoFireMirrorHandler = void (*)(uint32_t fireDurationMs, uint32_t cooldownMs);
+using NixoFireMirrorHandler = void (*)(bool enabled, uint32_t fireDurationMs, uint32_t cooldownMs);
 
 class HitMqttClient {
  public:

@@ -93,6 +93,7 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
 void NixoFireClient::stopFire(const char* source) {
   relayOff();
   fireState_ = FIRE_IDLE;
+  cooldownStartedMs_ = 0;
   Serial.printf("[FIRE] stop source=%s\n", source);
 }
 

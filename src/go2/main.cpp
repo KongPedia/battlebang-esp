@@ -279,8 +279,13 @@ static void pollCommands() {
 }
 
 
-static void onNixoFireMirror(uint32_t fireDurationMs, uint32_t cooldownMs) {
+static void onNixoFireMirror(bool enabled, uint32_t fireDurationMs, uint32_t cooldownMs) {
   uint32_t now = millis();
+  if (!enabled) {
+    ringDisplay.clearCooldown();
+    Serial.println("[NIXO RING] fire mirror stopped; cooldown cleared");
+    return;
+  }
   ringDisplay.startFire(fireDurationMs, cooldownMs, now);
   Serial.printf("[NIXO RING] fire mirrored fire_duration_ms=%lu cooldown_ms=%lu active=%s\n",
                 (unsigned long)fireDurationMs,

@@ -265,7 +265,6 @@ void HitMqttClient::handleNixoCommandMessage(byte* payload, unsigned int length)
     Serial.printf("[NIXO MON] ignored nixo_id=%s expected=%s\n", nixoId, NIXO_ID_VALUE);
     return;
   }
-  if (!enabled) return;
   if (requestId[0] == '\0') {
     Serial.println("[NIXO MON] ignored fire command without request_id");
     return;
@@ -275,11 +274,17 @@ void HitMqttClient::handleNixoCommandMessage(byte* payload, unsigned int length)
     return;
   }
 
+  lastNixoFireRequestId_ = requestId;
+  if (!enabled) {
+    nixoFireMirrorHandler_(false, 0, NIXO_FIRE_COOLDOWN_MS);
+    Serial.printf("[NIXO MON] fire mirror stop request_id=%s topic=%s\n", requestId, nixoCommandTopic_);
+    return;
+  }
+
   uint32_t durationMs = doc["duration_ms"] | NIXO_FIRE_DEFAULT_DURATION_MS;
   durationMs = constrain(durationMs, NIXO_FIRE_MIN_DURATION_MS, NIXO_FIRE_MAX_DURATION_MS);
 
-  lastNixoFireRequestId_ = requestId;
-  nixoFireMirrorHandler_(durationMs, NIXO_FIRE_COOLDOWN_MS);
+  nixoFireMirrorHandler_(true, durationMs, NIXO_FIRE_COOLDOWN_MS);
   Serial.printf("[NIXO MON] fire mirror request_id=%s fire_duration_ms=%lu cooldown_ms=%lu topic=%s\n",
                 requestId,
                 (unsigned long)durationMs,

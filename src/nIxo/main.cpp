@@ -97,6 +97,7 @@ static void stopFireSequence(const char* source = "mqtt") {
   bool wasFiring = isFiring();
   relayOff();
   fireState = FIRE_IDLE;
+  lastFireStartMs = 0;
   Serial.printf("[FIRE] stop source=%s%s\n", source, wasFiring ? "" : " already_idle=true");
 }
 
