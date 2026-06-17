@@ -91,9 +91,12 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
 }
 
 void NixoFireClient::stopFire(const char* source) {
+  bool wasFiring = isFiring();
   relayOff();
   fireState_ = FIRE_IDLE;
-  cooldownStartedMs_ = 0;
+  if (wasFiring) {
+    beginCooldown(millis());
+  }
   Serial.printf("[FIRE] stop source=%s\n", source);
 }
 
@@ -249,7 +252,6 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
   const char* command = doc["command"] | "";
   const char* nixoId = doc["nixo_id"] | "";
   const char* requestId = doc["request_id"] | "";
-  const bool enabled = doc["enabled"] | true;
 
   if (schemaVersion != 1) {
     Serial.printf("[NIXO MQTT] ignored schema_version=%d\n", schemaVersion);
@@ -267,12 +269,17 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
     Serial.println("[NIXO MQTT] ignored fire command without request_id");
     return;
   }
+  if (!doc["enabled"].is<bool>()) {
+    Serial.println("[NIXO MQTT] ignored fire command without boolean enabled");
+    return;
+  }
   if (lastMqttRequestId_ == requestId) {
     Serial.printf("[NIXO MQTT] duplicate request_id=%s ignored\n", requestId);
     return;
   }
   lastMqttRequestId_ = requestId;
 
+  const bool enabled = doc["enabled"].as<bool>();
   if (!enabled) {
     stopFire("mqtt");
     Serial.printf("[NIXO MQTT] fire off request_id=%s\n", requestId);

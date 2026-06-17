@@ -35,7 +35,7 @@ void RingDisplay::startFire(uint32_t fireDurationMs, uint32_t cooldownMs, uint32
   fireDurationMs_ = fireDurationMs;
   pendingCooldownDurationMs_ = cooldownMs;
   cooldownStartedMs_ = 0;
-  cooldownDurationMs_ = cooldownMs;
+  cooldownDurationMs_ = 0;
   cooldownRemainingMs_ = 0;
   dirty_ = true;
 }
@@ -63,6 +63,7 @@ void RingDisplay::clearCooldown() {
   firingStartedMs_ = 0;
   fireDurationMs_ = 0;
   cooldownStartedMs_ = 0;
+  cooldownDurationMs_ = 0;
   cooldownRemainingMs_ = 0;
   dirty_ = true;
 }
@@ -107,14 +108,14 @@ void RingDisplay::updateInternalFire(uint32_t now) {
 
 uint32_t RingDisplay::remainingMs(uint32_t now) const {
   if (externalState_) return cooldownRemainingMs_;
-  if (cooldownStartedMs_ == 0) return 0;
+  if (cooldownDurationMs_ == 0) return 0;
   uint32_t elapsed = now - cooldownStartedMs_;
   if (elapsed >= cooldownDurationMs_) return 0;
   return cooldownDurationMs_ - elapsed;
 }
 
 void RingDisplay::render(uint32_t now) {
-  if (firing_ || inhibited_) {
+  if (firing_) {
     renderFiring();
     return;
   }
@@ -124,8 +125,13 @@ void RingDisplay::render(uint32_t now) {
     renderCooldown(now);
     return;
   }
-  if (!externalState_ && cooldownStartedMs_ != 0) {
+  if (inhibited_) {
+    renderFiring();
+    return;
+  }
+  if (!externalState_ && cooldownDurationMs_ != 0) {
     cooldownStartedMs_ = 0;
+    cooldownDurationMs_ = 0;
     cooldownRemainingMs_ = 0;
     dirty_ = true;
   }

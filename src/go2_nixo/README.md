@@ -9,7 +9,7 @@ Go2 등에 장착되는 ESP32 피격/LED/Nixo 통합 보드용 fallback 펌웨�
 > `src/go2_nixo`는 한 ESP로 hit/HP bar/Nixo를 같이 돌려야 할 때 쓰는 integrated fallback/reference 경로입니다.
 > PlatformIO env는 `esp32dev_go2_nixo_go2_*`를 사용합니다.
 
-현재 Go2 ESP의 책임은 세 가지입니다.
+현재 Go2 ESP의 책임은 네 가지입니다.
 
 1. 피에조 센서 AO ADC raw 값이 threshold를 넘으면 `hit_candidate(hit=true, peak, threshold)` 이벤트를 Command Center에 publish
 2. Command Center가 내려준 legacy `ring_display` 명령을 84개 HP bar LED에 렌더링

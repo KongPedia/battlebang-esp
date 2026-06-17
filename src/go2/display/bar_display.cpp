@@ -91,7 +91,7 @@ void BarDisplay::renderRemote(uint32_t now) {
       downBlinkOn_ = !downBlinkOn_;
       dirty_ = true;
     }
-    for (int i = 0; i < NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
+    for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
     return;
   }
 
@@ -112,7 +112,7 @@ void BarDisplay::renderFullIdle() {
 }
 
 void BarDisplay::renderBlank() {
-  for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Black;
+  for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = CRGB::Black;
 }
 
 void BarDisplay::renderHpBar(float fillRatio, const CRGB& healthyColor, const CRGB& damagedColor) {

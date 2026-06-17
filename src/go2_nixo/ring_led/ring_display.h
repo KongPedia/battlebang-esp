@@ -31,7 +31,7 @@ class RingDisplay {
   uint32_t fireDurationMs_ = NIXO_FIRE_DEFAULT_DURATION_MS;
   uint32_t pendingCooldownDurationMs_ = NIXO_FIRE_COOLDOWN_MS;
   uint32_t cooldownStartedMs_ = 0;
-  uint32_t cooldownDurationMs_ = NIXO_FIRE_COOLDOWN_MS;
+  uint32_t cooldownDurationMs_ = 0;
   uint32_t cooldownRemainingMs_ = 0;
   uint32_t lastShowMs_ = 0;
 

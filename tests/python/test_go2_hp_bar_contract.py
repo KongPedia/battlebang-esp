@@ -75,8 +75,12 @@ def test_defaults_separate_hp_bar_and_cooldown_ring_pins() -> None:
 def test_hp_bar_renderer_uses_bar_led_layout() -> None:
     for firmware, bar_cpp, _ring_cpp, _build_config, _robots_json in FIRMWARES:
         source = bar_cpp.read_text()
+        header = bar_cpp.with_suffix(".h").read_text()
+        assert "CRGB leds_[HP_BAR_NUM_LEDS] = {};" in header, firmware
         assert "BarDisplay::begin" in source, firmware
         assert "FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>" in source, firmware
+        assert "i < HP_BAR_NUM_LEDS" in source, firmware
+        assert "i < NUM_LEDS" not in source, firmware
         assert "setHpBarGroup" in source, firmware
         assert "group 1  -> LEDs 1, 56, 57" in source, firmware
         assert "group 28 -> LEDs 28, 29, 84" in source, firmware
@@ -100,7 +104,9 @@ def test_cooldown_ring_renders_fire_and_ten_step_green_fill() -> None:
         assert "renderInhibited" not in source, firmware
         assert "blinkOn_" not in source, firmware
         assert "constexpr uint8_t RING_COOLDOWN_FILL_STEPS = 10" in source, firmware
-        assert "if (firing_ || inhibited_)" in source, firmware
+        assert "if (firing_)" in source, firmware
+        assert "if (inhibited_)" in source, firmware
+        assert "if (firing_ || inhibited_)" not in source, firmware
         assert "CRGB color = scaled(96, 0, 0)" in source, firmware
         assert "uint32_t elapsed = cooldownDurationMs_ > remaining ? cooldownDurationMs_ - remaining : 0;" in source, firmware
         assert "completedSteps * RING_NUM_LEDS" in source, firmware
@@ -112,6 +118,17 @@ def test_cooldown_ring_renders_fire_and_ten_step_green_fill() -> None:
             "}"
         ) in source, firmware
         assert "if (remaining > 0)" in source, firmware
+
+
+def test_cooldown_ring_uses_duration_sentinel_not_zero_start_time() -> None:
+    for firmware, _bar_cpp, ring_cpp, _build_config, _robots_json in FIRMWARES:
+        source = ring_cpp.read_text()
+        header = ring_cpp.with_suffix(".h").read_text()
+        assert "uint32_t cooldownDurationMs_ = 0;" in header, firmware
+        assert "if (cooldownDurationMs_ == 0) return 0;" in source, firmware
+        assert "if (cooldownStartedMs_ == 0) return 0;" not in source, firmware
+        assert "if (!externalState_ && cooldownDurationMs_ != 0)" in source, firmware
+        assert "cooldownDurationMs_ = 0;" in source, firmware
 
 
 def test_bar_remote_ttl_is_bounded_for_signed_expiry_math() -> None:
@@ -160,6 +177,9 @@ def test_go2_mirrors_nixo_command_for_cooldown_ring() -> None:
     assert "nixoCommandTopic_" in source
     assert "handleNixoCommandMessage" in source
     assert "using NixoFireMirrorHandler = void (*)(bool enabled, uint32_t fireDurationMs, uint32_t cooldownMs);" in header
+    assert 'doc["enabled"].is<bool>()' in source
+    assert 'const bool enabled = doc["enabled"].as<bool>();' in source
+    assert 'doc["enabled"] | true' not in source
     assert 'uint32_t durationMs = doc["duration_ms"] | NIXO_FIRE_DEFAULT_DURATION_MS' in source
     assert "nixoFireMirrorHandler_(false, 0, NIXO_FIRE_COOLDOWN_MS)" in source
     assert "nixoFireMirrorHandler_(true, durationMs, NIXO_FIRE_COOLDOWN_MS)" in source
@@ -179,11 +199,29 @@ def test_go2_nixo_drives_ring_from_local_fire_state() -> None:
     assert "void beginCooldown(uint32_t now);" in fire_header
     assert "uint32_t remainingMs = cooldownRemainingMs(now)" in fire_source
     assert "beginCooldown(now)" in fire_source
+    assert "bool wasFiring = isFiring();" in fire_source
+    assert "beginCooldown(millis());" in fire_source
+    assert 'doc["enabled"].is<bool>()' in fire_source
+    assert 'const bool enabled = doc["enabled"].as<bool>();' in fire_source
+    assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
-    assert "cooldownStartedMs_ = 0;" in fire_source
+    stop_block = fire_source.split("void NixoFireClient::stopFire", 1)[1].split(
+        "const char* NixoFireClient::commandTopic",
+        1,
+    )[0]
+    assert "cooldownStartedMs_ = 0;" not in stop_block
 
 
-def test_standalone_nixo_stop_clears_local_cooldown_gate() -> None:
+def test_standalone_nixo_stop_preserves_local_cooldown_gate() -> None:
     source = (ROOT / "src/nIxo/main.cpp").read_text()
-    assert "lastFireStartMs = 0;" in source
+    build_config = (ROOT / "src/nIxo/build_config.h").read_text()
+    stop_block = source.split("static void stopFireSequence", 1)[1].split("static bool startFireSequence", 1)[0]
+    assert "lastFireStartMs = now;" in source
+    assert "lastFireStartMs = 0;" not in stop_block
     assert "stopFireSequence(\"mqtt\")" in source
+    assert 'doc["enabled"].is<bool>()' in source
+    assert 'const bool enabled = doc["enabled"].as<bool>();' in source
+    assert 'doc["enabled"] | true' not in source
+    assert "#define NIXO_RELAY1_PIN 23" in build_config
+    assert "#define NIXO_RELAY2_PIN -1" in build_config
+    assert "#define NIXO_RELAY_ON_LEVEL HIGH" in build_config

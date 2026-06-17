@@ -97,7 +97,6 @@ static void stopFireSequence(const char* source = "mqtt") {
   bool wasFiring = isFiring();
   relayOff();
   fireState = FIRE_IDLE;
-  lastFireStartMs = 0;
   Serial.printf("[FIRE] stop source=%s%s\n", source, wasFiring ? "" : " already_idle=true");
 }
 
@@ -198,7 +197,6 @@ static void handleNixoMqttCommand(const char* payload, unsigned int length) {
   const char* command = doc["command"] | "";
   const char* nixoId = doc["nixo_id"] | "";
   const char* requestId = doc["request_id"] | "";
-  const bool enabled = doc["enabled"] | true;
 
   if (schemaVersion != 1) {
     Serial.printf("[MQTT] ignored schema_version=%d\n", schemaVersion);
@@ -216,12 +214,17 @@ static void handleNixoMqttCommand(const char* payload, unsigned int length) {
     Serial.println("[MQTT] ignored fire command without request_id");
     return;
   }
+  if (!doc["enabled"].is<bool>()) {
+    Serial.println("[MQTT] ignored fire command without boolean enabled");
+    return;
+  }
   if (lastMqttRequestId == requestId) {
     Serial.printf("[MQTT] duplicate request_id=%s ignored\n", requestId);
     return;
   }
   lastMqttRequestId = requestId;
 
+  const bool enabled = doc["enabled"].as<bool>();
   if (!enabled) {
     stopFireSequence("mqtt");
     Serial.printf("[MQTT] fire off request_id=%s\n", requestId);

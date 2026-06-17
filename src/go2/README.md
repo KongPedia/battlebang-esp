@@ -23,7 +23,7 @@ Command Center Nixo fire command -> ESP fire/cooldown ring render
 ```text
 main.cpp   setup/loop runtime orchestration
 display/   bar_display=HP bar renderer, ring_display=Nixo fire/cooldown ring renderer
-mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
+mqtt/      hit_candidate/heartbeat/ring_display + Nixo fire mirror MQTT 통신
 ```
 
 기본 핀맵 (`robots.json` defaults 기준):
@@ -40,13 +40,17 @@ mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
   - `hit_candidate`, `heartbeat`
 - Command Center → ESP
   - `battlebang/hit/{go2_id}/ring_display/command`
-  - `ring_display`
+  - legacy `ring_display` payload를 HP bar display로 렌더링
+- Command Center → Nixo ESP (Go2 ESP는 cooldown ring 표시를 위해 mirror subscribe)
+  - `battlebang/nixo/{nixo_id}/command`
+  - `fire` payload의 `enabled`/`duration_ms`를 ring fire/cooldown 표시로 미러링
 
 예를 들어 `go2_03`용으로 업로드하면 topic은 자동으로 아래처럼 잡힙니다.
 
 ```text
 battlebang/hit/go2_03/events
 battlebang/hit/go2_03/ring_display/command
+battlebang/nixo/nixo_go2_03/command
 ```
 
 ---
@@ -166,10 +170,11 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 업로드가 완료되면 Serial Monitor에서 아래 로그를 확인합니다.
 
 ```text
-[CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
+[CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events hp_bar_topic=battlebang/hit/go2_03/ring_display/command nixo_cooldown_topic=battlebang/nixo/nixo_go2_03/command
 [WIFI] connecting ssid=...
 [MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03-go2-948C
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
+[MQTT] subscribed nixo cooldown battlebang/nixo/nixo_go2_03/command
 ```
 
 피에조 센서 AO ADC raw 값이 threshold 이상으로 올라오면 ESP가 `hit_candidate`를 publish합니다.

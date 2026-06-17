@@ -17,7 +17,7 @@ class BarDisplay {
   bool remoteDisplayActive() const;
 
  private:
-  CRGB leds_[NUM_LEDS] = {};
+  CRGB leds_[HP_BAR_NUM_LEDS] = {};
   bool blinkOn_ = false;
   bool downBlinkOn_ = false;
   bool dirty_ = true;

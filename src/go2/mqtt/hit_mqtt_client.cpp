@@ -258,7 +258,6 @@ void HitMqttClient::handleNixoCommandMessage(byte* payload, unsigned int length)
   const char* command = doc["command"] | "";
   const char* nixoId = doc["nixo_id"] | "";
   const char* requestId = doc["request_id"] | "";
-  const bool enabled = doc["enabled"] | true;
 
   if (schemaVersion != 1 || strcmp(command, "fire") != 0) return;
   if (strcmp(nixoId, NIXO_ID_VALUE) != 0) {
@@ -269,12 +268,17 @@ void HitMqttClient::handleNixoCommandMessage(byte* payload, unsigned int length)
     Serial.println("[NIXO MON] ignored fire command without request_id");
     return;
   }
+  if (!doc["enabled"].is<bool>()) {
+    Serial.println("[NIXO MON] ignored fire command without boolean enabled");
+    return;
+  }
   if (lastNixoFireRequestId_ == requestId) {
     Serial.printf("[NIXO MON] duplicate request_id=%s ignored\n", requestId);
     return;
   }
 
   lastNixoFireRequestId_ = requestId;
+  const bool enabled = doc["enabled"].as<bool>();
   if (!enabled) {
     nixoFireMirrorHandler_(false, 0, NIXO_FIRE_COOLDOWN_MS);
     Serial.printf("[NIXO MON] fire mirror stop request_id=%s topic=%s\n", requestId, nixoCommandTopic_);
