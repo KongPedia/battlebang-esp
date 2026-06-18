@@ -27,7 +27,7 @@ battlebang/hit/{robot_id}/ring_display/command
   "sequence": 1,
   "hit": true,
   "peak": 2140,
-  "threshold": 1800,
+  "threshold": 1200,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -40,7 +40,7 @@ battlebang/hit/{robot_id}/ring_display/command
     "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 1800
+    "adc_threshold_raw": 1200
   }
 }
 ```
@@ -56,7 +56,7 @@ battlebang/hit/{robot_id}/ring_display/command
   "sequence": 7,
   "hit": true,
   "peak": 2188,
-  "threshold": 1800,
+  "threshold": 1200,
   "firmware_ts_ms": 45678,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -71,7 +71,7 @@ battlebang/hit/{robot_id}/ring_display/command
     "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2188,
-    "adc_threshold_raw": 1800,
+    "adc_threshold_raw": 1200,
     "queued": true,
     "queued_for_ms": 1200,
     "queue_depth": 3,
@@ -115,7 +115,7 @@ ESP 온라인 여부와 표시 경로 상태를 Command Center가 판단할 수 
 
 ## Command Center -> ESP: ring_display
 
-Command Center는 LED로 렌더링하는 데 필요한 semantic display state만 보냅니다.
+Command Center는 LED로 렌더링하는 데 필요한 semantic display state만 보냅니다. MQTT topic/field 이름은 호환성을 위해 `ring_display`/`ring_*`를 유지하지만, 현재 ESP는 이를 HP bar LED layout으로 렌더링합니다. 기존 ring LED는 이 payload가 아니라 Nixo fire/cooldown 상태 표시용입니다.
 
 ```json
 {
@@ -130,13 +130,13 @@ Command Center는 LED로 렌더링하는 데 필요한 semantic display state만
 }
 ```
 
-ESP는 이 payload를 받아 ring LED를 갱신합니다.
+ESP는 이 payload를 받아 84개 HP bar LED를 갱신합니다.
 
-- `ring_fill_ratio`: LED fill 비율
+- `ring_fill_ratio`: HP 잔량 비율입니다. 1.0이면 28개 bar 그룹 전체 green, 0.5이면 앞쪽 14개 그룹 green/뒤쪽 14개 그룹 red, 0이면 전체 red입니다.
 - `down`: 다운 상태 표시 여부
 - `ring_display_mode`: `idle`, `active`, `hit_flash`, `down`, `stale`, `disabled` 등 semantic mode
 - `ttl_ms`: Command Center 표시가 유효한 시간
 - `reset_hit_state`: true면 ESP 센서 latch/flag와 현재 remote display를 초기화합니다. Command Center의 `POST /api/robots/{robot_id}/hit/reset` 응답 command에서 true로 내려옵니다.
 
 
-Nixo fire command는 별도 topic `battlebang/nixo/{nixo_id}/command`로 수신하며, hit/ring MQTT 계약은 Go2 AO hit ESP와 동일합니다.
+Nixo fire command는 별도 topic `battlebang/nixo/{nixo_id}/command`로 수신하며, hit/HP bar MQTT 계약은 Go2 AO hit ESP와 동일합니다.

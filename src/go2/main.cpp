@@ -2,20 +2,23 @@
 #include "BluetoothSerial.h"
 
 #include "go2/build_config.h"
+#include "go2/display/bar_display.h"
 #include "go2/display/ring_display.h"
 #include "go2/mqtt/hit_mqtt_client.h"
 
 using namespace go2;
 
 // Go2 hit/LED ESP firmware for the 2-ESP split:
-// - Nixo fire is handled by the separate nIxo ESP through MQTT.
+// - Nixo fire is handled by the separate nIxo ESP through MQTT. This ESP
+//   mirrors the Nixo fire command topic only to drive the fire/cooldown ring LED.
 // - This ESP samples piezo AO (ADC) and publishes threshold crossings as
 //   hit_candidate events. Command Center owns final accept/reject, scoring,
-//   down state, and LED ring display commands.
+//   down state, and legacy-named ring_display commands rendered on the HP bar.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
 
+BarDisplay barDisplay;
 RingDisplay ringDisplay;
 HitMqttClient hitMqtt;
 
@@ -237,7 +240,9 @@ static bool isIgnoredCommandChar(char c) {
 static void resetAll(const char* source) {
   resetAnalogPiezoState();
   hitMqtt.clearOfflineQueue();
-  ringDisplay.clearRemoteDisplay();
+  barDisplay.clearRemoteDisplay();
+  barDisplay.markDirty();
+  ringDisplay.clearCooldown();
   ringDisplay.markDirty();
   Serial.printf("[RESET] source=%s ADC hit/display state cleared; sequence_kept=%lu\n",
                 source,
@@ -273,16 +278,31 @@ static void pollCommands() {
   }
 }
 
-static void onRingDisplayUpdate(const RingDisplayUpdate& update) {
+
+static void onNixoFireMirror(bool enabled, uint32_t fireDurationMs, uint32_t cooldownMs) {
+  uint32_t now = millis();
+  if (!enabled) {
+    ringDisplay.clearCooldown();
+    Serial.println("[NIXO RING] fire mirror stopped; cooldown cleared");
+    return;
+  }
+  ringDisplay.startFire(fireDurationMs, cooldownMs, now);
+  Serial.printf("[NIXO RING] fire mirrored fire_duration_ms=%lu cooldown_ms=%lu active=%s\n",
+                (unsigned long)fireDurationMs,
+                (unsigned long)cooldownMs,
+                ringDisplay.cooldownActive(now) ? "true" : "false");
+}
+
+static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
   uint32_t now = millis();
   if (update.resetHitState) {
     resetAnalogPiezoState();
     hitMqtt.clearOfflineQueue();
-    ringDisplay.clearRemoteDisplay();
+    barDisplay.clearRemoteDisplay();
     Serial.println("[RESET] MQTT ADC hit/display state reset");
     if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC hit/display state reset");
   }
-  ringDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
+  barDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
 
 void setup() {
@@ -291,17 +311,24 @@ void setup() {
 
   SerialBT.begin(BT_NAME);
 
+  barDisplay.begin();
   ringDisplay.begin();
   beginAnalogPiezo();
-  hitMqtt.begin(onRingDisplayUpdate);
+  hitMqtt.begin(onBarDisplayUpdate, onNixoFireMirror);
 
+  barDisplay.markDirty();
   ringDisplay.markDirty();
+  barDisplay.tick(millis());
   ringDisplay.tick(millis());
 
-  Serial.println("[MODE] go2 ADC threshold hit candidate + server ring display; D0 is debug-only; Nixo fire is separate ESP");
-  Serial.printf("[PIN] LED=%d count=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d | BT=%s\n",
-                LED_PIN,
-                NUM_LEDS,
+  Serial.println("[MODE] go2 ADC threshold hit candidate + server HP bar display; D0 is debug-only; Nixo fire is separate ESP");
+  Serial.printf("[PIN] HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d | BT=%s\n",
+                HP_BAR_LED_PIN,
+                HP_BAR_NUM_LEDS,
+                HP_BAR_GROUP_COUNT,
+                HP_BAR_LEDS_PER_GROUP,
+                RING_LED_PIN,
+                RING_NUM_LEDS,
                 PIEZO_AO_PIN,
                 PIEZO_DO_PIN,
                 BT_NAME);
@@ -313,21 +340,23 @@ void setup() {
                 (unsigned long)HIT_REARM_STABLE_MS);
   Serial.printf("[CMD] USB/BT: '%c' or 'r'=reset local ADC latch/display queue. '1'/'f' ignored here.\n",
                 CMD_RESET_HIT_DISPLAY);
-  Serial.printf("[CC] robot_id=%s mqtt=%s broker=%s:%u event_topic=%s ring_topic=%s\n",
+  Serial.printf("[CC] robot_id=%s mqtt=%s broker=%s:%u event_topic=%s hp_bar_topic=%s nixo_cooldown_topic=%s\n",
                 ROBOT_ID,
                 hitMqtt.configured() ? "enabled" : "disabled",
                 MQTT_HOST,
                 MQTT_PORT,
                 hitMqtt.eventTopic(),
-                hitMqtt.ringCommandTopic());
+                hitMqtt.ringCommandTopic(),
+                hitMqtt.nixoCommandTopic());
 }
 
 void loop() {
   uint32_t now = millis();
 
-  hitMqtt.tick(now, ringDisplay.remoteDisplayActive());
+  hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   pollCommands();
   pollAnalogPiezo(now);
+  barDisplay.tick(now);
   ringDisplay.tick(now);
 
   delay(1);

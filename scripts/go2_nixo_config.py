@@ -20,6 +20,7 @@ Import("env")
 PROJECT_DIR = Path(env.subst("$PROJECT_DIR"))
 PIO_ENV = env.subst("$PIOENV")
 CONFIG_PATH = PROJECT_DIR / "src" / "go2_nixo" / "robots.json"
+VARIANTS_DIR = PROJECT_DIR / "src" / "go2_nixo" / "variants"
 
 
 def project_option(name: str) -> str:
@@ -61,6 +62,42 @@ def c_string(value: str) -> str:
     return f'\\"{escaped}\\"'
 
 
+def relay_variant_name() -> str:
+    for env_name in ("GO2_NIXO_RELAY_VARIANT", "NIXO_RELAY_VARIANT"):
+        env_value = clean_string_value(os.environ.get(env_name, ""))
+        if env_value:
+            return env_value
+
+    option_value = clean_string_value(project_option("custom_nixo_variant"))
+    return option_value or "relay_1ch"
+
+
+def load_relay_variant(name: str) -> dict:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+        raise ValueError(f"invalid Go2 Nixo relay variant name: {name!r}")
+    config_path = VARIANTS_DIR / name / "config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Go2 Nixo relay variant config not found: {config_path}")
+    with config_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    data.setdefault("name", name)
+    validate_relay_variant(name, data)
+    return data
+
+
+def validate_relay_variant(name: str, data: dict) -> None:
+    relay1_pin = int(data["nixo_relay1_pin"])
+    relay2_pin = int(data.get("nixo_relay2_pin", -1))
+    delay1_ms = int(data.get("nixo_relay_delay1_ms", 800))
+
+    if relay1_pin < 0:
+        raise ValueError(f"Go2 Nixo relay variant {name!r} requires nixo_relay1_pin >= 0")
+    if relay2_pin >= 0 and relay1_pin == relay2_pin:
+        raise ValueError(f"Go2 Nixo relay variant {name!r} relay pins must be different")
+    if delay1_ms <= 0:
+        raise ValueError(f"Go2 Nixo relay variant {name!r} nixo_relay_delay1_ms must be positive")
+
+
 def deep_merge(base: dict, override: dict) -> dict:
     merged = dict(base)
     for key, value in override.items():
@@ -84,6 +121,9 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "led_pin": "BATTLEBANG_BUILD_LED_PIN",
         "num_leds": "BATTLEBANG_BUILD_NUM_LEDS",
         "led_brightness": "BATTLEBANG_BUILD_LED_BRIGHTNESS",
+        "ring_led_pin": "BATTLEBANG_BUILD_RING_LED_PIN",
+        "ring_num_leds": "BATTLEBANG_BUILD_RING_NUM_LEDS",
+        "ring_led_brightness": "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
         "piezo_ao_pin": "BATTLEBANG_BUILD_PIEZO_AO_PIN",
@@ -95,6 +135,7 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "nixo_relay2_pin": "BATTLEBANG_BUILD_NIXO_RELAY2_PIN",
         "nixo_relay_on_level": "BATTLEBANG_BUILD_NIXO_RELAY_ON_LEVEL",
         "nixo_relay_off_level": "BATTLEBANG_BUILD_NIXO_RELAY_OFF_LEVEL",
+        "nixo_relay_delay1_ms": "BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS",
         "nixo_fire_default_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS",
         "nixo_fire_min_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_MIN_DURATION_MS",
         "nixo_fire_max_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_MAX_DURATION_MS",
@@ -141,6 +182,9 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_LED_PIN",), "BATTLEBANG_BUILD_LED_PIN"),
         (("BATTLEBANG_NUM_LEDS",), "BATTLEBANG_BUILD_NUM_LEDS"),
         (("BATTLEBANG_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_LED_BRIGHTNESS"),
+        (("BATTLEBANG_RING_LED_PIN",), "BATTLEBANG_BUILD_RING_LED_PIN"),
+        (("BATTLEBANG_RING_NUM_LEDS",), "BATTLEBANG_BUILD_RING_NUM_LEDS"),
+        (("BATTLEBANG_RING_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
         (("BATTLEBANG_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_PIEZO_AO_PIN"),
@@ -157,6 +201,10 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (
             ("NIXO_RELAY_OFF_LEVEL", "BATTLEBANG_NIXO_RELAY_OFF_LEVEL"),
             "BATTLEBANG_BUILD_NIXO_RELAY_OFF_LEVEL",
+        ),
+        (
+            ("NIXO_RELAY_DELAY1_MS", "BATTLEBANG_NIXO_RELAY_DELAY1_MS"),
+            "BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS",
         ),
         (
             ("NIXO_FIRE_DEFAULT_DURATION_MS", "BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS"),
@@ -224,7 +272,9 @@ if not entry.get("configured", False):
     print(f"{LOG_PREFIX} Set configured=true in {CONFIG_PATH} before building it.")
     Exit(1)
 
-profile = deep_merge(config.get("defaults", {}), entry)
+variant_name = relay_variant_name()
+relay_variant = load_relay_variant(variant_name)
+profile = deep_merge(deep_merge(config.get("defaults", {}), relay_variant), entry)
 defines = [("BATTLEBANG_BUILD_ROBOT_ID", c_string(robot_id))]
 append_profile_defines(defines, profile)
 append_env_defines(defines)
@@ -236,6 +286,15 @@ print(
         f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
         f"ao_threshold={profile.get('piezo_ao_threshold_raw', 'default')} "
         f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "
+        f"led_pin={profile.get('led_pin', 'default')} "
+        f"num_leds={profile.get('num_leds', 'default')} "
+        f"led_brightness={profile.get('led_brightness', 'default')} "
+        f"ring_led_pin={profile.get('ring_led_pin', 'default')} "
+        f"ring_num_leds={profile.get('ring_num_leds', 'default')} "
         f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')} "
-        f"nixo_id={profile.get('nixo_id', 'derived')}"
+        f"nixo_id={profile.get('nixo_id', 'derived')} "
+        f"nixo_variant={variant_name} "
+        f"nixo_relay1={profile.get('nixo_relay1_pin', 'default')} "
+        f"nixo_relay2={profile.get('nixo_relay2_pin', 'default')} "
+        f"nixo_delay1_ms={profile.get('nixo_relay_delay1_ms', 'default')}"
     )

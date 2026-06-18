@@ -1,0 +1,11 @@
+{
+  "name": "relay_1ch",
+  "relay_channels": 1,
+  "relay1_pin": 23,
+  "relay2_pin": -1,
+  "relay1_role": "single_fire_gpio23",
+  "relay2_role": "disabled",
+  "relay_on_level": "HIGH",
+  "relay_off_level": "LOW",
+  "relay_delay1_ms": 800
+}

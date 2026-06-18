@@ -15,9 +15,13 @@ PubSubClient nixoMqttClient(nixoWifiClient);
 
 constexpr int RELAY1_PIN = NIXO_RELAY1_PIN;
 constexpr int RELAY2_PIN = NIXO_RELAY2_PIN;
+constexpr int RELAY_CHANNELS = NIXO_RELAY_CHANNELS;
 constexpr bool RELAY2_ENABLED = RELAY2_PIN >= 0;
 constexpr int RELAY_ON = NIXO_RELAY_ON_LEVEL;
 constexpr int RELAY_OFF = NIXO_RELAY_OFF_LEVEL;
+constexpr const char* RELAY_VARIANT = NIXO_RELAY_VARIANT_NAME;
+constexpr const char* RELAY1_ROLE = NIXO_RELAY1_ROLE;
+constexpr const char* RELAY2_ROLE = NIXO_RELAY2_ROLE;
 
 constexpr uint32_t DEFAULT_FIRE_DURATION_MS = NIXO_FIRE_DEFAULT_DURATION_MS;
 constexpr uint32_t MIN_FIRE_DURATION_MS = NIXO_FIRE_MIN_DURATION_MS;
@@ -27,6 +31,9 @@ constexpr uint32_t PREFIRE_DELAY_MS = NIXO_PREFIRE_DELAY_MS;
 constexpr uint32_t RELAY_DELAY1_MS = NIXO_RELAY_DELAY1_MS;
 
 static_assert(RELAY1_PIN >= 0, "NIXO_RELAY1_PIN must be a valid GPIO");
+static_assert(RELAY_CHANNELS == 1 || RELAY_CHANNELS == 2, "NIXO_RELAY_CHANNELS must be 1 or 2");
+static_assert((RELAY_CHANNELS == 2) == RELAY2_ENABLED, "NIXO_RELAY_CHANNELS must match NIXO_RELAY2_PIN");
+static_assert(!RELAY2_ENABLED || RELAY1_PIN != RELAY2_PIN, "Nixo relay pins must be different");
 static_assert(MIN_FIRE_DURATION_MS <= DEFAULT_FIRE_DURATION_MS, "default duration below min");
 static_assert(DEFAULT_FIRE_DURATION_MS <= MAX_FIRE_DURATION_MS, "default duration above max");
 
@@ -87,10 +94,10 @@ static uint32_t clampFireDuration(uint32_t durationMs) {
 }
 
 static void relayOff() {
-  digitalWrite(RELAY1_PIN, RELAY_OFF);
   if (RELAY2_ENABLED) {
     digitalWrite(RELAY2_PIN, RELAY_OFF);
   }
+  digitalWrite(RELAY1_PIN, RELAY_OFF);
 }
 
 static void stopFireSequence(const char* source = "mqtt") {
@@ -138,8 +145,9 @@ static void updateFireSequence(uint32_t now) {
         }
         fireState = FIRE_RELAY_WAIT1;
         fireTimerMs = now;
-        Serial.printf("[RELAY] CH1 ON pin=%d level=%d readback=%d\n",
+        Serial.printf("[RELAY] CH1 ON pin=%d role=%s level=%d readback=%d\n",
                       RELAY1_PIN,
+                      RELAY1_ROLE,
                       RELAY_ON,
                       digitalRead(RELAY1_PIN));
       }
@@ -150,8 +158,9 @@ static void updateFireSequence(uint32_t now) {
         if (now - fireTimerMs >= activeFireDurationMs) {
           relayOff();
           fireState = FIRE_IDLE;
-          Serial.printf("[RELAY] CH1 OFF pin=%d level=%d readback=%d\n",
+          Serial.printf("[RELAY] CH1 OFF pin=%d role=%s level=%d readback=%d\n",
                         RELAY1_PIN,
+                        RELAY1_ROLE,
                         RELAY_OFF,
                         digitalRead(RELAY1_PIN));
           Serial.println("[RELAY] ALL OFF / FIRE done");
@@ -163,8 +172,9 @@ static void updateFireSequence(uint32_t now) {
         digitalWrite(RELAY2_PIN, RELAY_ON);
         fireState = FIRE_RELAY_WAIT2;
         fireTimerMs = now;
-        Serial.printf("[RELAY] CH2 ON pin=%d level=%d readback=%d\n",
+        Serial.printf("[RELAY] CH2 ON pin=%d role=%s level=%d readback=%d\n",
                       RELAY2_PIN,
+                      RELAY2_ROLE,
                       RELAY_ON,
                       digitalRead(RELAY2_PIN));
       }
@@ -172,13 +182,19 @@ static void updateFireSequence(uint32_t now) {
 
     case FIRE_RELAY_WAIT2:
       if (now - fireTimerMs >= activeFireDurationMs) {
-        relayOff();
-        fireState = FIRE_IDLE;
-        Serial.printf("[RELAY] CH1 OFF pin=%d readback=%d | CH2 OFF pin=%d readback=%d\n",
-                      RELAY1_PIN,
-                      digitalRead(RELAY1_PIN),
+        digitalWrite(RELAY2_PIN, RELAY_OFF);
+        Serial.printf("[RELAY] CH2 OFF pin=%d role=%s level=%d readback=%d\n",
                       RELAY2_PIN,
+                      RELAY2_ROLE,
+                      RELAY_OFF,
                       digitalRead(RELAY2_PIN));
+        digitalWrite(RELAY1_PIN, RELAY_OFF);
+        fireState = FIRE_IDLE;
+        Serial.printf("[RELAY] CH1 OFF pin=%d role=%s level=%d readback=%d\n",
+                      RELAY1_PIN,
+                      RELAY1_ROLE,
+                      RELAY_OFF,
+                      digitalRead(RELAY1_PIN));
         Serial.println("[RELAY] ALL OFF / FIRE done");
       }
       return;
@@ -197,7 +213,6 @@ static void handleNixoMqttCommand(const char* payload, unsigned int length) {
   const char* command = doc["command"] | "";
   const char* nixoId = doc["nixo_id"] | "";
   const char* requestId = doc["request_id"] | "";
-  const bool enabled = doc["enabled"] | true;
 
   if (schemaVersion != 1) {
     Serial.printf("[MQTT] ignored schema_version=%d\n", schemaVersion);
@@ -215,12 +230,17 @@ static void handleNixoMqttCommand(const char* payload, unsigned int length) {
     Serial.println("[MQTT] ignored fire command without request_id");
     return;
   }
+  if (!doc["enabled"].is<bool>()) {
+    Serial.println("[MQTT] ignored fire command without boolean enabled");
+    return;
+  }
   if (lastMqttRequestId == requestId) {
     Serial.printf("[MQTT] duplicate request_id=%s ignored\n", requestId);
     return;
   }
   lastMqttRequestId = requestId;
 
+  const bool enabled = doc["enabled"].as<bool>();
   if (!enabled) {
     stopFireSequence("mqtt");
     Serial.printf("[MQTT] fire off request_id=%s\n", requestId);
@@ -260,11 +280,13 @@ static void setupNixoMqtt() {
   nixoMqttClient.setCallback(onNixoMqttMessage);
   nixoMqttClient.setBufferSize(NIXO_MQTT_BUFFER_BYTES);
 
-  Serial.printf("[NIXO] relay-only id=%s topic=%s broker=%s:%d duration_ms=%lu..%lu default=%lu cooldown_ms=%lu\n",
+  Serial.printf("[NIXO] relay-only id=%s topic=%s broker=%s:%d relay_variant=%s relay_channels=%d duration_ms=%lu..%lu default=%lu cooldown_ms=%lu\n",
                 NIXO_ID,
                 nixoMqttCommandTopic,
                 NIXO_MQTT_HOST,
                 NIXO_MQTT_PORT,
+                RELAY_VARIANT,
+                RELAY_CHANNELS,
                 (unsigned long)MIN_FIRE_DURATION_MS,
                 (unsigned long)MAX_FIRE_DURATION_MS,
                 (unsigned long)DEFAULT_FIRE_DURATION_MS,
@@ -337,6 +359,10 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
+  if (RELAY2_ENABLED) {
+    digitalWrite(RELAY2_PIN, RELAY_OFF);
+  }
+  digitalWrite(RELAY1_PIN, RELAY_OFF);
   pinMode(RELAY1_PIN, OUTPUT);
   if (RELAY2_ENABLED) {
     pinMode(RELAY2_PIN, OUTPUT);
@@ -344,11 +370,16 @@ void setup() {
   relayOff();
 
   Serial.println("[MODE] standalone Nixo relay ESP: server/MQTT command only; USB serial is log-only");
-  Serial.printf("[PIN] RELAY1=%d RELAY2=%d relay_on=%d relay_off=%d servo_gpio18=unused\n",
+  Serial.printf("[PIN] variant=%s channels=%d RELAY1=%d role=%s RELAY2=%d role=%s relay_on=%d relay_off=%d delay1_ms=%lu servo_gpio18=unused\n",
+                RELAY_VARIANT,
+                RELAY_CHANNELS,
                 RELAY1_PIN,
+                RELAY1_ROLE,
                 RELAY2_PIN,
+                RELAY2_ROLE,
                 RELAY_ON,
-                RELAY_OFF);
+                RELAY_OFF,
+                (unsigned long)RELAY_DELAY1_MS);
   setupNixoMqtt();
 }
 

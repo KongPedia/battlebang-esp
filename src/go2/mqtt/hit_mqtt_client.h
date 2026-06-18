@@ -9,7 +9,7 @@
 
 namespace go2 {
 
-struct RingDisplayUpdate {
+struct BarDisplayUpdate {
   float fillRatio = 1.0f;
   String mode = "idle";
   bool down = false;
@@ -26,11 +26,12 @@ struct QueuedHitCandidate {
   int thresholdRaw = -1;
 };
 
-using RingDisplayHandler = void (*)(const RingDisplayUpdate& update);
+using BarDisplayHandler = void (*)(const BarDisplayUpdate& update);
+using NixoFireMirrorHandler = void (*)(bool enabled, uint32_t fireDurationMs, uint32_t cooldownMs);
 
 class HitMqttClient {
  public:
-  void begin(RingDisplayHandler ringHandler);
+  void begin(BarDisplayHandler barHandler, NixoFireMirrorHandler nixoFireMirrorHandler = nullptr);
   void tick(uint32_t now, bool remoteDisplayActive);
   bool configured() const;
   bool connected();
@@ -53,11 +54,13 @@ class HitMqttClient {
   uint8_t offlineQueueCount() const;
   const char* eventTopic() const;
   const char* ringCommandTopic() const;
+  const char* nixoCommandTopic() const;
 
  private:
   WiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
-  RingDisplayHandler ringHandler_ = nullptr;
+  BarDisplayHandler barHandler_ = nullptr;
+  NixoFireMirrorHandler nixoFireMirrorHandler_ = nullptr;
   QueuedHitCandidate offlineQueue_[OFFLINE_HIT_QUEUE_CAPACITY] = {};
   uint8_t offlineQueueHead_ = 0;
   uint8_t offlineQueueCount_ = 0;
@@ -65,7 +68,9 @@ class HitMqttClient {
   uint32_t lastOfflineQueueFlushMs_ = 0;
   char eventTopic_[128] = {0};
   char ringCommandTopic_[160] = {0};
+  char nixoCommandTopic_[160] = {0};
   char clientId_[96] = {0};
+  String lastNixoFireRequestId_;
   uint32_t lastWiFiRetryMs_ = 0;
   uint32_t lastMqttRetryMs_ = 0;
   uint32_t lastHeartbeatTxMs_ = 0;
@@ -74,6 +79,7 @@ class HitMqttClient {
   static HitMqttClient* instance_;
   static void mqttMessageCallback(char* topic, byte* payload, unsigned int length);
   void handleMqttMessage(char* topic, byte* payload, unsigned int length);
+  void handleNixoCommandMessage(byte* payload, unsigned int length);
   void ensureWiFiConnected(uint32_t now);
   void ensureMqttConnected(uint32_t now);
   void flushOfflineQueue(uint32_t now);

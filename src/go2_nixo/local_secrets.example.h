@@ -24,7 +24,12 @@
 //
 // #define NIXO_ID "nixo_go2_03"
 // #define NIXO_MQTT_TOPIC_PREFIX "battlebang/nixo"
-// #define NIXO_RELAY1_PIN 23
-// #define NIXO_RELAY2_PIN -1
-// #define NIXO_RELAY_ON_LEVEL HIGH
-// #define NIXO_RELAY_OFF_LEVEL LOW
+// Default integrated fallback relay profile is relay_1ch:
+//   GPIO23 single channel, active-HIGH.
+// BTB-766 relay_2ch can be selected with esp32dev_go2_nixo_2ch_* envs or these overrides:
+//   GPIO22 flywheel first, then GPIO23 chain after 150ms, active-LOW.
+// #define NIXO_RELAY1_PIN 22
+// #define NIXO_RELAY2_PIN 23
+// #define NIXO_RELAY_ON_LEVEL LOW
+// #define NIXO_RELAY_OFF_LEVEL HIGH
+// #define NIXO_RELAY_DELAY1_MS 150

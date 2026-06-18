@@ -1,0 +1,11 @@
+{
+  "name": "relay_2ch",
+  "relay_channels": 2,
+  "relay1_pin": 22,
+  "relay2_pin": 23,
+  "relay1_role": "flywheel_gpio22",
+  "relay2_role": "chain_gpio23",
+  "relay_on_level": "LOW",
+  "relay_off_level": "HIGH",
+  "relay_delay1_ms": 150
+}

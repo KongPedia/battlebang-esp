@@ -2,27 +2,20 @@
 
 namespace go2 {
 
+namespace {
+
+constexpr uint8_t RING_COOLDOWN_FILL_STEPS = 10;
+
+}
+
 void RingDisplay::begin() {
-  FastLED.addLeds<WS2811, LED_PIN, RGB>(leds_, NUM_LEDS);
-  FastLED.setBrightness(LED_BRIGHTNESS);
-  FastLED.setMaxPowerInVoltsAndMilliamps(LED_MAX_VOLTS, LED_MAX_MA);
+  FastLED.addLeds<WS2811, RING_LED_PIN, RGB>(leds_, RING_NUM_LEDS);
   dirty_ = true;
 }
 
 void RingDisplay::tick(uint32_t now) {
-  if (now - lastBlinkMs_ >= LED_BLINK_MS) {
-    lastBlinkMs_ = now;
-    blinkOn_ = !blinkOn_;
-    dirty_ = true;
-  }
-
-  handleRemoteExpiry(now);
-
-  if (remoteActive_) {
-    renderRemote(now);
-  } else {
-    renderFullIdle();
-  }
+  updateInternalFire(now);
+  render(now);
   showTick(now);
 }
 
@@ -30,87 +23,161 @@ void RingDisplay::markDirty() {
   dirty_ = true;
 }
 
-void RingDisplay::setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now) {
-  remoteActive_ = true;
-  remoteDown_ = down;
-  remoteFillRatio_ = constrain(fillRatio, 0.0f, 1.0f);
-  remoteMode_ = mode.length() > 0 ? mode : String("idle");
-  if (ttlMs < 1) ttlMs = 1;
-  remoteExpiresMs_ = now + ttlMs;
+void RingDisplay::startFire(uint32_t fireDurationMs, uint32_t cooldownMs, uint32_t now) {
+  if (fireDurationMs < 1) fireDurationMs = 1;
+  if (cooldownMs < 1) cooldownMs = 1;
+  if (cooldownActive(now)) return;
+
+  externalState_ = false;
+  firing_ = true;
+  inhibited_ = false;
+  firingStartedMs_ = now;
+  fireDurationMs_ = fireDurationMs;
+  pendingCooldownDurationMs_ = cooldownMs;
+  cooldownStartedMs_ = 0;
+  cooldownDurationMs_ = 0;
+  cooldownRemainingMs_ = 0;
   dirty_ = true;
 }
 
-void RingDisplay::clearRemoteDisplay() {
-  remoteActive_ = false;
-  remoteDown_ = false;
-  remoteFillRatio_ = 1.0f;
-  remoteMode_ = "idle";
-  remoteExpiresMs_ = 0;
+void RingDisplay::startCooldown(uint32_t durationMs, uint32_t now) {
+  if (durationMs < 1) durationMs = 1;
+  if (cooldownActive(now)) return;
+
+  externalState_ = false;
+  firing_ = false;
+  inhibited_ = false;
+  firingStartedMs_ = 0;
+  fireDurationMs_ = 0;
+  pendingCooldownDurationMs_ = durationMs;
+  cooldownStartedMs_ = now;
+  cooldownDurationMs_ = durationMs;
+  cooldownRemainingMs_ = durationMs;
   dirty_ = true;
 }
 
-bool RingDisplay::remoteDisplayActive() const {
-  return remoteActive_;
+void RingDisplay::clearCooldown() {
+  externalState_ = false;
+  firing_ = false;
+  inhibited_ = false;
+  firingStartedMs_ = 0;
+  fireDurationMs_ = 0;
+  cooldownStartedMs_ = 0;
+  cooldownDurationMs_ = 0;
+  cooldownRemainingMs_ = 0;
+  dirty_ = true;
 }
 
-bool RingDisplay::remoteExpired(uint32_t now) const {
-  return remoteActive_ && remoteExpiresMs_ != 0 && (int32_t)(now - remoteExpiresMs_) >= 0;
+void RingDisplay::setCooldownState(bool firing,
+                                   uint32_t remainingMs,
+                                   uint32_t durationMs,
+                                   bool inhibited) {
+  if (durationMs < 1) durationMs = 1;
+  uint32_t boundedRemainingMs = min(remainingMs, durationMs);
+  bool changed = !externalState_ ||
+                 firing_ != firing ||
+                 inhibited_ != inhibited ||
+                 cooldownRemainingMs_ != boundedRemainingMs ||
+                 cooldownDurationMs_ != durationMs;
+  externalState_ = true;
+  firing_ = firing;
+  inhibited_ = inhibited;
+  firingStartedMs_ = 0;
+  fireDurationMs_ = 0;
+  cooldownRemainingMs_ = boundedRemainingMs;
+  cooldownDurationMs_ = durationMs;
+  if (changed) dirty_ = true;
 }
 
-void RingDisplay::handleRemoteExpiry(uint32_t now) {
-  if (!remoteExpired(now)) return;
+bool RingDisplay::cooldownActive(uint32_t now) const {
+  return firing_ || inhibited_ || remainingMs(now) > 0;
+}
 
-  if (remoteDown_ || remoteMode_ == "down") {
-    // Down is a Command Center display command. Keep it latched until the
-    // server sends a non-down command or a local reset clears the display.
-    remoteExpiresMs_ = 0;
+void RingDisplay::updateInternalFire(uint32_t now) {
+  if (externalState_) return;
+  if (!firing_) return;
+  if (now - firingStartedMs_ < fireDurationMs_) return;
+
+  firing_ = false;
+  firingStartedMs_ = 0;
+  cooldownStartedMs_ = now;
+  cooldownDurationMs_ = pendingCooldownDurationMs_;
+  cooldownRemainingMs_ = cooldownDurationMs_;
+  dirty_ = true;
+}
+
+uint32_t RingDisplay::remainingMs(uint32_t now) const {
+  if (externalState_) return cooldownRemainingMs_;
+  if (cooldownDurationMs_ == 0) return 0;
+  uint32_t elapsed = now - cooldownStartedMs_;
+  if (elapsed >= cooldownDurationMs_) return 0;
+  return cooldownDurationMs_ - elapsed;
+}
+
+void RingDisplay::render(uint32_t now) {
+  if (firing_) {
+    renderFiring();
+    return;
+  }
+
+  uint32_t remaining = remainingMs(now);
+  if (remaining > 0) {
+    renderCooldown(now);
+    return;
+  }
+  if (inhibited_) {
+    renderFiring();
+    return;
+  }
+  if (!externalState_ && cooldownDurationMs_ != 0) {
+    cooldownStartedMs_ = 0;
+    cooldownDurationMs_ = 0;
+    cooldownRemainingMs_ = 0;
     dirty_ = true;
-    return;
   }
-
-  if (remoteMode_ == "hit_flash") {
-    remoteMode_ = "active";
-    remoteExpiresMs_ = 0;
-    dirty_ = true;
-    return;
-  }
-
-  clearRemoteDisplay();
+  renderReady();
 }
 
-void RingDisplay::renderRemote(uint32_t now) {
-  if (remoteMode_ == "disabled") {
-    renderBlank();
-    return;
-  }
+void RingDisplay::renderReady() {
+  CRGB color = scaled(0, 64, 0);
+  for (int i = 0; i < RING_NUM_LEDS; i++) leds_[i] = color;
+}
 
-  if (remoteDown_ || remoteMode_ == "down") {
-    if (now - lastDownBlinkMs_ >= LED_DEAD_BLINK_MS) {
-      lastDownBlinkMs_ = now;
-      downBlinkOn_ = !downBlinkOn_;
-      dirty_ = true;
+void RingDisplay::renderFiring() {
+  CRGB color = scaled(96, 0, 0);
+  for (int i = 0; i < RING_NUM_LEDS; i++) leds_[i] = color;
+}
+
+void RingDisplay::renderCooldown(uint32_t now) {
+  uint32_t remaining = remainingMs(now);
+  uint32_t elapsed = cooldownDurationMs_ > remaining ? cooldownDurationMs_ - remaining : 0;
+  uint32_t completedSteps = (elapsed * RING_COOLDOWN_FILL_STEPS) / cooldownDurationMs_;
+  if (completedSteps > RING_COOLDOWN_FILL_STEPS) completedSteps = RING_COOLDOWN_FILL_STEPS;
+  int lit = constrain((int)((completedSteps * RING_NUM_LEDS) / RING_COOLDOWN_FILL_STEPS),
+                      0,
+                      RING_NUM_LEDS);
+  CRGB cooldownColor = scaled(0, 64, 0);
+  bool mismatch = false;
+  for (int i = 0; i < RING_NUM_LEDS; i++) {
+    CRGB expected = (i < lit) ? cooldownColor : CRGB::Black;
+    if (leds_[i] != expected) {
+      mismatch = true;
+      break;
     }
-    for (int i = 0; i < NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
-    return;
   }
-
-  int lit = constrain((int)(remoteFillRatio_ * NUM_LEDS + 0.5f), 0, NUM_LEDS);
-  CRGB fillColor = CRGB::Green;
-  if (remoteMode_ == "hit_flash") {
-    fillColor = blinkOn_ ? CRGB::White : CRGB::Red;
-  } else if (remoteMode_ == "stale") {
-    fillColor = CRGB::Orange;
+  if (mismatch) {
+    for (int i = 0; i < RING_NUM_LEDS; i++) {
+      leds_[i] = (i < lit) ? cooldownColor : CRGB::Black;
+    }
+    dirty_ = true;
   }
-
-  for (int i = 0; i < NUM_LEDS; i++) leds_[i] = (i < lit) ? fillColor : CRGB::Black;
 }
 
-void RingDisplay::renderFullIdle() {
-  for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Green;
-}
-
-void RingDisplay::renderBlank() {
-  for (int i = 0; i < NUM_LEDS; i++) leds_[i] = CRGB::Black;
+CRGB RingDisplay::scaled(uint8_t r, uint8_t g, uint8_t b) const {
+  uint16_t scale = RING_LED_BRIGHTNESS;
+  return CRGB((uint8_t)((uint16_t)r * scale / 255),
+              (uint8_t)((uint16_t)g * scale / 255),
+              (uint8_t)((uint16_t)b * scale / 255));
 }
 
 void RingDisplay::showTick(uint32_t now) {

@@ -61,9 +61,14 @@
 #define BATTLEBANG_NIXO_RELAY_OFF_LEVEL NIXO_RELAY_OFF_LEVEL
 #endif
 
-// Overrides injected by scripts/go2_nixo_config.py from PlatformIO profile/shell
-// env. These intentionally apply after local_secrets.h so explicit env/profile
-// builds win without editing the gitignored local file.
+#if defined(NIXO_RELAY_DELAY1_MS) &&                                           \
+    !defined(BATTLEBANG_NIXO_RELAY_DELAY1_MS)
+#define BATTLEBANG_NIXO_RELAY_DELAY1_MS NIXO_RELAY_DELAY1_MS
+#endif
+
+// Overrides injected by scripts/go2_nixo_config.py from PlatformIO
+// profile/shell env. These intentionally apply after local_secrets.h so
+// explicit env/profile builds win without editing the gitignored local file.
 #ifdef BATTLEBANG_BUILD_ROBOT_ID
 #undef BATTLEBANG_ROBOT_ID
 #define BATTLEBANG_ROBOT_ID BATTLEBANG_BUILD_ROBOT_ID
@@ -125,6 +130,11 @@
 #define BATTLEBANG_NIXO_RELAY_OFF_LEVEL BATTLEBANG_BUILD_NIXO_RELAY_OFF_LEVEL
 #endif
 
+#ifdef BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS
+#undef BATTLEBANG_NIXO_RELAY_DELAY1_MS
+#define BATTLEBANG_NIXO_RELAY_DELAY1_MS BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS
+#endif
+
 #ifdef BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS
 #undef BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS
 #define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS                               \
@@ -178,6 +188,21 @@
 #ifdef BATTLEBANG_BUILD_LED_BRIGHTNESS
 #undef BATTLEBANG_LED_BRIGHTNESS
 #define BATTLEBANG_LED_BRIGHTNESS BATTLEBANG_BUILD_LED_BRIGHTNESS
+#endif
+
+#ifdef BATTLEBANG_BUILD_RING_LED_PIN
+#undef BATTLEBANG_RING_LED_PIN
+#define BATTLEBANG_RING_LED_PIN BATTLEBANG_BUILD_RING_LED_PIN
+#endif
+
+#ifdef BATTLEBANG_BUILD_RING_NUM_LEDS
+#undef BATTLEBANG_RING_NUM_LEDS
+#define BATTLEBANG_RING_NUM_LEDS BATTLEBANG_BUILD_RING_NUM_LEDS
+#endif
+
+#ifdef BATTLEBANG_BUILD_RING_LED_BRIGHTNESS
+#undef BATTLEBANG_RING_LED_BRIGHTNESS
+#define BATTLEBANG_RING_LED_BRIGHTNESS BATTLEBANG_BUILD_RING_LED_BRIGHTNESS
 #endif
 
 #ifdef BATTLEBANG_BUILD_T1_DO_PIN
@@ -266,6 +291,10 @@
 #define BATTLEBANG_NIXO_RELAY_OFF_LEVEL LOW
 #endif
 
+#ifndef BATTLEBANG_NIXO_RELAY_DELAY1_MS
+#define BATTLEBANG_NIXO_RELAY_DELAY1_MS 800
+#endif
+
 #ifndef BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS
 #define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 1500
 #endif
@@ -279,7 +308,7 @@
 #endif
 
 #ifndef BATTLEBANG_NIXO_FIRE_COOLDOWN_MS
-#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 2500
+#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 10000
 #endif
 
 #ifndef BATTLEBANG_HIT_COOLDOWN_MS
@@ -295,15 +324,35 @@
 #endif
 
 #ifndef BATTLEBANG_LED_PIN
-#define BATTLEBANG_LED_PIN 4
+#define BATTLEBANG_LED_PIN 18
 #endif
 
 #ifndef BATTLEBANG_NUM_LEDS
-#define BATTLEBANG_NUM_LEDS 40
+#define BATTLEBANG_NUM_LEDS 84
 #endif
 
 #ifndef BATTLEBANG_LED_BRIGHTNESS
-#define BATTLEBANG_LED_BRIGHTNESS 80
+#define BATTLEBANG_LED_BRIGHTNESS 120
+#endif
+
+#ifndef BATTLEBANG_HP_BAR_GROUP_COUNT
+#define BATTLEBANG_HP_BAR_GROUP_COUNT 28
+#endif
+
+#ifndef BATTLEBANG_HP_BAR_LEDS_PER_GROUP
+#define BATTLEBANG_HP_BAR_LEDS_PER_GROUP 3
+#endif
+
+#ifndef BATTLEBANG_RING_LED_PIN
+#define BATTLEBANG_RING_LED_PIN 4
+#endif
+
+#ifndef BATTLEBANG_RING_NUM_LEDS
+#define BATTLEBANG_RING_NUM_LEDS 40
+#endif
+
+#ifndef BATTLEBANG_RING_LED_BRIGHTNESS
+#define BATTLEBANG_RING_LED_BRIGHTNESS 80
 #endif
 
 #ifndef BATTLEBANG_T1_DO_PIN
@@ -321,7 +370,7 @@
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
 // Measured fire vibration reached ~1656 raw in bench tests, so default above
 // that range. Tune per harness/target with robots.json or env.
-#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 1800
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 1200
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_REARM_RAW
@@ -348,9 +397,19 @@ static constexpr uint32_t UART_BAUD = 115200;
 
 static constexpr char CMD_RESET_HIT_DISPLAY = '2';
 
-static constexpr int LED_PIN = BATTLEBANG_LED_PIN;
-static constexpr int NUM_LEDS = BATTLEBANG_NUM_LEDS;
-static constexpr uint8_t LED_BRIGHTNESS = BATTLEBANG_LED_BRIGHTNESS;
+static constexpr int HP_BAR_LED_PIN = BATTLEBANG_LED_PIN;
+static constexpr int HP_BAR_NUM_LEDS = BATTLEBANG_NUM_LEDS;
+static constexpr uint8_t HP_BAR_LED_BRIGHTNESS = BATTLEBANG_LED_BRIGHTNESS;
+static constexpr int LED_PIN = HP_BAR_LED_PIN;
+static constexpr int NUM_LEDS = HP_BAR_NUM_LEDS;
+static constexpr uint8_t LED_BRIGHTNESS = HP_BAR_LED_BRIGHTNESS;
+static constexpr int RING_LED_PIN = BATTLEBANG_RING_LED_PIN;
+static constexpr int RING_NUM_LEDS = BATTLEBANG_RING_NUM_LEDS;
+static constexpr uint8_t RING_LED_BRIGHTNESS = BATTLEBANG_RING_LED_BRIGHTNESS;
+static constexpr int HP_BAR_GROUP_COUNT = BATTLEBANG_HP_BAR_GROUP_COUNT;
+static constexpr int HP_BAR_LEDS_PER_GROUP = BATTLEBANG_HP_BAR_LEDS_PER_GROUP;
+static constexpr int HP_BAR_EXPECTED_LED_COUNT =
+    HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP;
 static constexpr uint8_t LED_MAX_VOLTS = 5;
 static constexpr uint16_t LED_MAX_MA = 900;
 static constexpr uint32_t LED_SHOW_PERIOD_MS = 16;
@@ -380,6 +439,14 @@ static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0,
               "offline hit queue capacity must be positive");
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255,
               "offline hit queue capacity must fit uint8_t counters");
+static_assert(HP_BAR_GROUP_COUNT > 0, "HP bar group count must be positive");
+static_assert(HP_BAR_LEDS_PER_GROUP == 3,
+              "Go2 HP bar renderer expects 3 linked LEDs per group");
+static_assert(NUM_LEDS == HP_BAR_EXPECTED_LED_COUNT,
+              "HP bar LED count must match grouped bar layout");
+static_assert(RING_NUM_LEDS > 0, "cooldown ring LED count must be positive");
+static_assert(HP_BAR_LED_PIN != RING_LED_PIN,
+              "HP bar and cooldown ring pins must be different");
 static_assert(PIEZO_AO_PIN >= 0,
               "piezo AO pin must be configured for ADC threshold hit firmware");
 static_assert(PIEZO_AO_THRESHOLD_RAW > 0,
@@ -418,7 +485,8 @@ static constexpr int NIXO_RELAY_ON_LEVEL_VALUE = BATTLEBANG_NIXO_RELAY_ON_LEVEL;
 static constexpr int NIXO_RELAY_OFF_LEVEL_VALUE =
     BATTLEBANG_NIXO_RELAY_OFF_LEVEL;
 static constexpr uint32_t NIXO_PREFIRE_DELAY_MS = 600;
-static constexpr uint32_t NIXO_RELAY_DELAY1_MS = 800;
+static constexpr uint32_t NIXO_RELAY_DELAY1_MS =
+    BATTLEBANG_NIXO_RELAY_DELAY1_MS;
 static constexpr uint32_t NIXO_FIRE_DEFAULT_DURATION_MS =
     BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS;
 static constexpr uint32_t NIXO_FIRE_MIN_DURATION_MS =
@@ -427,6 +495,14 @@ static constexpr uint32_t NIXO_FIRE_MAX_DURATION_MS =
     BATTLEBANG_NIXO_FIRE_MAX_DURATION_MS;
 static constexpr uint32_t NIXO_FIRE_COOLDOWN_MS =
     BATTLEBANG_NIXO_FIRE_COOLDOWN_MS;
+
+static_assert(NIXO_RELAY1_PIN_VALUE >= 0,
+              "Nixo relay 1 pin must be configured");
+static_assert(!NIXO_RELAY2_ENABLED_VALUE ||
+                  NIXO_RELAY1_PIN_VALUE != NIXO_RELAY2_PIN_VALUE,
+              "Nixo relay pins must be different");
+static_assert(NIXO_RELAY_DELAY1_MS > 0,
+              "Nixo relay inter-channel delay must be positive");
 
 inline const char *targetIdToSensorId(int targetId) {
   return (targetId == 1) ? "piezo_t1" : "piezo_t2";

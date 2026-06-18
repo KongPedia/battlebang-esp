@@ -12,29 +12,36 @@ class RingDisplay {
   void begin();
   void tick(uint32_t now);
   void markDirty();
-  void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
-  void clearRemoteDisplay();
-  bool remoteDisplayActive() const;
+  void startFire(uint32_t fireDurationMs, uint32_t cooldownMs, uint32_t now);
+  void startCooldown(uint32_t durationMs, uint32_t now);
+  void clearCooldown();
+  void setCooldownState(bool firing,
+                        uint32_t remainingMs,
+                        uint32_t durationMs,
+                        bool inhibited);
+  bool cooldownActive(uint32_t now) const;
 
  private:
-  CRGB leds_[NUM_LEDS] = {};
-  bool blinkOn_ = false;
-  bool downBlinkOn_ = false;
+  CRGB leds_[RING_NUM_LEDS] = {};
   bool dirty_ = true;
-  uint32_t lastBlinkMs_ = 0;
-  uint32_t lastDownBlinkMs_ = 0;
+  bool externalState_ = false;
+  bool firing_ = false;
+  bool inhibited_ = false;
+  uint32_t firingStartedMs_ = 0;
+  uint32_t fireDurationMs_ = NIXO_FIRE_DEFAULT_DURATION_MS;
+  uint32_t pendingCooldownDurationMs_ = NIXO_FIRE_COOLDOWN_MS;
+  uint32_t cooldownStartedMs_ = 0;
+  uint32_t cooldownDurationMs_ = 0;
+  uint32_t cooldownRemainingMs_ = 0;
   uint32_t lastShowMs_ = 0;
-  bool remoteActive_ = false;
-  bool remoteDown_ = false;
-  float remoteFillRatio_ = 1.0f;
-  String remoteMode_ = "idle";
-  uint32_t remoteExpiresMs_ = 0;
 
-  bool remoteExpired(uint32_t now) const;
-  void handleRemoteExpiry(uint32_t now);
-  void renderRemote(uint32_t now);
-  void renderFullIdle();
-  void renderBlank();
+  void updateInternalFire(uint32_t now);
+  uint32_t remainingMs(uint32_t now) const;
+  void render(uint32_t now);
+  void renderReady();
+  void renderFiring();
+  void renderCooldown(uint32_t now);
+  CRGB scaled(uint8_t r, uint8_t g, uint8_t b) const;
   void showTick(uint32_t now);
 };
 

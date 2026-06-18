@@ -28,8 +28,9 @@
 #define NIXO_FIRE_MIN_DURATION_MS 100
 #define NIXO_FIRE_MAX_DURATION_MS 10000
 
-// Current Go2-mounted Nixo relay wiring matches the pre-MQTT Bluetooth smoke sketch:
-// GPIO23, active-HIGH, single relay channel.
+// Default/legacy 1-channel Go2-mounted Nixo wiring matches the pre-MQTT Bluetooth smoke sketch:
+// GPIO23, active-HIGH, single relay channel. PlatformIO variant profiles can override these
+// at build time; use esp32dev_nixo_2ch_* for the BTB-766 GPIO22 flywheel + GPIO23 chain build.
 #define NIXO_RELAY1_PIN 23
 #define NIXO_RELAY2_PIN -1
 #define NIXO_RELAY_ON_LEVEL HIGH

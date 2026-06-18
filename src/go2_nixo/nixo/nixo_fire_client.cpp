@@ -8,6 +8,10 @@ void NixoFireClient::begin() {
   snprintf(commandTopic_, sizeof(commandTopic_), "%s/%s/command", NIXO_MQTT_TOPIC_PREFIX_VALUE, NIXO_ID_VALUE);
   snprintf(clientId_, sizeof(clientId_), "battlebang-nixo-%s", NIXO_ID_VALUE);
 
+  if (NIXO_RELAY2_ENABLED_VALUE) {
+    digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+  }
+  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   pinMode(NIXO_RELAY1_PIN_VALUE, OUTPUT);
   if (NIXO_RELAY2_ENABLED_VALUE) {
     pinMode(NIXO_RELAY2_PIN_VALUE, OUTPUT);
@@ -19,7 +23,7 @@ void NixoFireClient::begin() {
   mqttClient_.setBufferSize(NIXO_MQTT_BUFFER_SIZE);
   instance_ = this;
 
-  Serial.printf("[NIXO] integrated id=%s topic=%s broker=%s:%u relay1=%d relay2=%d relay_on=%d relay_off=%d\n",
+  Serial.printf("[NIXO] integrated id=%s topic=%s broker=%s:%u relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu\n",
                 NIXO_ID_VALUE,
                 commandTopic_,
                 MQTT_HOST,
@@ -27,7 +31,8 @@ void NixoFireClient::begin() {
                 NIXO_RELAY1_PIN_VALUE,
                 NIXO_RELAY2_PIN_VALUE,
                 NIXO_RELAY_ON_LEVEL_VALUE,
-                NIXO_RELAY_OFF_LEVEL_VALUE);
+                NIXO_RELAY_OFF_LEVEL_VALUE,
+                (unsigned long)NIXO_RELAY_DELAY1_MS);
 
   if (!configured()) {
     Serial.println("[NIXO] MQTT disabled until ESP Wi-Fi/MQTT config is provided");
@@ -70,10 +75,11 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
     Serial.printf("[FIRE] ignored source=%s reason=already_firing\n", source);
     return false;
   }
-  if (lastFireStartMs_ != 0 && now - lastFireStartMs_ < NIXO_FIRE_COOLDOWN_MS) {
+  uint32_t remainingMs = cooldownRemainingMs(now);
+  if (remainingMs > 0) {
     Serial.printf("[FIRE] ignored source=%s reason=cooldown remaining_ms=%lu\n",
                   source,
-                  (unsigned long)(NIXO_FIRE_COOLDOWN_MS - (now - lastFireStartMs_)));
+                  (unsigned long)remainingMs);
     return false;
   }
 
@@ -90,8 +96,12 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
 }
 
 void NixoFireClient::stopFire(const char* source) {
+  bool wasFiring = isFiring();
   relayOff();
   fireState_ = FIRE_IDLE;
+  if (wasFiring) {
+    beginCooldown(millis());
+  }
   Serial.printf("[FIRE] stop source=%s\n", source);
 }
 
@@ -103,11 +113,26 @@ bool NixoFireClient::isFiring() const {
   return fireState_ != FIRE_IDLE;
 }
 
+bool NixoFireClient::fireInhibited() const {
+  return fireInhibited_;
+}
+
+uint32_t NixoFireClient::cooldownRemainingMs(uint32_t now) const {
+  if (cooldownStartedMs_ == 0) return 0;
+  uint32_t elapsed = now - cooldownStartedMs_;
+  if (elapsed >= NIXO_FIRE_COOLDOWN_MS) return 0;
+  return NIXO_FIRE_COOLDOWN_MS - elapsed;
+}
+
+uint32_t NixoFireClient::cooldownDurationMs() const {
+  return NIXO_FIRE_COOLDOWN_MS;
+}
+
 void NixoFireClient::relayOff() {
-  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   if (NIXO_RELAY2_ENABLED_VALUE) {
     digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   }
+  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
 }
 
 void NixoFireClient::updateFireSequence(uint32_t now) {
@@ -138,6 +163,7 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
                         NIXO_RELAY_OFF_LEVEL_VALUE,
                         digitalRead(NIXO_RELAY1_PIN_VALUE));
           Serial.println("[RELAY] ALL OFF / FIRE done");
+          beginCooldown(now);
         }
         return;
       }
@@ -153,17 +179,27 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
       return;
     case FIRE_RELAY_WAIT2:
       if (now - fireTimerMs_ >= activeFireDurationMs_) {
-        relayOff();
-        fireState_ = FIRE_IDLE;
-        Serial.printf("[RELAY] CH1 OFF pin=%d readback=%d | CH2 OFF pin=%d readback=%d\n",
-                      NIXO_RELAY1_PIN_VALUE,
-                      digitalRead(NIXO_RELAY1_PIN_VALUE),
+        digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+        Serial.printf("[RELAY] CH2 OFF pin=%d level=%d readback=%d\n",
                       NIXO_RELAY2_PIN_VALUE,
+                      NIXO_RELAY_OFF_LEVEL_VALUE,
                       digitalRead(NIXO_RELAY2_PIN_VALUE));
+        digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+        fireState_ = FIRE_IDLE;
+        Serial.printf("[RELAY] CH1 OFF pin=%d level=%d readback=%d\n",
+                      NIXO_RELAY1_PIN_VALUE,
+                      NIXO_RELAY_OFF_LEVEL_VALUE,
+                      digitalRead(NIXO_RELAY1_PIN_VALUE));
         Serial.println("[RELAY] ALL OFF / FIRE done");
+        beginCooldown(now);
       }
       return;
   }
+}
+
+void NixoFireClient::beginCooldown(uint32_t now) {
+  cooldownStartedMs_ = now;
+  Serial.printf("[FIRE] cooldown start duration_ms=%lu\n", (unsigned long)NIXO_FIRE_COOLDOWN_MS);
 }
 
 void NixoFireClient::ensureMqttConnected(uint32_t now) {
@@ -225,7 +261,6 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
   const char* command = doc["command"] | "";
   const char* nixoId = doc["nixo_id"] | "";
   const char* requestId = doc["request_id"] | "";
-  const bool enabled = doc["enabled"] | true;
 
   if (schemaVersion != 1) {
     Serial.printf("[NIXO MQTT] ignored schema_version=%d\n", schemaVersion);
@@ -243,12 +278,17 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
     Serial.println("[NIXO MQTT] ignored fire command without request_id");
     return;
   }
+  if (!doc["enabled"].is<bool>()) {
+    Serial.println("[NIXO MQTT] ignored fire command without boolean enabled");
+    return;
+  }
   if (lastMqttRequestId_ == requestId) {
     Serial.printf("[NIXO MQTT] duplicate request_id=%s ignored\n", requestId);
     return;
   }
   lastMqttRequestId_ = requestId;
 
+  const bool enabled = doc["enabled"].as<bool>();
   if (!enabled) {
     stopFire("mqtt");
     Serial.printf("[NIXO MQTT] fire off request_id=%s\n", requestId);
