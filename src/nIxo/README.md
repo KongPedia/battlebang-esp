@@ -1,39 +1,65 @@
 # Nixo MQTT firmware path
 
-This folder owns the Go2-mounted Nixo / game-blaster ESP32 firmware used by BTB-633.
+This folder owns the standalone Go2-mounted Nixo / game-blaster ESP32 firmware used by BTB-633 and BTB-766.
 
-## Current hardware contract
+## Relay variants
 
-Bench debugging confirmed the real relay path matches the pre-MQTT Bluetooth baseline:
+Relay wiring lives under `src/nIxo/variants/<variant>/config.json` and is selected by the PlatformIO env
+`custom_nixo_variant` or the `NIXO_RELAY_VARIANT` shell override.
 
-- Relay pin: `GPIO23`
+### `relay_1ch` — legacy/default
+
+Bench debugging confirmed the real one-channel relay path matches the pre-MQTT Bluetooth baseline:
+
+- Channel 1: `GPIO23`
+- Channel 2: disabled (`NIXO_RELAY2_PIN=-1`)
 - Relay polarity: active-HIGH (`HIGH` = on/fire, `LOW` = off)
-- Second relay: disabled (`NIXO_RELAY2_PIN=-1`)
-- Live Go2 mapping: `go2_03 -> nixo_go2_03`
-- MQTT topic: `battlebang/nixo/nixo_go2_03/command`
+- Live Go2 mapping example: `go2_03 -> nixo_go2_03`
+- MQTT topic example: `battlebang/nixo/nixo_go2_03/command`
 
-Do not change this back to the old root-firmware relay pins (`GPIO22/21`, active-LOW) for Nixo. That was the cause of
-MQTT logs saying “fire” while the physical relay did not move.
+Do not change this back to the old root-firmware relay pins (`GPIO22/21`, active-LOW) for the 1ch Nixo build. That was
+the cause of MQTT logs saying “fire” while the physical relay did not move.
+
+### `relay_2ch` — BTB-766 two-channel build
+
+The two-channel build is separated because the hardware now uses a flywheel relay and a chain relay:
+
+- Channel 1 / first on: `GPIO22` — flywheel
+- Channel 2 / second on: `GPIO23` — chain
+- Relay polarity: active-LOW (`LOW` = on/fire, `HIGH` = off)
+- Inter-channel delay: `150ms`
+
+Field observation showed the physical order was reversed with the previous mapping, so the firmware maps GPIO22 as the first flywheel channel and GPIO23 as the second chain channel. It starts the flywheel first, waits `relay_delay1_ms` (`150ms`), then starts the chain. On normal completion it turns the chain off first, then the flywheel off.
 
 ## Build and upload
 
 From the `battlebang-esp` repo root:
 
 ```bash
-pio run -e esp32dev_nixo_go2_03
+pio run -e esp32dev_nixo_1ch_go2_03
+pio run -e esp32dev_nixo_2ch_go2_03
 ```
+
+Legacy env names (`esp32dev_nixo_go2_03`, `05`, `06`, `07`) are kept and still build the `relay_1ch` variant.
 
 Upload only when the correct Nixo ESP32 is connected:
 
 ```bash
-pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
+pio run -e esp32dev_nixo_2ch_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
 pio device monitor -p /dev/cu.usbserial-1130 -b 115200
 ```
 
-Expected boot log includes:
+Expected 1ch boot log includes:
 
 ```text
-[PIN] ... RELAY1=23 RELAY2=-1 relay_on=1 relay_off=0
+[PIN] variant=relay_1ch channels=1 RELAY1=23 role=single_fire_gpio23 RELAY2=-1 role=disabled relay_on=1 relay_off=0 delay1_ms=800 servo_gpio18=unused
+[MQTT] subscribed topic=battlebang/nixo/nixo_go2_03/command qos=1
+```
+
+Expected 2ch probe boot log includes:
+
+```text
+[PIN] variant=relay_2ch channels=2 RELAY1=22 role=flywheel_gpio22 RELAY2=23 role=chain_gpio23 relay_on=0 relay_off=1 delay1_ms=150 servo_gpio18=unused
 [MQTT] subscribed topic=battlebang/nixo/nixo_go2_03/command qos=1
 ```
 
@@ -50,7 +76,15 @@ NIXO_ID=nixo_go2_03 \
 NIXO_WIFI_SSID='...' \
 NIXO_WIFI_PASSWORD='...' \
 NIXO_MQTT_HOST=<BROKER_IP> \
-pio run -e esp32dev_nixo_go2_03
+pio run -e esp32dev_nixo_2ch_go2_03
+```
+
+Relay variant and pin overrides are also available for bench probing:
+
+```bash
+NIXO_RELAY_VARIANT=relay_2ch \
+NIXO_RELAY_DELAY1_MS=200 \
+pio run -e esp32dev_nixo_2ch_go2_03
 ```
 
 ## MQTT command
@@ -91,14 +125,23 @@ mosquitto_pub -h <BROKER_IP> -p 1883 \
   -q 1
 ```
 
-Expected ESP serial evidence:
+Expected 1ch ESP serial evidence:
 
 ```text
 [MQTT] fire on request_id=direct-mqtt-smoke duration_ms=1000
 [FIRE] start source=mqtt duration_ms=1000
-[RELAY] CH1 ON pin=23 level=1 readback=1
-[RELAY] CH1 OFF pin=23 level=0 readback=0
+[RELAY] CH1 ON pin=23 role=single_fire_gpio23 level=1 readback=1
+[RELAY] CH1 OFF pin=23 role=single_fire_gpio23 level=0 readback=0
 [RELAY] ALL OFF / FIRE done
+```
+
+Expected 2ch probe evidence includes CH1 followed by CH2:
+
+```text
+[RELAY] CH1 ON pin=22 role=flywheel_gpio22 level=0 readback=0
+[RELAY] CH2 ON pin=23 role=chain_gpio23 level=0 readback=0
+[RELAY] CH2 OFF pin=23 role=chain_gpio23 level=1 readback=1
+[RELAY] CH1 OFF pin=22 role=flywheel_gpio22 level=1 readback=1
 ```
 
 Command Center API smoke test:

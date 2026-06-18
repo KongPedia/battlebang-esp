@@ -6,7 +6,7 @@ ESP32 펌웨어 저장소입니다. Go2-mounted ESP, 터렛 등 장치별 펌웨
 | --- | --- | --- |
 | `esp32dev`, `esp32dev_go2`, `esp32dev_go2_go2_*` | `src/go2/main.cpp` + `src/go2/display/**` + `src/go2/mqtt/**` | Go2-mounted hit/LED ESP: piezo AO ADC threshold + Command Center ring display |
 | `esp32dev_go2_nixo`, `esp32dev_go2_nixo_go2_*` | `src/go2_nixo/main.cpp` + `src/go2_nixo/**` | Optional one-ESP fallback: hit/ring LED + Nixo relay |
-| `esp32dev_nixo`, `esp32dev_nixo_go2_*` | `src/nIxo/main.cpp` | Standalone Nixo/game blaster relay ESP |
+| `esp32dev_nixo`, `esp32dev_nixo_1ch_go2_*`, `esp32dev_nixo_2ch_go2_*` | `src/nIxo/main.cpp` | Standalone Nixo/game blaster relay ESP |
 | `esp32dev_hit_target` | `src/hit_target/main.cpp` + `src/hit_target/**` | Generic standalone piezo + circular LED ring hit target firmware |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
 | `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware with MQTT config + OTA |
@@ -23,8 +23,9 @@ ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO enviro
   - 빌드/업로드 env: `esp32dev_go2_go2_03`, `esp32dev_go2_go2_05`, `esp32dev_go2_go2_06`, `esp32dev_go2_go2_07`
 - Nixo/game blaster ESP: `src/nIxo/`
   - Command Center가 MQTT로 publish한 `battlebang/nixo/{nixo_id}/command` fire 명령 수신
-  - GPIO23 relay-only fire sequence
-  - 빌드/업로드 env: `esp32dev_nixo_go2_03`, `esp32dev_nixo_go2_05`, `esp32dev_nixo_go2_06`, `esp32dev_nixo_go2_07`
+  - 기본 1ch: GPIO23 relay-only fire sequence
+  - BTB-766 2ch: GPIO22 flywheel first, 0.15초 뒤 GPIO23 chain
+  - 빌드/업로드 env: `esp32dev_nixo_1ch_go2_*`, `esp32dev_nixo_2ch_go2_*` (`esp32dev_nixo_go2_*`는 1ch 호환 alias)
 - Optional one-ESP fallback/reference: `src/go2_nixo/`
   - hit/ring/Nixo가 한 ESP에 통합된 경로
   - 빌드/업로드 env: `esp32dev_go2_nixo_go2_03`, `esp32dev_go2_nixo_go2_05`, `esp32dev_go2_nixo_go2_06`, `esp32dev_go2_nixo_go2_07`
@@ -36,7 +37,10 @@ ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO enviro
 pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
 
 # Nixo relay ESP, paired with go2_03
-pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-YYYY
+pio run -e esp32dev_nixo_1ch_go2_03 -t upload --upload-port /dev/cu.usbserial-YYYY
+
+# Nixo 2ch relay ESP, paired with go2_05
+pio run -e esp32dev_nixo_2ch_go2_05 -t upload --upload-port /dev/cu.usbserial-YYYY
 
 # 필요할 때만: one-ESP integrated fallback
 pio run -e esp32dev_go2_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-ZZZZ
@@ -123,7 +127,7 @@ pio run -e esp32dev_go2
 
 ### Nixo relay ESP 기본값
 
-Nixo/game blaster fire는 별도 `src/nIxo` ESP가 같은 broker를 통해 처리합니다. Defaults:
+Nixo/game blaster fire는 별도 `src/nIxo` ESP가 같은 broker를 통해 처리합니다. 1ch default:
 
 - relay pin: `GPIO23`
 - relay polarity: active-HIGH (`HIGH` = fire/on, `LOW` = off)
@@ -131,9 +135,17 @@ Nixo/game blaster fire는 별도 `src/nIxo` ESP가 같은 broker를 통해 처�
 - live mapping: `go2_03 -> nixo_go2_03`
 - MQTT topic: `battlebang/nixo/nixo_go2_03/command`
 
+BTB-766 2ch profile:
+
+- flywheel relay: `GPIO22`
+- chain relay: `GPIO23`
+- flywheel-to-chain delay: `150ms`
+- relay polarity: active-LOW (`LOW` = fire/on, `HIGH` = off)
+- build env example: `esp32dev_nixo_2ch_go2_05`
+
 ```bash
 cp src/nIxo/local_secrets.example.h src/nIxo/local_secrets.h
-pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-YYYY
+pio run -e esp32dev_nixo_2ch_go2_05 -t upload --upload-port /dev/cu.usbserial-YYYY
 ```
 
 ---
