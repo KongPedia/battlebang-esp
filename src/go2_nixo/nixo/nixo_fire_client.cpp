@@ -8,6 +8,10 @@ void NixoFireClient::begin() {
   snprintf(commandTopic_, sizeof(commandTopic_), "%s/%s/command", NIXO_MQTT_TOPIC_PREFIX_VALUE, NIXO_ID_VALUE);
   snprintf(clientId_, sizeof(clientId_), "battlebang-nixo-%s", NIXO_ID_VALUE);
 
+  if (NIXO_RELAY2_ENABLED_VALUE) {
+    digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+  }
+  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   pinMode(NIXO_RELAY1_PIN_VALUE, OUTPUT);
   if (NIXO_RELAY2_ENABLED_VALUE) {
     pinMode(NIXO_RELAY2_PIN_VALUE, OUTPUT);
@@ -19,7 +23,7 @@ void NixoFireClient::begin() {
   mqttClient_.setBufferSize(NIXO_MQTT_BUFFER_SIZE);
   instance_ = this;
 
-  Serial.printf("[NIXO] integrated id=%s topic=%s broker=%s:%u relay1=%d relay2=%d relay_on=%d relay_off=%d\n",
+  Serial.printf("[NIXO] integrated id=%s topic=%s broker=%s:%u relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu\n",
                 NIXO_ID_VALUE,
                 commandTopic_,
                 MQTT_HOST,
@@ -27,7 +31,8 @@ void NixoFireClient::begin() {
                 NIXO_RELAY1_PIN_VALUE,
                 NIXO_RELAY2_PIN_VALUE,
                 NIXO_RELAY_ON_LEVEL_VALUE,
-                NIXO_RELAY_OFF_LEVEL_VALUE);
+                NIXO_RELAY_OFF_LEVEL_VALUE,
+                (unsigned long)NIXO_RELAY_DELAY1_MS);
 
   if (!configured()) {
     Serial.println("[NIXO] MQTT disabled until ESP Wi-Fi/MQTT config is provided");
@@ -124,10 +129,10 @@ uint32_t NixoFireClient::cooldownDurationMs() const {
 }
 
 void NixoFireClient::relayOff() {
-  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   if (NIXO_RELAY2_ENABLED_VALUE) {
     digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   }
+  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
 }
 
 void NixoFireClient::updateFireSequence(uint32_t now) {
@@ -174,13 +179,17 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
       return;
     case FIRE_RELAY_WAIT2:
       if (now - fireTimerMs_ >= activeFireDurationMs_) {
-        relayOff();
-        fireState_ = FIRE_IDLE;
-        Serial.printf("[RELAY] CH1 OFF pin=%d readback=%d | CH2 OFF pin=%d readback=%d\n",
-                      NIXO_RELAY1_PIN_VALUE,
-                      digitalRead(NIXO_RELAY1_PIN_VALUE),
+        digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+        Serial.printf("[RELAY] CH2 OFF pin=%d level=%d readback=%d\n",
                       NIXO_RELAY2_PIN_VALUE,
+                      NIXO_RELAY_OFF_LEVEL_VALUE,
                       digitalRead(NIXO_RELAY2_PIN_VALUE));
+        digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+        fireState_ = FIRE_IDLE;
+        Serial.printf("[RELAY] CH1 OFF pin=%d level=%d readback=%d\n",
+                      NIXO_RELAY1_PIN_VALUE,
+                      NIXO_RELAY_OFF_LEVEL_VALUE,
+                      digitalRead(NIXO_RELAY1_PIN_VALUE));
         Serial.println("[RELAY] ALL OFF / FIRE done");
         beginCooldown(now);
       }

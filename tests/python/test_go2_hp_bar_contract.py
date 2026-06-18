@@ -212,6 +212,68 @@ def test_go2_nixo_drives_ring_from_local_fire_state() -> None:
     assert "cooldownStartedMs_ = 0;" not in stop_block
 
 
+def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
+    robots = json.loads((ROOT / "src/go2_nixo/robots.json").read_text())["defaults"]
+    relay_1ch = json.loads((ROOT / "src/go2_nixo/variants/relay_1ch/config.json").read_text())
+    relay_2ch = json.loads((ROOT / "src/go2_nixo/variants/relay_2ch/config.json").read_text())
+    platformio = (ROOT / "platformio.ini").read_text()
+    build_config = (ROOT / "src/go2_nixo/build_config.h").read_text()
+    fire_source = (ROOT / "src/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
+    config_script = (ROOT / "scripts/go2_nixo_config.py").read_text()
+
+    assert robots["nixo_relay1_pin"] == 23
+    assert robots["nixo_relay2_pin"] == -1
+    assert robots["nixo_relay_on_level"] == 1
+    assert robots["nixo_relay_off_level"] == 0
+    assert robots["nixo_relay_delay1_ms"] == 800
+
+    assert relay_1ch["nixo_relay1_pin"] == 23
+    assert relay_1ch["nixo_relay2_pin"] == -1
+    assert relay_1ch["nixo_relay_on_level"] == 1
+    assert relay_1ch["nixo_relay_off_level"] == 0
+    assert relay_2ch["nixo_relay1_pin"] == 22
+    assert relay_2ch["nixo_relay2_pin"] == 23
+    assert relay_2ch["nixo_relay_on_level"] == 0
+    assert relay_2ch["nixo_relay_off_level"] == 1
+    assert relay_2ch["nixo_relay_delay1_ms"] == 150
+
+    assert "custom_nixo_variant = relay_1ch" in platformio
+    assert "custom_nixo_variant = relay_2ch" in platformio
+    assert "[env:esp32dev_go2_nixo_1ch_go2_06]" in platformio
+    assert "[env:esp32dev_go2_nixo_2ch_go2_06]" in platformio
+
+    assert "def load_relay_variant" in config_script
+    assert '"GO2_NIXO_RELAY_VARIANT"' in config_script
+    assert '"custom_nixo_variant"' in config_script
+    assert '"nixo_relay_delay1_ms": "BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS"' in config_script
+    assert "#define BATTLEBANG_NIXO_RELAY1_PIN 23" in build_config
+    assert "#define BATTLEBANG_NIXO_RELAY2_PIN -1" in build_config
+    assert "#define BATTLEBANG_NIXO_RELAY_ON_LEVEL HIGH" in build_config
+    assert "#define BATTLEBANG_NIXO_RELAY_OFF_LEVEL LOW" in build_config
+    assert "#define BATTLEBANG_NIXO_RELAY_DELAY1_MS 800" in build_config
+    assert "static constexpr uint32_t NIXO_RELAY_DELAY1_MS =\n    BATTLEBANG_NIXO_RELAY_DELAY1_MS;" in build_config
+
+    begin_block = fire_source.split("void NixoFireClient::begin()", 1)[1].split("mqttClient_.setServer", 1)[0]
+    assert begin_block.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < begin_block.index(
+        "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
+    )
+    relay_off_block = fire_source.split("void NixoFireClient::relayOff()", 1)[1].split(
+        "void NixoFireClient::updateFireSequence",
+        1,
+    )[0]
+    assert relay_off_block.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < relay_off_block.index(
+        "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
+    )
+    update_block = fire_source.split("void NixoFireClient::updateFireSequence", 1)[1]
+    two_channel_done = update_block.split("case FIRE_RELAY_WAIT2:", 1)[1].split("return;", 1)[0]
+    assert two_channel_done.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < two_channel_done.index(
+        "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
+    )
+    assert two_channel_done.index("CH2 OFF pin=%d level=%d readback=%d") < two_channel_done.index(
+        "CH1 OFF pin=%d level=%d readback=%d"
+    )
+
+
 def test_standalone_nixo_stop_preserves_local_cooldown_gate() -> None:
     source = (ROOT / "src/nIxo/main.cpp").read_text()
     build_config = (ROOT / "src/nIxo/build_config.h").read_text()

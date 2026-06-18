@@ -7,7 +7,7 @@ Go2 등에 장착되는 ESP32 피격/LED/Nixo 통합 보드용 fallback 펌웨�
 
 > 현재 2-ESP split active 경로는 `src/go2` hit/LED ESP와 `src/nIxo` Nixo ESP입니다.
 > `src/go2_nixo`는 한 ESP로 hit/HP bar/Nixo를 같이 돌려야 할 때 쓰는 integrated fallback/reference 경로입니다.
-> PlatformIO env는 `esp32dev_go2_nixo_go2_*`를 사용합니다.
+> 1ch PlatformIO env는 `esp32dev_go2_nixo_go2_*` 또는 `esp32dev_go2_nixo_1ch_go2_*`, 2ch env는 `esp32dev_go2_nixo_2ch_go2_*`를 사용합니다.
 
 현재 Go2 ESP의 책임은 네 가지입니다.
 
@@ -35,14 +35,18 @@ nixo/      battlebang/nixo/{nixo_id}/command 구독 + relay-only fire
 
 기본 핀맵 (`robots.json` defaults 기준, UART 제외):
 
+2ch integrated fallback은 `esp32dev_go2_nixo_2ch_go2_*` env를 사용합니다. 기존 `esp32dev_go2_nixo_go2_*` env는 1ch입니다.
+
 | Part | Pin |
 | --- | --- |
 | HP bar LED data | `GPIO18` |
 | Ring LED data | `GPIO4` |
 | Piezo AO ADC | `GPIO34` |
 | Piezo DO debug readback | `GPIO27` |
-| Nixo relay CH1 | `GPIO23` |
-| Nixo relay CH2 | `-1` |
+| Nixo relay CH1 (relay_1ch default) | `GPIO23` |
+| Nixo relay CH2 (relay_1ch default) | `-1` |
+| Nixo relay_2ch CH1 / flywheel | `GPIO22` |
+| Nixo relay_2ch CH2 / chain | `GPIO23` |
 
 - ESP → Command Center
   - `battlebang/hit/{go2_id}/events`
@@ -159,11 +163,14 @@ COM3
 # ESP32 USB 포트 확인
 python3 scripts/go2_flash.py list-ports
 
-# go2_03용 통합 hit/HP bar LED/Nixo 펌웨어 빌드
+# go2_03용 통합 hit/HP bar LED/Nixo 1ch 펌웨어 빌드
 pio run -e esp32dev_go2_nixo_go2_03
 
-# go2_03용 펌웨어 업로드/flash
+# go2_03용 1ch 펌웨어 업로드/flash
 pio run -e esp32dev_go2_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+
+# BTB-766 2ch 펌웨어가 필요한 경우
+pio run -e esp32dev_go2_nixo_2ch_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
 
 # 업로드 후 serial log 확인
 pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
@@ -175,9 +182,12 @@ pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 pio run -e esp32dev_go2_nixo_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
 pio run -e esp32dev_go2_nixo_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
 pio run -e esp32dev_go2_nixo_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
+
+# 2ch는 env 이름에 _2ch_를 넣습니다.
+pio run -e esp32dev_go2_nixo_2ch_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
-주의: `scripts/go2_flash.py`는 현재 active `src/go2` hit/LED 펌웨어용 helper입니다. `go2_nixo` fallback은 위의 `pio run -e esp32dev_go2_nixo_go2_*` 명령을 직접 사용하세요.
+주의: `scripts/go2_flash.py`는 현재 active `src/go2` hit/LED 펌웨어용 helper입니다. `go2_nixo` fallback은 위의 `pio run -e esp32dev_go2_nixo_*` 명령을 직접 사용하세요.
 
 업로드 없이 빌드만 확인하려면:
 
@@ -193,7 +203,7 @@ pio run -e esp32dev_go2_nixo_go2_03
 
 ```text
 [CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
-[NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1
+[NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1 relay_on=1 relay_off=0 delay1_ms=800
 [WIFI] connecting ssid=...
 [MQTT] connecting host=... port=1883 client_id=battlebang-hit-go2_03-go2_nixo-948C
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
@@ -211,7 +221,7 @@ pio run -e esp32dev_go2_nixo_go2_03
   "sequence": 1,
   "hit": true,
   "peak": 2140,
-  "threshold": 1800,
+  "threshold": 1200,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -224,7 +234,7 @@ pio run -e esp32dev_go2_nixo_go2_03
     "client_id": "battlebang-hit-go2_03-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 1800
+    "adc_threshold_raw": 1200
   }
 }
 ```
@@ -265,7 +275,7 @@ Go2별 non-secret profile입니다.
     "ring_led_brightness": 80,
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 1800,
+    "piezo_ao_threshold_raw": 1200,
     "piezo_ao_rearm_raw": 400,
     "piezo_ao_capture_window_ms": 30,
     "piezo_ao_debug_period_ms": 100,
@@ -274,6 +284,7 @@ Go2별 non-secret profile입니다.
     "nixo_relay2_pin": -1,
     "nixo_relay_on_level": 1,
     "nixo_relay_off_level": 0,
+    "nixo_relay_delay1_ms": 800,
     "nixo_fire_default_duration_ms": 1500,
     "nixo_fire_min_duration_ms": 100,
     "nixo_fire_max_duration_ms": 10000,

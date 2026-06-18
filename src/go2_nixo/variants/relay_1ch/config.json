@@ -1,0 +1,8 @@
+{
+  "name": "relay_1ch",
+  "nixo_relay1_pin": 23,
+  "nixo_relay2_pin": -1,
+  "nixo_relay_on_level": 1,
+  "nixo_relay_off_level": 0,
+  "nixo_relay_delay1_ms": 800
+}

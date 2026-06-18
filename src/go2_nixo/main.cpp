@@ -343,12 +343,15 @@ void setup() {
                 MQTT_PORT,
                 hitMqtt.eventTopic(),
                 hitMqtt.ringCommandTopic());
-  Serial.printf("[NIXO] mqtt=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d\n",
+  Serial.printf("[NIXO] mqtt=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu\n",
                 nixoFire.configured() ? "enabled" : "disabled",
                 NIXO_ID_VALUE,
                 nixoFire.commandTopic(),
                 NIXO_RELAY1_PIN_VALUE,
-                NIXO_RELAY2_PIN_VALUE);
+                NIXO_RELAY2_PIN_VALUE,
+                NIXO_RELAY_ON_LEVEL_VALUE,
+                NIXO_RELAY_OFF_LEVEL_VALUE,
+                (unsigned long)NIXO_RELAY_DELAY1_MS);
 }
 
 void loop() {

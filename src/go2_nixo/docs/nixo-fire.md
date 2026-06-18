@@ -6,7 +6,24 @@
 - ring display commands: `battlebang/hit/{robot_id}/ring_display/command`
 - Nixo/game blaster fire commands: `battlebang/nixo/{nixo_id}/command`
 
-The active 2-ESP split uses `src/go2` for hit/LED and `src/nIxo` for Nixo relay fire. Use `esp32dev_nixo_go2_*` for the standalone Nixo ESP, and use `esp32dev_go2_nixo_go2_*` only when intentionally flashing this integrated fallback.
+The active 2-ESP split uses `src/go2` for hit/LED and `src/nIxo` for Nixo relay fire. Use `esp32dev_nixo_*` for the standalone Nixo ESP, and use `esp32dev_go2_nixo_*` only when intentionally flashing this integrated fallback.
+
+## Relay variants
+
+Integrated fallback builds support both relay variants because some Nixo hardware is still one-channel and one unit is BTB-766 two-channel.
+
+- `relay_1ch` / existing `esp32dev_go2_nixo_go2_*` envs:
+  - relay 1: `GPIO23`
+  - relay 2: disabled (`-1`)
+  - relay polarity: active-HIGH (`HIGH` fires, `LOW` stops)
+- `relay_2ch` / `esp32dev_go2_nixo_2ch_go2_*` envs:
+  - relay 1 / flywheel: `GPIO22`
+  - relay 2 / chain: `GPIO23`
+  - flywheel-to-chain delay: `150ms`
+  - relay polarity: active-LOW (`LOW` fires, `HIGH` stops)
+  - normal shutdown order: chain off first, flywheel off last
+
+Variant config lives in `src/go2_nixo/variants/<variant>/config.json` and is selected by PlatformIO `custom_nixo_variant` or the `GO2_NIXO_RELAY_VARIANT` / `NIXO_RELAY_VARIANT` shell override.
 
 ## Live mapping
 
@@ -22,16 +39,15 @@ Command topic:
 battlebang/nixo/nixo_go2_03/command
 ```
 
-## Hardware defaults
+## Build examples
 
-The current Go2-mounted Nixo relay invariants are:
+```bash
+# Legacy/default one-channel integrated fallback
+pio run -e esp32dev_go2_nixo_1ch_go2_06
 
-- relay 1: `GPIO23`
-- relay 2: disabled (`-1`)
-- relay polarity: active-HIGH (`HIGH` fires, `LOW` stops)
-
-These defaults live in `src/go2_nixo/build_config.h` and can be overridden from
-`src/go2_nixo/robots.json`, `src/go2_nixo/local_secrets.h`, or build environment macros.
+# BTB-766 two-channel integrated fallback
+pio run -e esp32dev_go2_nixo_2ch_go2_06
+```
 
 ## MQTT command
 
@@ -51,25 +67,29 @@ Command Center publishes:
 
 `enabled=false` stops an active fire sequence.
 
-The firmware requires `request_id`, deduplicates repeated `request_id` values,
-and clamps `duration_ms` to the configured min/max duration.
+The firmware requires `request_id`, deduplicates repeated `request_id` values, and clamps `duration_ms` to the configured min/max duration.
 
 ## Expected serial evidence
 
-On boot:
+1ch boot/fire:
 
 ```text
-[NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1
+[NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1 relay_on=1 relay_off=0 delay1_ms=800
 [NIXO MQTT] subscribed battlebang/nixo/nixo_go2_03/command qos=1
-```
-
-On fire:
-
-```text
-[NIXO MQTT] fire on request_id=... duration_ms=1000
-[FIRE] start source=mqtt duration_ms=1000
 [RELAY] CH1 ON pin=23 level=1 readback=1
 [RELAY] CH1 OFF pin=23 level=0 readback=0
+[RELAY] ALL OFF / FIRE done
+```
+
+2ch boot/fire:
+
+```text
+[NIXO] mqtt=enabled nixo_id=nixo_go2_06 command_topic=battlebang/nixo/nixo_go2_06/command relay1=22 relay2=23 relay_on=0 relay_off=1 delay1_ms=150
+[NIXO MQTT] subscribed battlebang/nixo/nixo_go2_06/command qos=1
+[RELAY] CH1 ON pin=22 level=0 readback=0
+[RELAY] CH2 ON pin=23 level=0 readback=0
+[RELAY] CH2 OFF pin=23 level=1 readback=1
+[RELAY] CH1 OFF pin=22 level=1 readback=1
 [RELAY] ALL OFF / FIRE done
 ```
 

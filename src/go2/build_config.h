@@ -40,7 +40,8 @@
 #define BATTLEBANG_NIXO_ID NIXO_ID
 #endif
 
-#if defined(NIXO_MQTT_TOPIC_PREFIX) && !defined(BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX)
+#if defined(NIXO_MQTT_TOPIC_PREFIX) &&                                         \
+    !defined(BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX)
 #define BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX NIXO_MQTT_TOPIC_PREFIX
 #endif
 
@@ -84,7 +85,8 @@
 
 #ifdef BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX
 #undef BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX
-#define BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX
+#define BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX                                      \
+  BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX
 #endif
 
 #ifdef BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS
@@ -302,7 +304,7 @@
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
 // Measured fire vibration reached ~1656 raw in bench tests, so default above
 // that range. Tune per harness/target with robots.json or env.
-#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 1800
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 1200
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_REARM_RAW
@@ -371,14 +373,12 @@ static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0,
               "offline hit queue capacity must be positive");
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255,
               "offline hit queue capacity must fit uint8_t counters");
-static_assert(HP_BAR_GROUP_COUNT > 0,
-              "HP bar group count must be positive");
+static_assert(HP_BAR_GROUP_COUNT > 0, "HP bar group count must be positive");
 static_assert(HP_BAR_LEDS_PER_GROUP == 3,
               "Go2 HP bar renderer expects 3 linked LEDs per group");
 static_assert(NUM_LEDS == HP_BAR_EXPECTED_LED_COUNT,
               "HP bar LED count must match grouped bar layout");
-static_assert(RING_NUM_LEDS > 0,
-              "cooldown ring LED count must be positive");
+static_assert(RING_NUM_LEDS > 0, "cooldown ring LED count must be positive");
 static_assert(HP_BAR_LED_PIN != RING_LED_PIN,
               "HP bar and cooldown ring pins must be different");
 static_assert(BATTLEBANG_NIXO_FIRE_COOLDOWN_MS > 0,
@@ -403,12 +403,16 @@ static constexpr const char *MQTT_HOST = BATTLEBANG_MQTT_HOST;
 static constexpr uint16_t MQTT_PORT = BATTLEBANG_MQTT_PORT;
 static constexpr const char *MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr const char *NIXO_ID_VALUE = BATTLEBANG_NIXO_ID;
-static constexpr const char *NIXO_MQTT_TOPIC_PREFIX_VALUE = BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX;
+static constexpr const char *NIXO_MQTT_TOPIC_PREFIX_VALUE =
+    BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t NIXO_FIRE_DEFAULT_DURATION_MS =
     BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS;
-static constexpr uint32_t NIXO_FIRE_MIN_DURATION_MS = BATTLEBANG_NIXO_FIRE_MIN_DURATION_MS;
-static constexpr uint32_t NIXO_FIRE_MAX_DURATION_MS = BATTLEBANG_NIXO_FIRE_MAX_DURATION_MS;
-static constexpr uint32_t NIXO_FIRE_COOLDOWN_MS = BATTLEBANG_NIXO_FIRE_COOLDOWN_MS;
+static constexpr uint32_t NIXO_FIRE_MIN_DURATION_MS =
+    BATTLEBANG_NIXO_FIRE_MIN_DURATION_MS;
+static constexpr uint32_t NIXO_FIRE_MAX_DURATION_MS =
+    BATTLEBANG_NIXO_FIRE_MAX_DURATION_MS;
+static constexpr uint32_t NIXO_FIRE_COOLDOWN_MS =
+    BATTLEBANG_NIXO_FIRE_COOLDOWN_MS;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
