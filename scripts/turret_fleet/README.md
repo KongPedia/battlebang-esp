@@ -16,7 +16,7 @@ Helpers:
 - `e2e_mqtt_test.py`: runs the live MQTT E2E sequence for `target`, `fire`, `idle`, `dead`, `hold`, and the three readable pattern presets. It skips relay/ESC fire unless `--allow-live-fire` is present and sends a final `hold`.
 - `make_release_manifest.py`: generates `manifest.json` for GitHub Releases.
 - `publish_mqtt_manifest.py`: publishes a manifest to an OTA MQTT topic without external MQTT tools.
-- `repeat_lane_sweep_live.py`: repeatedly publishes live `lane_sweep` commands. Add `--boss-id <boss_target_id>` to act like a simple Command Center opening: publish boss `reset`, wait for READY, publish boss `start`, wait the 5-second neon-rainbow orbit intro, then begin turret lane sweeps. Use `--max-active 2` when two turrets may run at once; the director refills an open slot as soon as one turret finishes instead of waiting for both active turrets.
+- `repeat_lane_sweep_live.py`: repeatedly publishes live `lane_sweep` commands. Add `--boss-id <boss_target_id>` to act like a simple Command Center opening: publish boss `reset`, wait for READY, publish boss `start`, wait the 5-second neon-rainbow orbit intro, then begin turret lane sweeps.
 
 Live E2E example:
 
@@ -36,13 +36,4 @@ Boss-stage lane sweep example:
 ./.venv-pio/bin/python scripts/turret_fleet/repeat_lane_sweep_live.py \
   --host "$MQTT_BROKER_HOST" \
   --boss-id boss_target_6809477249D0
-```
-
-Run up to two turrets at once during the boss stage:
-
-```bash
-./.venv-pio/bin/python scripts/turret_fleet/repeat_lane_sweep_live.py \
-  --host "$MQTT_BROKER_HOST" \
-  --boss-id boss_target_6809477249D0 \
-  --max-active 2
 ```

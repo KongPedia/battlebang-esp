@@ -972,34 +972,6 @@ def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
     assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
 
 
-def test_repeat_lane_sweep_supports_two_active_rolling_slots() -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
-            "--dry-run",
-            "--root",
-            "battlebang",
-            "--random-seed",
-            "7",
-            "--max-active",
-            "2",
-            "--count",
-            "1",
-        ],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-
-    output = result.stdout
-    assert "max_active=2" in output
-    assert "rolling round=1 max_active=2 order=turret_4,turret_1,turret_3" in output
-    assert "rolling refill: start up to 2; when one finishes, publish the next turret immediately" in output
-    assert "parallel turret=" not in output
-
-
 def test_turret_fleet_mqtt_subscribe_tolerates_live_status_before_suback() -> None:
     import importlib.util
 

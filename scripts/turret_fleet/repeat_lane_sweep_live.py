@@ -3,8 +3,8 @@
 
 Normal cycle:
 1. Build one random shuffled bag of the alive turrets.
-2. Publish lane_sweep loop=1 up to the configured active slot count.
-3. Refill an open slot as soon as one turret completes.
+2. Publish lane_sweep loop=1 to the next turret in that bag.
+3. Wait until that turret completes before commanding the next turret.
 4. Repeat forever with a newly shuffled bag each cycle.
 
 Death handling:
@@ -278,119 +278,6 @@ def publish_one(
     )
 
 
-def publish_turret_command(
-    client: MqttSession,
-    monitor: StatusMonitor,
-    args: argparse.Namespace,
-    *,
-    root: str,
-    turret_id: str,
-    cycle: int,
-    loop: int,
-    label: str,
-) -> str | None:
-    if monitor.is_dead(turret_id):
-        print(f"skip dead turret={turret_id} reason={monitor.dead_reason(turret_id)}", flush=True)
-        return None
-    command_topic = topic_for(root, turret_id, "command")
-    payload = build_payload(args, turret_id, cycle, loop=loop)
-    command_id = str(payload["command_id"])
-    print(f"publish {label} turret={turret_id} loop={loop} topic={command_topic} command_id={command_id}", flush=True)
-    client.publish_json(command_topic, payload)
-    return command_id
-
-
-def publish_rolling(
-    client: MqttSession,
-    monitor: StatusMonitor,
-    args: argparse.Namespace,
-    *,
-    root: str,
-    turrets: list[str],
-    cycle: int,
-    loop: int,
-    max_active: int,
-) -> None:
-    queue = list(turrets)
-    active: dict[str, dict[str, Any]] = {}
-
-    def launch_until_full() -> None:
-        while queue and len(active) < max_active:
-            turret_id = queue.pop(0)
-            command_id = publish_turret_command(
-                client,
-                monitor,
-                args,
-                root=root,
-                turret_id=turret_id,
-                cycle=cycle,
-                loop=loop,
-                label="rolling",
-            )
-            if command_id is None:
-                continue
-            active[turret_id] = {
-                "command_id": command_id,
-                "sent_at": time.time(),
-                "started": False,
-                "last_doc": {},
-                "last_printed": None,
-            }
-
-    launch_until_full()
-    while active or queue:
-        if not active:
-            launch_until_full()
-            if not active:
-                break
-
-        item = monitor.pump_once(client, timeout_s=1.0)
-        now = time.time()
-        completed: list[tuple[str, str]] = []
-
-        for turret_id, state in list(active.items()):
-            if monitor.is_dead(turret_id):
-                print(f"dead turret={turret_id} reason={monitor.dead_reason(turret_id)}; free rolling slot", flush=True)
-                completed.append((turret_id, "dead"))
-                continue
-            if not state["started"] and now - state["sent_at"] > args.start_timeout_s:
-                raise MqttCommandError(
-                    f"{turret_id} did not start rolling command {state['command_id']} within {args.start_timeout_s}s; "
-                    f"latest={summarize_status(state['last_doc'])}"
-                )
-            if now - state["sent_at"] > args.command_timeout_s:
-                raise MqttCommandError(
-                    f"{turret_id} rolling command {state['command_id']} did not complete within {args.command_timeout_s}s; "
-                    f"latest={summarize_status(state['last_doc'])}"
-                )
-
-        if item is not None:
-            _topic, doc = item
-            turret_id = str(doc.get("turret_id") or "")
-            state = active.get(turret_id)
-            if state is not None:
-                command_id = str(state["command_id"])
-                state["last_doc"] = doc
-                if not state["started"] and is_started_status(doc, command_id):
-                    state["started"] = True
-                    print(f"started rolling turret={turret_id} command_id={command_id} {summarize_status(doc)}", flush=True)
-                if state["started"]:
-                    key = (doc.get("mode"), doc.get("command_state"), doc.get("pattern_state"), doc.get("fire_state"), doc.get("activation_active"))
-                    if key != state["last_printed"]:
-                        print(f"status rolling turret={turret_id} {summarize_status(doc)}", flush=True)
-                        state["last_printed"] = key
-                    if is_done_status(doc, command_id):
-                        print(f"done rolling turret={turret_id} command_id={command_id} {summarize_status(doc)}", flush=True)
-                        completed.append((turret_id, "done"))
-
-        if completed:
-            for turret_id, result in completed:
-                active.pop(turret_id, None)
-                if result == "done":
-                    sleep_with_pump(client, monitor, args.single_delay_s)
-            launch_until_full()
-
-
 def publish_parallel(
     client: MqttSession,
     monitor: StatusMonitor,
@@ -487,7 +374,7 @@ def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Random live-fire lane_sweep director for turret_1, turret_3, and turret_4.")
+    parser = argparse.ArgumentParser(description="Random one-at-a-time live-fire lane_sweep director for turret_1, turret_3, and turret_4.")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="default: src/turret_fleet/.env.turret_fleet")
     parser.add_argument("--host", help="MQTT broker host; default from env file")
     parser.add_argument("--port", type=int, help="MQTT broker port; default 1883")
@@ -497,8 +384,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-s", type=float, default=5.0)
     parser.add_argument("--turret", action="append", dest="turrets", help="repeatable; default turret_1, turret_3, then turret_4")
     parser.add_argument("--frame-id", default="boss_stage_v1")
-    parser.add_argument("--single-loop", type=int, default=1, help="loop count for sequential/rolling and solo-dead mode")
-    parser.add_argument("--max-active", type=int, default=1, help="max simultaneous lane_sweep commands during sequential rounds; 1 keeps legacy one-at-a-time, 2 keeps two turrets active by refilling open slots")
+    parser.add_argument("--single-loop", type=int, default=1, help="loop count for one-at-a-time and solo-dead mode")
     parser.add_argument("--parallel-loop", type=int, default=0, help="loop count for optional parallel phase; 0 disables parallel and keeps one-at-a-time flow")
     parser.add_argument("--sequential-rounds", type=int, default=1, help="number of one-at-a-time shuffled bags before optional parallel")
     parser.add_argument("--random-order", action=argparse.BooleanOptionalAction, default=True, help="shuffle turret order each sequential round; use --no-random-order for listed order")
@@ -545,24 +431,17 @@ def dry_run(args: argparse.Namespace, root: str, turrets: list[str]) -> None:
     rng = random.Random(args.random_seed)
     for round_index in range(args.sequential_rounds):
         order = sequential_round_order(turrets, random_order=args.random_order, rng=rng)
-        if args.max_active > 1:
-            print(f"  rolling round={round_index + 1} max_active={args.max_active} order={','.join(order)}")
-        else:
-            print(f"  sequential round={round_index + 1} order={','.join(order)}")
+        print(f"  sequential round={round_index + 1} order={','.join(order)}")
         for turret_id in order:
             payload = build_payload(args, turret_id, cycle, loop=args.single_loop)
             print(f"    turret={turret_id} topic={topic_for(root, turret_id, 'command')} payload={json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}")
-        if args.max_active > 1:
-            print(f"    rolling refill: start up to {args.max_active}; when one finishes, publish the next turret immediately")
     if args.parallel_loop > 0:
         for turret_id in turrets:
             payload = build_payload(args, turret_id, cycle, loop=args.parallel_loop)
             print(f"  parallel turret={turret_id} topic={topic_for(root, turret_id, 'command')} payload={json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}")
-    elif args.max_active > 1:
-        print("  parallel disabled; next live cycle starts another shuffled rolling bag immediately")
     else:
         print("  parallel disabled; next live cycle starts another shuffled one-at-a-time bag immediately")
-    print("dry-run dead mode: if only one turret remains alive, that turret gets immediate single-loop lane_sweep repeats")
+    print("dry-run dead mode: if one turret is dead, only alive turret gets immediate single-loop lane_sweep repeats")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -581,12 +460,10 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"lane_sweep director host={host or '<dry-run>'}:{port} root={root} turrets={','.join(turrets)} "
         f"order={'random' if args.random_order else 'listed'} sequential_rounds={args.sequential_rounds} "
-        f"single_loop={args.single_loop} max_active={args.max_active} parallel_loop={args.parallel_loop or 'disabled'} "
+        f"single_loop={args.single_loop} parallel_loop={args.parallel_loop or 'disabled'} "
         f"boss={boss_id or 'disabled'} count={args.count or 'forever'}",
         flush=True,
     )
-    if args.max_active < 1:
-        raise MqttCommandError("--max-active must be >= 1")
     args.boss_id = boss_id
     if args.dry_run:
         dry_run(args, root, turrets)
@@ -626,31 +503,13 @@ def main(argv: list[str] | None = None) -> int:
                         print("no alive turrets left during sequential round", flush=True)
                         break
                     round_order = sequential_round_order(alive_round, random_order=args.random_order, rng=rng)
-                    if args.max_active <= 1:
-                        print(f"sequential round {round_index + 1}/{args.sequential_rounds} order={','.join(round_order)}", flush=True)
-                        for turret_id in round_order:
-                            if monitor.is_dead(turret_id):
-                                print(f"skip dead turret={turret_id} reason={monitor.dead_reason(turret_id)}", flush=True)
-                                continue
-                            publish_one(client, monitor, args, root=root, turret_id=turret_id, cycle=director_cycle, loop=args.single_loop)
-                            sleep_with_pump(client, monitor, args.single_delay_s)
-                    else:
-                        max_active = min(args.max_active, len(round_order))
-                        print(
-                            f"rolling round {round_index + 1}/{args.sequential_rounds} "
-                            f"max_active={max_active} order={','.join(round_order)}",
-                            flush=True,
-                        )
-                        publish_rolling(
-                            client,
-                            monitor,
-                            args,
-                            root=root,
-                            turrets=round_order,
-                            cycle=director_cycle,
-                            loop=args.single_loop,
-                            max_active=max_active,
-                        )
+                    print(f"sequential round {round_index + 1}/{args.sequential_rounds} order={','.join(round_order)}", flush=True)
+                    for turret_id in round_order:
+                        if monitor.is_dead(turret_id):
+                            print(f"skip dead turret={turret_id} reason={monitor.dead_reason(turret_id)}", flush=True)
+                            continue
+                        publish_one(client, monitor, args, root=root, turret_id=turret_id, cycle=director_cycle, loop=args.single_loop)
+                        sleep_with_pump(client, monitor, args.single_delay_s)
 
                 alive = monitor.alive_in_order(turrets)
                 if args.parallel_loop <= 0:
