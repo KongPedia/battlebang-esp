@@ -42,6 +42,10 @@ TERMINAL_PATTERN_STATES = {"IDLE", "DONE", ""}
 DEFAULT_TURRETS = ["turret_1", "turret_3", "turret_4"]
 
 
+class BossDefeated(RuntimeError):
+    pass
+
+
 def clean_root(root: str) -> str:
     return root.strip("/") or "battlebang"
 
@@ -57,12 +61,14 @@ class StatusMonitor:
     def __init__(self, *, root: str, turrets: list[str], boss_id: str = "") -> None:
         self.root = clean_root(root)
         self.turrets = set(turrets)
+        self.turret_order = list(turrets)
         self.boss_id = boss_id.strip()
         self.turret_topics = {topic_for(self.root, turret_id, "status"): turret_id for turret_id in turrets}
         self.boss_status_topic = boss_topic_for(self.root, self.boss_id, "status") if self.boss_id else ""
         self.latest_turret: dict[str, dict[str, Any]] = {}
         self.latest_hit_target: dict[str, dict[str, Any]] = {}
         self.latest_boss: dict[str, Any] = {}
+        self.boss_dead_commands_sent = False
 
     def subscribe_all(self, client: MqttSession) -> None:
         for topic in self.turret_topics:
@@ -135,6 +141,33 @@ class StatusMonitor:
     def boss_ready(self) -> bool:
         return str(self.latest_boss.get("mode") or "") == "READY"
 
+    def boss_destroyed(self) -> bool:
+        if not self.latest_boss:
+            return False
+        if bool(self.latest_boss.get("destroyed")):
+            return True
+        mode = str(self.latest_boss.get("mode") or "").upper()
+        if mode in {"DEFEATED", "DEAD"}:
+            return True
+        life_state = str(self.latest_boss.get("life_state") or "").lower()
+        if life_state == "dead":
+            return True
+        hp = self.latest_boss.get("hp_remaining")
+        try:
+            return hp is not None and int(hp) <= 0
+        except (TypeError, ValueError):
+            return False
+
+    def boss_dead_reason(self) -> str:
+        if not self.latest_boss:
+            return "boss status unavailable"
+        return (
+            f"boss status mode={self.latest_boss.get('mode')} "
+            f"life_state={self.latest_boss.get('life_state')} "
+            f"destroyed={self.latest_boss.get('destroyed')} "
+            f"hp={self.latest_boss.get('hp_remaining')}/{self.latest_boss.get('hp_max')}"
+        )
+
 
 def build_payload(args: argparse.Namespace, turret_id: str, cycle: int, *, loop: int) -> dict[str, Any]:
     now_ms = int(time.time() * 1000)
@@ -206,10 +239,31 @@ def summarize_status(doc: dict[str, Any]) -> str:
     return " ".join(fields)
 
 
+def publish_turret_dead_commands_if_boss_destroyed(client: MqttSession, monitor: StatusMonitor, *, root: str) -> bool:
+    if not monitor.boss_destroyed():
+        return False
+    if monitor.boss_dead_commands_sent:
+        return True
+    reason = monitor.boss_dead_reason()
+    now_ms = int(time.time() * 1000)
+    print(f"boss defeated; publishing dead to turrets reason={reason}", flush=True)
+    for turret_id in monitor.turret_order:
+        topic = topic_for(root, turret_id, "command")
+        payload = {
+            "command": "dead",
+            "command_id": f"boss-dead-{turret_id}-{now_ms}",
+        }
+        print(f"publish dead turret={turret_id} topic={topic} command_id={payload['command_id']}", flush=True)
+        client.publish_json(topic, payload)
+    monitor.boss_dead_commands_sent = True
+    return True
+
+
 def wait_for_command(
     client: MqttSession,
     monitor: StatusMonitor,
     *,
+    root: str,
     turret_id: str,
     command_id: str,
     start_timeout_s: float,
@@ -223,6 +277,8 @@ def wait_for_command(
 
     while time.time() < deadline:
         item = monitor.pump_once(client, timeout_s=1.0)
+        if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+            raise BossDefeated(monitor.boss_dead_reason())
         if monitor.is_dead(turret_id):
             print(f"dead turret={turret_id} reason={monitor.dead_reason(turret_id)}; stop waiting for command_id={command_id}", flush=True)
             return "dead"
@@ -260,6 +316,8 @@ def publish_one(
     cycle: int,
     loop: int,
 ) -> str:
+    if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+        raise BossDefeated(monitor.boss_dead_reason())
     if monitor.is_dead(turret_id):
         print(f"skip dead turret={turret_id} reason={monitor.dead_reason(turret_id)}", flush=True)
         return "dead"
@@ -271,6 +329,7 @@ def publish_one(
     return wait_for_command(
         client,
         monitor,
+        root=root,
         turret_id=turret_id,
         command_id=command_id,
         start_timeout_s=args.start_timeout_s,
@@ -296,6 +355,8 @@ def publish_parallel(
     last_printed: dict[str, tuple[Any, ...]] = {}
 
     for turret_id in turrets:
+        if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+            raise BossDefeated(monitor.boss_dead_reason())
         if monitor.is_dead(turret_id):
             print(f"skip dead turret={turret_id} reason={monitor.dead_reason(turret_id)}", flush=True)
             done.add(turret_id)
@@ -310,6 +371,8 @@ def publish_parallel(
     pending = set(command_ids)
     while pending and time.time() < deadline:
         item = monitor.pump_once(client, timeout_s=1.0)
+        if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+            raise BossDefeated(monitor.boss_dead_reason())
         for turret_id in list(pending):
             if monitor.is_dead(turret_id):
                 print(f"dead turret={turret_id} reason={monitor.dead_reason(turret_id)}; stop waiting for parallel command", flush=True)
@@ -407,10 +470,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def sleep_with_pump(client: MqttSession, monitor: StatusMonitor, seconds: float) -> None:
+def sleep_with_pump(
+    client: MqttSession,
+    monitor: StatusMonitor,
+    seconds: float,
+    *,
+    root: str | None = None,
+    stop_on_boss_dead: bool = False,
+) -> None:
     deadline = time.time() + max(0.0, seconds)
     while time.time() < deadline:
         monitor.pump_once(client, timeout_s=min(0.5, max(0.0, deadline - time.time())))
+        if stop_on_boss_dead and root is not None and publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+            raise BossDefeated(monitor.boss_dead_reason())
 
 
 def sequential_round_order(turrets: list[str], *, random_order: bool, rng: random.Random) -> list[str]:
@@ -426,6 +498,9 @@ def dry_run(args: argparse.Namespace, root: str, turrets: list[str]) -> None:
         if args.boss_reset_first:
             print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"reset\"}} wait_ready<={args.boss_ready_timeout_s:g}s")
         print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"start\"}} wait_intro={args.boss_intro_wait_s:g}s")
+        print("dry-run boss defeat handling:")
+        for turret_id in turrets:
+            print(f"  if boss hp<=0 topic={topic_for(root, turret_id, 'command')} payload={{\"command\":\"dead\",\"command_id\":\"boss-dead-{turret_id}-<ms>\"}}")
     print("dry-run normal cycle:")
     cycle = 1
     rng = random.Random(args.random_seed)
@@ -480,6 +555,8 @@ def main(argv: list[str] | None = None) -> int:
             director_cycle = 0
             rng = random.Random(args.random_seed)
             while True:
+                if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+                    raise BossDefeated(monitor.boss_dead_reason())
                 if args.count and director_cycle >= args.count:
                     break
                 director_cycle += 1
@@ -489,12 +566,12 @@ def main(argv: list[str] | None = None) -> int:
 
                 if len(alive) == 0:
                     print(f"all turrets dead; no command; sleep {args.dead_poll_s}s", flush=True)
-                    sleep_with_pump(client, monitor, args.dead_poll_s)
+                    sleep_with_pump(client, monitor, args.dead_poll_s, root=root, stop_on_boss_dead=True)
                     continue
 
                 if len(alive) == 1:
                     publish_one(client, monitor, args, root=root, turret_id=alive[0], cycle=director_cycle, loop=args.single_loop)
-                    sleep_with_pump(client, monitor, args.single_delay_s)
+                    sleep_with_pump(client, monitor, args.single_delay_s, root=root, stop_on_boss_dead=True)
                     continue
 
                 for round_index in range(args.sequential_rounds):
@@ -509,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
                             print(f"skip dead turret={turret_id} reason={monitor.dead_reason(turret_id)}", flush=True)
                             continue
                         publish_one(client, monitor, args, root=root, turret_id=turret_id, cycle=director_cycle, loop=args.single_loop)
-                        sleep_with_pump(client, monitor, args.single_delay_s)
+                        sleep_with_pump(client, monitor, args.single_delay_s, root=root, stop_on_boss_dead=True)
 
                 alive = monitor.alive_in_order(turrets)
                 if args.parallel_loop <= 0:
@@ -521,6 +598,9 @@ def main(argv: list[str] | None = None) -> int:
 
                 print(f"parallel lane_sweep loop={args.parallel_loop} turrets={','.join(alive)}", flush=True)
                 publish_parallel(client, monitor, args, root=root, turrets=alive, cycle=director_cycle, loop=args.parallel_loop)
+    except BossDefeated as exc:
+        print(f"boss defeated; director stopped after turret dead commands: {exc}", flush=True)
+        return 0
     except E2EError as exc:
         raise MqttCommandError(str(exc)) from exc
     return 0

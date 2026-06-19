@@ -16,7 +16,7 @@ Helpers:
 - `e2e_mqtt_test.py`: runs the live MQTT E2E sequence for `target`, `fire`, `idle`, `dead`, `hold`, and the three readable pattern presets. It skips relay/ESC fire unless `--allow-live-fire` is present and sends a final `hold`.
 - `make_release_manifest.py`: generates `manifest.json` for GitHub Releases.
 - `publish_mqtt_manifest.py`: publishes a manifest to an OTA MQTT topic without external MQTT tools.
-- `repeat_lane_sweep_live.py`: repeatedly publishes live `lane_sweep` commands. Add `--boss-id <boss_target_id>` to act like a simple Command Center opening: publish boss `reset`, wait for READY, publish boss `start`, wait the 5-second neon-rainbow orbit intro, then begin turret lane sweeps.
+- `repeat_lane_sweep_live.py`: repeatedly publishes live `lane_sweep` commands. Add `--boss-id <boss_target_id>` to act like a simple Command Center opening: publish boss `reset`, wait for READY, publish boss `start`, wait the 5-second neon-rainbow orbit intro, then begin turret lane sweeps. While running with `--boss-id`, it also watches boss status and publishes `dead` to each turret once boss HP reaches 0.
 
 Live E2E example:
 

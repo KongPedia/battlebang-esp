@@ -969,7 +969,54 @@ def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
     assert "dry-run boss opening:" in output
     assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"reset"} wait_ready<=10s' in output
     assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"start"} wait_intro=5s' in output
+    assert "dry-run boss defeat handling:" in output
+    assert 'if boss hp<=0 topic=battlebang/turrets/turret_1/command payload={"command":"dead","command_id":"boss-dead-turret_1-<ms>"}' in output
     assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
+
+
+def test_repeat_lane_sweep_publishes_turret_dead_when_boss_hp_zero() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"
+    spec = importlib.util.spec_from_file_location("repeat_lane_sweep_dead_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.published: list[tuple[str, dict[str, object]]] = []
+
+        def publish_json(self, topic: str, payload: dict[str, object]) -> None:
+            self.published.append((topic, payload))
+
+    client = FakeClient()
+    monitor = module.StatusMonitor(
+        root="battlebang",
+        turrets=["turret_1", "turret_3", "turret_4"],
+        boss_id="boss_target_6809477249D0",
+    )
+    monitor.latest_boss = {
+        "mode": "DEFEATED",
+        "life_state": "dead",
+        "destroyed": True,
+        "hp_remaining": 0,
+        "hp_max": 10,
+    }
+
+    assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
+    assert [topic for topic, _payload in client.published] == [
+        "battlebang/turrets/turret_1/command",
+        "battlebang/turrets/turret_3/command",
+        "battlebang/turrets/turret_4/command",
+    ]
+    for turret_id, (_topic, payload) in zip(["turret_1", "turret_3", "turret_4"], client.published):
+        assert payload["command"] == "dead"
+        assert str(payload["command_id"]).startswith(f"boss-dead-{turret_id}-")
+
+    assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
+    assert len(client.published) == 3
 
 
 def test_turret_fleet_mqtt_subscribe_tolerates_live_status_before_suback() -> None:
