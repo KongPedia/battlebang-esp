@@ -19,12 +19,12 @@
   },
   "target": {
     "count": 4,
-    "ring_num_leds": 40,
+    "ring_num_leds": 120,
     "active_color": "#0000FF",
     "hit_flash_color": "#FFFFFF"
   },
   "hp_bar": {
-    "num_leds": 92,
+    "num_leds": 300,
     "brightness": 80,
     "max_ma": 6000,
     "palette": ["#00FF00", "#FFFF00", "#FF0000"],
@@ -34,7 +34,7 @@
     "max_targets": 4,
     "ring_pins": [23, 21, 18, 17],
     "piezo_do_pins": [27, 32, 33, 25],
-    "hp_bar_pin": 26,
+    "hp_bar_pin": 12,
     "led_type": "WS2811",
     "color_order": "RGB"
   },

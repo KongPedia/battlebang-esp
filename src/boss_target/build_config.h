@@ -16,10 +16,15 @@ static constexpr uint32_t SERIAL_BAUD = 115200;
 static constexpr uint8_t kMaxTargets = 4;
 static constexpr uint8_t DEFAULT_TARGET_COUNT = 4;
 
-static constexpr uint16_t RING_NUM_LEDS = 40;
-static constexpr uint16_t HP_BAR_NUM_LEDS = 92;
+static constexpr uint16_t RING_NUM_LEDS = 120;
+// The HP bar is wired as three horizontal rows.  Game/rendering logic treats
+// each vertical column as one HP group so all three row LEDs drain together.
+static constexpr uint16_t HP_BAR_GROUP_COUNT = 100;
+static constexpr uint8_t HP_BAR_LEDS_PER_GROUP = 3;
+static constexpr uint16_t HP_BAR_NUM_LEDS = HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP;
 static constexpr uint16_t MAX_RING_NUM_LEDS = 120;
-static constexpr uint16_t MAX_HP_BAR_NUM_LEDS = 240;
+static constexpr uint16_t MAX_HP_BAR_NUM_LEDS = 360;
+static constexpr uint16_t MAX_HP_BAR_GROUP_COUNT = MAX_HP_BAR_NUM_LEDS / HP_BAR_LEDS_PER_GROUP;
 
 static constexpr int RING1_PIN = 23;
 static constexpr int RING2_PIN = 21;
@@ -33,7 +38,7 @@ static constexpr int PIEZO3_DO_PIN = 33;
 static constexpr int PIEZO4_DO_PIN = 25;
 static constexpr int PIEZO_DO_PINS[kMaxTargets] = {PIEZO1_DO_PIN, PIEZO2_DO_PIN, PIEZO3_DO_PIN, PIEZO4_DO_PIN};
 
-static constexpr int HP_BAR_PIN = 26;
+static constexpr int HP_BAR_PIN = 12;
 
 static constexpr uint8_t LED_BRIGHTNESS = 80;
 static constexpr uint8_t LED_MAX_VOLTS = 5;
@@ -62,6 +67,10 @@ static_assert(kMaxTargets == 4, "Current boss-target profile is the 4-channel bo
 static_assert(DEFAULT_TARGET_COUNT > 0 && DEFAULT_TARGET_COUNT <= kMaxTargets, "invalid default target count");
 static_assert(RING_NUM_LEDS > 0 && RING_NUM_LEDS <= MAX_RING_NUM_LEDS, "invalid ring LED count");
 static_assert(HP_BAR_NUM_LEDS > 0 && HP_BAR_NUM_LEDS <= MAX_HP_BAR_NUM_LEDS, "invalid HP bar LED count");
+static_assert(HP_BAR_NUM_LEDS == HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP,
+              "HP bar LED count must match grouped bar layout");
+static_assert(MAX_HP_BAR_NUM_LEDS % HP_BAR_LEDS_PER_GROUP == 0,
+              "max HP bar LED buffer must divide into full HP groups");
 static_assert(HP_MAX > 0, "HP_MAX must be positive");
 static_assert(DAMAGE_PER_HIT > 0, "DAMAGE_PER_HIT must be positive");
 static_assert(HP_PHASE_COUNT > 0, "HP_PHASE_COUNT must be positive");

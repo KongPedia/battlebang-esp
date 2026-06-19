@@ -35,12 +35,17 @@ Current board profile is compiled as `kMaxTargets = 4`, while runtime config own
 | Piezo DO 2 | GPIO32 |
 | Piezo DO 3 | GPIO33 |
 | Piezo DO 4 | GPIO25 |
-| HP bar data | GPIO26 |
+| HP bar data | GPIO12 |
 | LED type/order | WS2811 / RGB |
-| Ring LEDs | 40 per target |
-| HP bar LEDs | 92 |
+| Ring LEDs | 120 per target |
+| HP bar LEDs | 300 (100 vertical HP columns × 3 horizontal rows) |
 
 Game logic iterates over `target.count`, not hard-coded `4`; if a future 6-target board appears, add a new hardware profile/env with a larger compiled capacity and pin map, then keep the random/HP/status logic mostly unchanged.
+
+The HP bar is physically wired as three horizontal LED rows on one data line.
+The renderer groups those rows by vertical column, so a HP decrement turns off
+or blinks the same column across all three rows together instead of draining one
+physical row before the next.
 
 ## Runtime config / NVS
 

@@ -139,12 +139,12 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         },
         "target": {
             "count": target_count,
-            "ring_num_leds": env_int(env, "BOSS_TARGET_RING_NUM_LEDS", 40),
+            "ring_num_leds": env_int(env, "BOSS_TARGET_RING_NUM_LEDS", 120),
             "active_color": env_first(env, "BOSS_TARGET_TARGET_ACTIVE_COLOR", default="#0000FF"),
             "hit_flash_color": env_first(env, "BOSS_TARGET_TARGET_HIT_FLASH_COLOR", default="#FFFFFF"),
         },
         "hp_bar": {
-            "num_leds": env_int(env, "BOSS_TARGET_HP_BAR_NUM_LEDS", 92),
+            "num_leds": env_int(env, "BOSS_TARGET_HP_BAR_NUM_LEDS", 300),
             "brightness": env_int(env, "BOSS_TARGET_LED_BRIGHTNESS", 80),
             "max_ma": env_int(env, "BOSS_TARGET_LED_MAX_MA", 6000),
             "palette": split_palette(env_first(env, "BOSS_TARGET_HP_PALETTE")),
@@ -154,7 +154,7 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
             "max_targets": env_int(env, "BOSS_TARGET_MAX_TARGETS", 4),
             "ring_pins": split_csv_ints(env_first(env, "BOSS_TARGET_RING_PINS"), 4, "BOSS_TARGET_RING_PINS", [23, 21, 18, 17]),
             "piezo_do_pins": split_csv_ints(env_first(env, "BOSS_TARGET_PIEZO_DO_PINS"), 4, "BOSS_TARGET_PIEZO_DO_PINS", [27, 32, 33, 25]),
-            "hp_bar_pin": env_int(env, "BOSS_TARGET_HP_BAR_PIN", 26),
+            "hp_bar_pin": env_int(env, "BOSS_TARGET_HP_BAR_PIN", 12),
             "led_type": env_first(env, "BOSS_TARGET_LED_TYPE", default="WS2811"),
             "color_order": env_first(env, "BOSS_TARGET_COLOR_ORDER", default="RGB"),
         },

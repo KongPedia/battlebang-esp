@@ -61,10 +61,10 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 | `gameplay.hit_cooldown_ms` | `cooldown` | `300` | `300` | Per-target hit debounce/cooldown. Range: 20..5000. |
 | `gameplay.digital_isr_debounce_us` | `isr_us` | `20000` | `20000` | GPIO interrupt debounce for piezo DO inputs. Range: 500..50000. |
 | `target.count` | `tgt_count` | `4` | `4` | Runtime active target count. Must be 1..compiled `kMaxTargets` (currently 4). |
-| `target.ring_num_leds` | `ring_leds` | `40` | `40` | LED count per target ring. Must fit compiled LED buffer. |
+| `target.ring_num_leds` | `ring_leds` | `120` | `120` | LED count per target ring. Must fit compiled LED buffer. |
 | `target.active_color` | `active_rgb` | `#0000FF` | `#0000FF` | Active ring color as RGB hex. |
 | `target.hit_flash_color` | `flash_rgb` | `#FFFFFF` | `#FFFFFF` | Correct-hit flash color as RGB hex. |
-| `hp_bar.num_leds` | `hp_leds` | `92` | `92` | HP bar LED count. Must fit compiled LED buffer. |
+| `hp_bar.num_leds` | `hp_leds` | `300` | `300` | HP bar LED count. Must fit compiled LED buffer and be divisible by 3 because the bar renders as 100 vertical HP columns × 3 horizontal rows. |
 | `hp_bar.brightness` | `brightness` | `80` | `80` | FastLED brightness. Range: 1..255. |
 | `hp_bar.max_ma` | `max_ma` | `6000` | `6000` | FastLED power cap. Range: 100..12000. |
 | `hp_bar.dead_blink_ms` | `dead_blink` | `300` | `300` | HP bar blink period when defeated. |
@@ -96,7 +96,7 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
   "max_targets": 4,
   "ring_pins": [23, 21, 18, 17],
   "piezo_do_pins": [27, 32, 33, 25],
-  "hp_bar_pin": 26,
+  "hp_bar_pin": 12,
   "led_type": "WS2811",
   "color_order": "RGB"
 }

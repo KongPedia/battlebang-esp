@@ -165,6 +165,12 @@ uint16_t BossTargetController::hpLedCount() const {
   return constrain(config_.hpBar.numLeds, static_cast<uint16_t>(1), static_cast<uint16_t>(::boss_target::MAX_HP_BAR_NUM_LEDS));
 }
 
+uint16_t BossTargetController::hpGroupCount() const {
+  return constrain(static_cast<uint16_t>(hpLedCount() / ::boss_target::HP_BAR_LEDS_PER_GROUP),
+                   static_cast<uint16_t>(1),
+                   static_cast<uint16_t>(::boss_target::MAX_HP_BAR_GROUP_COUNT));
+}
+
 CRGB BossTargetController::colorFromRgb(uint32_t rgb) const {
   return CRGB((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 }
@@ -192,8 +198,8 @@ CRGB BossTargetController::nextHpColorForBand(uint8_t band) const {
   return hpColorForBand(band - 1);
 }
 
-uint16_t BossTargetController::hpLitCount() const {
-  return hpLitCountForValue(hpRemaining_);
+uint16_t BossTargetController::hpLitGroupCount() const {
+  return hpLitGroupCountForValue(hpRemaining_);
 }
 
 uint8_t BossTargetController::hpBandForValue(int hp) const {
@@ -203,7 +209,7 @@ uint8_t BossTargetController::hpBandForValue(int hp) const {
   return constrain(static_cast<uint8_t>(band), static_cast<uint8_t>(0), static_cast<uint8_t>(count - 1));
 }
 
-uint16_t BossTargetController::hpLitCountForValue(int hp) const {
+uint16_t BossTargetController::hpLitGroupCountForValue(int hp) const {
   if (hp <= 0) return 0;
   const uint8_t count = activePhaseCount(config_);
   const uint8_t band = hpBandForValue(hp);
@@ -211,8 +217,8 @@ uint16_t BossTargetController::hpLitCountForValue(int hp) const {
   const uint32_t upper = (static_cast<uint32_t>(band + 1) * config_.gameplay.hpMax) / count;
   const uint32_t span = max<uint32_t>(1, upper - lower);
   const uint32_t inBand = constrain(static_cast<int32_t>(hp - lower), static_cast<int32_t>(0), static_cast<int32_t>(span));
-  const uint32_t lit = (inBand * hpLedCount()) / span;
-  return static_cast<uint16_t>(constrain(static_cast<int>(lit), 0, static_cast<int>(hpLedCount())));
+  const uint32_t lit = (inBand * hpGroupCount()) / span;
+  return static_cast<uint16_t>(constrain(static_cast<int>(lit), 0, static_cast<int>(hpGroupCount())));
 }
 
 const char* BossTargetController::modeString() const {
@@ -310,6 +316,30 @@ void BossTargetController::fillRing(uint8_t index, const CRGB& color) {
   for (uint16_t i = ringLedCount(); i < ::boss_target::MAX_RING_NUM_LEDS; ++i) rings_[index][i] = CRGB::Black;
 }
 
+void BossTargetController::setHpBarGroup(uint16_t group0Based, const CRGB& color) {
+  const uint16_t groups = hpGroupCount();
+  if (group0Based >= groups) return;
+
+  // Three-row serpentine HP bar layout:
+  // group 1  -> LEDs 1, 200, 201 on the 300-LED boss bar
+  // group 2  -> LEDs 2, 199, 202
+  // ...
+  // group 100 -> LEDs 100, 101, 300
+  const uint16_t row1Index = group0Based;
+  const uint16_t row2Index = 2 * groups - 1 - group0Based;
+  const uint16_t row3Index = 2 * groups + group0Based;
+
+  hpBar_[row1Index] = color;
+  hpBar_[row2Index] = color;
+  hpBar_[row3Index] = color;
+}
+
+void BossTargetController::setHpBarAll(const CRGB& color) {
+  for (uint16_t group = 0; group < hpGroupCount(); ++group) {
+    setHpBarGroup(group, color);
+  }
+}
+
 void BossTargetController::renderTargets(uint32_t now) {
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) fillRing(i, CRGB::Black);
   if (mode_ != Mode::ACTIVE || activeTarget_ < 0) return;
@@ -326,7 +356,7 @@ void BossTargetController::renderHpBar(uint32_t now) {
   fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
   if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;
   if (static_cast<int32_t>(hpFlashUntilMs_ - now) > 0) {
-    fill_solid(hpBar_, hpLedCount(), CRGB::White);
+    setHpBarAll(CRGB::White);
     return;
   }
   if (mode_ == Mode::DEFEATED) {
@@ -334,10 +364,10 @@ void BossTargetController::renderHpBar(uint32_t now) {
       lastDeadBlinkMs_ = now;
       deadBlinkOn_ = !deadBlinkOn_;
     }
-    if (deadBlinkOn_) fill_solid(hpBar_, hpLedCount(), colorFromRgb(::boss_target::HP_RED));
+    if (deadBlinkOn_) setHpBarAll(colorFromRgb(::boss_target::HP_RED));
     return;
   }
-  const uint16_t lit = hpLitCount();
+  const uint16_t lit = hpLitGroupCount();
   const uint8_t band = hpBandForValue(hpRemaining_);
   const CRGB base = hpColorForBand(band);
   const CRGB blink = nextHpColorForBand(band);
@@ -345,30 +375,30 @@ void BossTargetController::renderHpBar(uint32_t now) {
     lastHpBlinkMs_ = now;
     hpBlinkOn_ = !hpBlinkOn_;
   }
-  for (uint16_t i = 0; i < hpLedCount(); ++i) {
-    if (i < lit) {
-      hpBar_[i] = base;
-    } else if (hpBlinkMask_[i]) {
-      hpBar_[i] = hpBlinkOn_ ? blink : CRGB::Black;
+  for (uint16_t group = 0; group < hpGroupCount(); ++group) {
+    if (group < lit) {
+      setHpBarGroup(group, base);
+    } else if (hpBlinkMask_[group]) {
+      setHpBarGroup(group, hpBlinkOn_ ? blink : CRGB::Black);
     }
   }
 }
 
 void BossTargetController::clearHpBlinkMask() {
-  for (uint16_t i = 0; i < ::boss_target::MAX_HP_BAR_NUM_LEDS; ++i) hpBlinkMask_[i] = false;
+  for (uint16_t i = 0; i < ::boss_target::MAX_HP_BAR_GROUP_COUNT; ++i) hpBlinkMask_[i] = false;
 }
 
 void BossTargetController::addHpBlinkSegment(int oldHp, int newHp) {
-  const uint16_t oldLit = hpLitCountForValue(oldHp);
-  const uint16_t newLit = hpLitCountForValue(newHp);
+  const uint16_t oldLit = hpLitGroupCountForValue(oldHp);
+  const uint16_t newLit = hpLitGroupCountForValue(newHp);
   if (newLit < oldLit) {
-    for (uint16_t i = newLit; i < oldLit && i < hpLedCount(); ++i) hpBlinkMask_[i] = true;
+    for (uint16_t group = newLit; group < oldLit && group < hpGroupCount(); ++group) hpBlinkMask_[group] = true;
     return;
   }
   const uint8_t oldBand = hpBandForValue(oldHp);
   const uint8_t newBand = hpBandForValue(newHp);
   if (newBand < oldBand) {
-    for (uint16_t i = newLit; i < hpLedCount(); ++i) hpBlinkMask_[i] = true;
+    for (uint16_t group = newLit; group < hpGroupCount(); ++group) hpBlinkMask_[group] = true;
   }
 }
 

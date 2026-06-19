@@ -4,10 +4,22 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+BOSS_HP_BAR_GROUP_COUNT = 100
+BOSS_HP_BAR_LEDS_PER_GROUP = 3
+BOSS_HP_BAR_LED_COUNT = BOSS_HP_BAR_GROUP_COUNT * BOSS_HP_BAR_LEDS_PER_GROUP
 
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def boss_hp_bar_group_indices(group_1_based: int) -> tuple[int, int, int]:
+    """Mirror the boss HP bar's three-row serpentine column grouping."""
+    return (
+        group_1_based - 1,
+        2 * BOSS_HP_BAR_GROUP_COUNT - group_1_based,
+        2 * BOSS_HP_BAR_GROUP_COUNT - 1 + group_1_based,
+    )
 
 
 def test_boss_target_factory_defaults_match_current_four_target_board() -> None:
@@ -23,11 +35,13 @@ def test_boss_target_factory_defaults_match_current_four_target_board() -> None:
     assert hw["max_targets"] == 4
     assert hw["ring_pins"] == [23, 21, 18, 17]
     assert hw["piezo_do_pins"] == [27, 32, 33, 25]
-    assert hw["hp_bar_pin"] == 26
+    assert hw["hp_bar_pin"] == 12
     assert hw["led_type"] == "WS2811"
     assert hw["color_order"] == "RGB"
-    assert defaults["ring_num_leds"] == 40
-    assert defaults["hp_bar_num_leds"] == 92
+    assert defaults["ring_num_leds"] == 120
+    assert defaults["hp_bar_num_leds"] == 300
+    assert BOSS_HP_BAR_LED_COUNT == defaults["hp_bar_num_leds"]
+    assert "100 vertical HP columns across 3 horizontal rows" in config["notes"]
     assert defaults["ota_public_manifest_url"].endswith("/boss-target-latest/boss-target-manifest.json")
 
 
@@ -75,9 +89,12 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
     controller_header = read("src/boss_target/target/boss_target_controller.h")
     readme = read("src/boss_target/README.md")
 
-    assert "static constexpr uint16_t RING_NUM_LEDS = 40;" in header
-    assert "static constexpr uint16_t HP_BAR_NUM_LEDS = 92;" in header
-    assert "static constexpr int HP_BAR_PIN = 26;" in header
+    assert "static constexpr uint16_t RING_NUM_LEDS = 120;" in header
+    assert "static constexpr uint16_t HP_BAR_GROUP_COUNT = 100;" in header
+    assert "static constexpr uint8_t HP_BAR_LEDS_PER_GROUP = 3;" in header
+    assert "static constexpr uint16_t HP_BAR_NUM_LEDS = HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP;" in header
+    assert "static constexpr int HP_BAR_PIN = 12;" in header
+    assert "HP bar LED count must match grouped bar layout" in header
     assert "static constexpr uint32_t HIT_FLASH_MS = 60;" in header
     assert "static constexpr uint32_t BLINK_MS = 250;" in header
     assert "FastLED.addLeds<WS2811, ::boss_target::HP_BAR_PIN, RGB>(hpBar_" in controller
@@ -89,23 +106,49 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
     assert "config_.target.hitFlashColor" in render_targets
     assert "config_.target.activeColor" in render_targets
     assert "hpRemaining_" not in render_targets
-    assert "hpLitCount" not in render_targets
+    assert "hpLit" not in render_targets
+
+    set_hp_group = controller[controller.index("void BossTargetController::setHpBarGroup"):controller.index("void BossTargetController::setHpBarAll")]
+    assert "group 1  -> LEDs 1, 200, 201" in set_hp_group
+    assert "group 100 -> LEDs 100, 101, 300" in set_hp_group
+    assert "row1Index = group0Based" in set_hp_group
+    assert "row2Index = 2 * groups - 1 - group0Based" in set_hp_group
+    assert "row3Index = 2 * groups + group0Based" in set_hp_group
 
     render_hp = controller[controller.index("void BossTargetController::renderHpBar"):controller.index("void BossTargetController::clearHpBlinkMask")]
     assert "fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black)" in render_hp
     assert "hpFlashUntilMs_" in render_hp
-    assert "fill_solid(hpBar_, hpLedCount(), CRGB::White)" in render_hp
-    assert "hpBlinkMask_[i]" in render_hp
-    assert "hpBlinkOn_ ? blink : CRGB::Black" in render_hp
+    assert "setHpBarAll(CRGB::White)" in render_hp
+    assert "setHpBarAll(colorFromRgb(::boss_target::HP_RED))" in render_hp
+    assert "for (uint16_t group = 0; group < hpGroupCount(); ++group)" in render_hp
+    assert "setHpBarGroup(group, base)" in render_hp
+    assert "hpBlinkMask_[group]" in render_hp
+    assert "setHpBarGroup(group, hpBlinkOn_ ? blink : CRGB::Black)" in render_hp
     assert "fillRing" not in render_hp
 
     assert "void BossTargetController::addHpBlinkSegment" in controller
+    assert "hpLitGroupCountForValue(oldHp)" in controller
+    assert "group < oldLit && group < hpGroupCount()" in controller
     assert "const int oldHp = hpRemaining_;" in controller
     assert "if (newBand != oldBand) clearHpBlinkMask();" in controller
     assert "if (hpRemaining_ > 0) addHpBlinkSegment(oldHp, hpRemaining_);" in controller
     assert "hpFlashUntilMs_ = now + ::boss_target::HIT_FLASH_MS;" in controller
-    assert "bool hpBlinkMask_[::boss_target::MAX_HP_BAR_NUM_LEDS]" in controller_header
+    assert "bool hpBlinkMask_[::boss_target::MAX_HP_BAR_GROUP_COUNT]" in controller_header
     assert "4 target LED rings + 4 piezo DO inputs + 1 HP bar" in readme
+    assert "100 vertical HP columns × 3 horizontal rows" in readme
+
+
+def test_boss_target_hp_bar_links_three_rows_by_vertical_column() -> None:
+    assert boss_hp_bar_group_indices(1) == (0, 199, 200)  # LEDs 1, 200, 201
+    assert boss_hp_bar_group_indices(2) == (1, 198, 201)  # LEDs 2, 199, 202
+    assert boss_hp_bar_group_indices(100) == (99, 100, 299)  # LEDs 100, 101, 300
+
+    all_indices = {
+        idx
+        for group in range(1, BOSS_HP_BAR_GROUP_COUNT + 1)
+        for idx in boss_hp_bar_group_indices(group)
+    }
+    assert all_indices == set(range(BOSS_HP_BAR_LED_COUNT))
 
 
 def test_boss_target_runtime_config_persists_config_not_match_progress() -> None:
@@ -234,7 +277,7 @@ def test_boss_target_runtime_config_docs_and_examples_explain_nvs_contract() -> 
     assert provision["gameplay"]["hp_max"] == 10
     assert provision["gameplay"]["damage_per_hit"] == 1
     assert provision["target"]["count"] == 4
-    assert provision["hp_bar"]["num_leds"] == 92
+    assert provision["hp_bar"]["num_leds"] == 300
     assert provision["hardware_profile"]["max_targets"] == 4
     assert provision["hardware_profile"]["ring_pins"] == [23, 21, 18, 17]
     assert provision["hardware_profile"]["piezo_do_pins"] == [27, 32, 33, 25]

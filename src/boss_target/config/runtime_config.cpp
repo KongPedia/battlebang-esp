@@ -128,8 +128,15 @@ bool validateConfig(RuntimeConfig& config, String& error) {
     error = String("target.ring_num_leds must be 1..") + ::boss_target::MAX_RING_NUM_LEDS;
     return false;
   }
-  if (config.hpBar.numLeds < 1 || config.hpBar.numLeds > ::boss_target::MAX_HP_BAR_NUM_LEDS) {
-    error = String("hp_bar.num_leds must be 1..") + ::boss_target::MAX_HP_BAR_NUM_LEDS;
+  if (config.hpBar.numLeds < ::boss_target::HP_BAR_LEDS_PER_GROUP ||
+      config.hpBar.numLeds > ::boss_target::MAX_HP_BAR_NUM_LEDS) {
+    error = String("hp_bar.num_leds must be ") + ::boss_target::HP_BAR_LEDS_PER_GROUP + ".." +
+            ::boss_target::MAX_HP_BAR_NUM_LEDS;
+    return false;
+  }
+  if (config.hpBar.numLeds % ::boss_target::HP_BAR_LEDS_PER_GROUP != 0) {
+    error = String("hp_bar.num_leds must be a multiple of ") + ::boss_target::HP_BAR_LEDS_PER_GROUP +
+            " for the 3-row grouped HP bar";
     return false;
   }
   if (config.hpBar.brightness < 1) {
