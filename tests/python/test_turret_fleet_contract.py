@@ -972,6 +972,35 @@ def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
     assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
 
 
+def test_turret_fleet_mqtt_subscribe_tolerates_live_status_before_suback() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/e2e_mqtt_test.py"
+    spec = importlib.util.spec_from_file_location("e2e_mqtt_subscribe_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.sent: list[bytes] = []
+
+        def sendall(self, data: bytes) -> None:
+            self.sent.append(data)
+
+    publish_body = b"\x00#battlebang/turrets/turret_1/status{}"
+    packets = [(0x30, publish_body), (0x90, b"\x00\x01\x00")]
+    session = module.MqttSession(host="unused", port=1883, timeout_s=1.0)
+    session.sock = FakeSocket()
+    session.read_packet = lambda *, deadline: packets.pop(0) if packets else (None, b"")
+
+    session.subscribe("battlebang/boss_targets/boss_target_6809477249D0/status")
+
+    assert session.sock.sent[0].startswith(b"\x82")
+    assert packets == []
+
+
 def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
     import importlib.util
 
