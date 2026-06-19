@@ -16,7 +16,7 @@ Helpers:
 - `e2e_mqtt_test.py`: runs the live MQTT E2E sequence for `target`, `fire`, `idle`, `dead`, `hold`, and the three readable pattern presets. It skips relay/ESC fire unless `--allow-live-fire` is present and sends a final `hold`.
 - `make_release_manifest.py`: generates `manifest.json` for GitHub Releases.
 - `publish_mqtt_manifest.py`: publishes a manifest to an OTA MQTT topic without external MQTT tools.
-- `repeat_lane_sweep_live.py`: repeatedly publishes live `lane_sweep` commands. Add `--boss-id <boss_target_id>` to act like a simple Command Center opening: publish boss `reset`, wait for READY, publish boss `start` to begin the 5-second neon-rainbow orbit intro, immediately publish `home` to each configured turret so home overlaps the intro, then begin turret lane sweeps after both the intro and home commands finish. While running with `--boss-id`, it also watches boss status and publishes `dead` to each turret once boss HP reaches 0.
+- `repeat_lane_sweep_live.py`: repeatedly publishes live `lane_sweep` commands. Add `--boss-id <boss_target_id>` to act like a simple Command Center opening: publish boss `reset`, wait for READY, publish boss `start`, then begin turret lane sweeps immediately. While running with `--boss-id`, it also watches boss status and publishes `dead` to each turret once boss HP reaches 0.
 
 Live E2E example:
 
@@ -38,4 +38,4 @@ Boss-stage lane sweep example:
   --boss-id boss_target_6809477249D0
 ```
 
-Opening order with `--boss-id` is: boss HP reset -> boss neon intro starts + turret `home` starts immediately -> lane_sweep after both are done. Use `--no-turret-home-first` only when the turrets are already homed and you intentionally want to skip that reset step.
+Opening order with `--boss-id` is: boss HP reset -> boss `start` -> lane_sweep immediately. Use `--turret-home-first` only when you explicitly want to overlap a turret `home` reset with the boss intro before lane_sweep.

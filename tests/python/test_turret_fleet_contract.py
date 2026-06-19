@@ -950,7 +950,7 @@ def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> N
     assert payload["params"] == {"return_to": "wait_command"}
 
 
-def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
+def test_repeat_lane_sweep_can_stage_boss_target_start_before_immediate_turret_patterns() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -973,19 +973,13 @@ def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
     assert "boss=boss_target_6809477249D0" in output
     assert "dry-run boss opening:" in output
     assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"reset"} wait_ready<=10s' in output
-    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"start"} start_intro=5s' in output
-    for turret_id in ["turret_1", "turret_3", "turret_4"]:
-        assert (
-            f'turret topic=battlebang/turrets/{turret_id}/command '
-            f'payload={{"command":"home","command_id":"boss-home-{turret_id}-<ms>"}} '
-            "overlaps_intro wait_home<=45s"
-        ) in output
-    assert "wait gate=turret_home_done_and_intro_elapsed" in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"start"} start_intro=0s' in output
+    assert 'payload={"command":"home"' not in output
+    assert "pattern starts immediately" in output
     assert "dry-run boss defeat handling:" in output
     assert 'if boss hp<=0 topic=battlebang/turrets/turret_1/command payload={"command":"dead","command_id":"boss-dead-turret_1-<ms>"}' in output
     assert output.index('payload={"command":"reset"}') < output.index('payload={"command":"start"}')
-    assert output.index('payload={"command":"start"}') < output.index('payload={"command":"home","command_id":"boss-home-turret_1-<ms>"}')
-    assert output.index('payload={"command":"home","command_id":"boss-home-turret_4-<ms>"}') < output.index("wait gate=turret_home_done_and_intro_elapsed")
+    assert output.index('payload={"command":"start"}') < output.index("pattern starts immediately")
     assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
 
 

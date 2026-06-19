@@ -542,7 +542,10 @@ def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse
             min_wait_until_s=intro_done_at_s,
         )
     else:
-        print(f"boss intro wait {args.boss_intro_wait_s:.1f}s before lane_sweep starts", flush=True)
+        if args.boss_intro_wait_s > 0:
+            print(f"boss intro wait {args.boss_intro_wait_s:.1f}s before lane_sweep starts", flush=True)
+        else:
+            print("boss start sent; lane_sweep starts immediately", flush=True)
         sleep_with_pump(client, monitor, args.boss_intro_wait_s)
 
 
@@ -575,9 +578,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--boss-id", help="optional boss_target id; enables reset/start opening before turret lane_sweep")
     parser.add_argument("--boss-reset-first", action=argparse.BooleanOptionalAction, default=True, help="publish boss reset and wait for READY before boss start")
     parser.add_argument("--boss-ready-timeout-s", type=float, default=10.0, help="wait for boss READY after reset")
-    parser.add_argument("--turret-home-first", action=argparse.BooleanOptionalAction, default=True, help="with --boss-id, publish home to every configured turret immediately after boss start so home overlaps the boss intro")
+    parser.add_argument("--turret-home-first", action=argparse.BooleanOptionalAction, default=False, help="with --boss-id, optionally publish home to every configured turret immediately after boss start so home overlaps the boss intro; default skips home and starts pattern immediately")
     parser.add_argument("--turret-home-timeout-s", type=float, default=45.0, help="wait for all intro-overlapped turret home commands to complete")
-    parser.add_argument("--boss-intro-wait-s", type=float, default=5.0, help="wait after boss start so the 5s neon-rainbow intro finishes before turrets fire")
+    parser.add_argument("--boss-intro-wait-s", type=float, default=0.0, help="wait after boss start before turrets fire; default 0 starts lane_sweep immediately")
     parser.add_argument("--dry-run", action="store_true", help="print planned sequence without publishing/subscribing")
     return parser
 
@@ -619,7 +622,10 @@ def dry_run(args: argparse.Namespace, root: str, turrets: list[str]) -> None:
                 )
             print("  wait gate=turret_home_done_and_intro_elapsed")
         else:
-            print(f"  wait_intro={args.boss_intro_wait_s:g}s")
+            if args.boss_intro_wait_s > 0:
+                print(f"  wait_intro={args.boss_intro_wait_s:g}s")
+            else:
+                print("  pattern starts immediately")
         print("dry-run boss defeat handling:")
         for turret_id in turrets:
             print(f"  if boss hp<=0 topic={topic_for(root, turret_id, 'command')} payload={{\"command\":\"dead\",\"command_id\":\"boss-dead-{turret_id}-<ms>\"}}")
