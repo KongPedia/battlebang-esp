@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "notes": "Boss-stage target factory defaults for the current 4-target board. This file is a committed schema/default reference; the ESP does not auto-load it at runtime. Actual device runtime config is written to NVS by serial provision/config JSON or MQTT config messages. Runtime provisioning persists identity, human-readable display_name, Wi-Fi, MQTT, gameplay, target/HP LED settings, and OTA policy in NVS; hardware_profile is validated against the compiled firmware as a compatibility guard, not used for live pin remapping. Active match progress such as hp_remaining and active_target_index is intentionally not persisted. Boot/reset keeps all LEDs off with internal HP full until a start command is received.",
+  "documentation": "docs/runtime-config.md",
+  "examples": [
+    "examples/provision.boss-target.example.json",
+    "examples/config.display-name.example.json",
+    "examples/config.gameplay-target.example.json",
+    "examples/command.start.example.json",
+    "examples/command.reset.example.json",
+    "examples/command.status.example.json"
+  ],
+  "defaults": {
+    "display_name": "Boss Target",
+    "hp_max": 10,
+    "damage_per_hit": 1,
+    "hp_phase_count": 3,
+    "start_resets_hp": true,
+    "target_duration_ms": 2500,
+    "hit_cooldown_ms": 300,
+    "digital_isr_debounce_us": 20000,
+    "target_count": 4,
+    "ring_num_leds": 40,
+    "hp_bar_num_leds": 92,
+    "led_brightness": 80,
+    "led_max_ma": 6000,
+    "target_active_color": "#0000FF",
+    "target_hit_flash_color": "#FFFFFF",
+    "hp_palette": ["#00FF00", "#FFFF00", "#FF0000"],
+    "hp_dead_blink_ms": 300,
+    "hardware_profile": {
+      "max_targets": 4,
+      "ring_pins": [23, 21, 18, 17],
+      "piezo_do_pins": [27, 32, 33, 25],
+      "hp_bar_pin": 26,
+      "led_type": "WS2811",
+      "color_order": "RGB"
+    },
+    "mqtt_root": "battlebang",
+    "ota_channel": "boss-target",
+    "ota_public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/boss-target-latest/boss-target-manifest.json",
+    "ota_command_center_controlled": true,
+    "ota_auto_check_enabled": false,
+    "ota_apply_only_in_safe_state": true
+  }
+}
