@@ -195,6 +195,14 @@ def build_payload(args: argparse.Namespace, turret_id: str, cycle: int, *, loop:
     }
 
 
+def build_simple_turret_payload(command: str, turret_id: str, *, prefix: str) -> dict[str, Any]:
+    now_ms = int(time.time() * 1000)
+    return {
+        "command": command,
+        "command_id": f"{prefix}-{turret_id}-{now_ms}",
+    }
+
+
 def status_belongs_to_command(doc: dict[str, Any], command_id: str) -> bool:
     return (
         doc.get("active_command_id") == command_id
@@ -338,6 +346,77 @@ def publish_one(
     )
 
 
+def publish_turret_home_commands(
+    client: MqttSession,
+    monitor: StatusMonitor,
+    args: argparse.Namespace,
+    *,
+    root: str,
+    turrets: list[str],
+) -> None:
+    command_ids: dict[str, str] = {}
+    started: set[str] = set()
+    pending: set[str] = set()
+    last_printed: dict[str, tuple[Any, ...]] = {}
+    last_docs: dict[str, dict[str, Any]] = {}
+    start_deadline = time.time() + args.start_timeout_s
+    deadline = time.time() + args.turret_home_timeout_s
+
+    for turret_id in turrets:
+        command_topic = topic_for(root, turret_id, "command")
+        payload = build_simple_turret_payload("home", turret_id, prefix="boss-home")
+        command_id = str(payload["command_id"])
+        command_ids[turret_id] = command_id
+        pending.add(turret_id)
+        print(f"publish home turret={turret_id} topic={command_topic} command_id={command_id}", flush=True)
+        client.publish_json(command_topic, payload)
+
+    while pending and time.time() < deadline:
+        item = monitor.pump_once(client, timeout_s=1.0)
+        if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
+            raise BossDefeated(monitor.boss_dead_reason())
+        if item is None:
+            if time.time() > start_deadline:
+                missing = sorted(pending - started)
+                if missing:
+                    latest = "; ".join(
+                        f"{turret_id}={summarize_status(last_docs.get(turret_id, {}))}"
+                        for turret_id in missing
+                    )
+                    raise MqttCommandError(
+                        f"turret home commands did not start within {args.start_timeout_s}s: "
+                        f"{', '.join(missing)} latest={latest}"
+                    )
+            continue
+        _topic, doc = item
+        turret_id = str(doc.get("turret_id") or "")
+        if turret_id not in pending:
+            continue
+        last_docs[turret_id] = doc
+        command_id = command_ids[turret_id]
+        if turret_id not in started and is_started_status(doc, command_id):
+            started.add(turret_id)
+            print(f"started home turret={turret_id} command_id={command_id} {summarize_status(doc)}", flush=True)
+        if turret_id in started:
+            key = (doc.get("mode"), doc.get("command_state"), doc.get("pattern_state"), doc.get("fire_state"), doc.get("activation_active"))
+            if key != last_printed.get(turret_id):
+                print(f"status home turret={turret_id} {summarize_status(doc)}", flush=True)
+                last_printed[turret_id] = key
+            if is_done_status(doc, command_id):
+                print(f"done home turret={turret_id} command_id={command_id} {summarize_status(doc)}", flush=True)
+                pending.remove(turret_id)
+
+    if pending:
+        latest = "; ".join(
+            f"{turret_id}={summarize_status(last_docs.get(turret_id, {}))}"
+            for turret_id in sorted(pending)
+        )
+        raise MqttCommandError(
+            f"turret home commands did not complete within {args.turret_home_timeout_s}s: "
+            f"{', '.join(sorted(pending))} latest={latest}"
+        )
+
+
 def publish_parallel(
     client: MqttSession,
     monitor: StatusMonitor,
@@ -432,6 +511,8 @@ def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse
         monitor.latest_boss = {}
         publish_boss_command(client, root=root, boss_id=boss_id, command="reset")
         wait_for_boss_ready(client, monitor, timeout_s=args.boss_ready_timeout_s)
+    if args.turret_home_first:
+        publish_turret_home_commands(client, monitor, args, root=root, turrets=monitor.turret_order)
     publish_boss_command(client, root=root, boss_id=boss_id, command="start")
     print(f"boss intro wait {args.boss_intro_wait_s:.1f}s before lane_sweep starts", flush=True)
     sleep_with_pump(client, monitor, args.boss_intro_wait_s)
@@ -466,6 +547,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--boss-id", help="optional boss_target id; enables reset/start opening before turret lane_sweep")
     parser.add_argument("--boss-reset-first", action=argparse.BooleanOptionalAction, default=True, help="publish boss reset and wait for READY before boss start")
     parser.add_argument("--boss-ready-timeout-s", type=float, default=10.0, help="wait for boss READY after reset")
+    parser.add_argument("--turret-home-first", action=argparse.BooleanOptionalAction, default=True, help="with --boss-id, publish home to every configured turret after boss reset/READY and before boss start")
+    parser.add_argument("--turret-home-timeout-s", type=float, default=45.0, help="wait for all pre-start turret home commands to complete")
     parser.add_argument("--boss-intro-wait-s", type=float, default=5.0, help="wait after boss start so the 5s neon-rainbow intro finishes before turrets fire")
     parser.add_argument("--dry-run", action="store_true", help="print planned sequence without publishing/subscribing")
     return parser
@@ -498,6 +581,13 @@ def dry_run(args: argparse.Namespace, root: str, turrets: list[str]) -> None:
         print("dry-run boss opening:")
         if args.boss_reset_first:
             print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"reset\"}} wait_ready<={args.boss_ready_timeout_s:g}s")
+        if args.turret_home_first:
+            for turret_id in turrets:
+                print(
+                    f"  turret topic={topic_for(root, turret_id, 'command')} "
+                    f"payload={{\"command\":\"home\",\"command_id\":\"boss-home-{turret_id}-<ms>\"}} "
+                    f"wait_home<={args.turret_home_timeout_s:g}s"
+                )
         print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"start\"}} wait_intro={args.boss_intro_wait_s:g}s")
         print("dry-run boss defeat handling:")
         for turret_id in turrets:
