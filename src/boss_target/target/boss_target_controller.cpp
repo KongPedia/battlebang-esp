@@ -5,8 +5,6 @@
 namespace battlebang {
 namespace boss_target {
 
-BossTargetController* BossTargetController::isrInstance_ = nullptr;
-
 void BossTargetController::begin(const RuntimeConfig& config, EventCallback callback, void* ctx) {
   callback_ = callback;
   callbackCtx_ = ctx;
@@ -41,14 +39,12 @@ void BossTargetController::applyConfig(const RuntimeConfig& config, bool resetSt
 
 void BossTargetController::configurePins(const RuntimeConfig& previous, const RuntimeConfig& next) {
   (void) previous;
-  isrInstance_ = this;
+  analogReadResolution(12);
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
-    if (next.hardware.piezoDoPins[i] >= 0) pinMode(next.hardware.piezoDoPins[i], INPUT_PULLDOWN);
+    if (next.hardware.piezoDoPins[i] < 0) continue;
+    pinMode(next.hardware.piezoDoPins[i], INPUT);
+    analogSetPinAttenuation(next.hardware.piezoDoPins[i], ADC_11db);
   }
-  attachInterrupt(digitalPinToInterrupt(::boss_target::PIEZO_DO_PINS[0]), piezoIsr0, RISING);
-  attachInterrupt(digitalPinToInterrupt(::boss_target::PIEZO_DO_PINS[1]), piezoIsr1, RISING);
-  attachInterrupt(digitalPinToInterrupt(::boss_target::PIEZO_DO_PINS[2]), piezoIsr2, RISING);
-  attachInterrupt(digitalPinToInterrupt(::boss_target::PIEZO_DO_PINS[3]), piezoIsr3, RISING);
   clearPiezoEdges();
   pinsConfigured_ = true;
 }
@@ -61,12 +57,9 @@ void BossTargetController::reset(const char* source) {
   lastHitTargetIndex_ = -1;
   lastWrongTargetIndex_ = -1;
   lastEvent_ = "reset";
-  hpFlashUntilMs_ = 0;
-  hpBlinkOn_ = false;
   deadBlinkOn_ = false;
   otaPrepared_ = false;
   hitEnabled_ = true;
-  clearHpBlinkMask();
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
     lastTargetHitMs_[i] = 0;
     lastTargetHitOk_[i] = false;
@@ -88,9 +81,6 @@ void BossTargetController::start(const char* source, bool resetHp) {
   }
   if (resetHp || config_.gameplay.startResetsHp || hpRemaining_ <= 0) {
     hpRemaining_ = config_.gameplay.hpMax;
-    clearHpBlinkMask();
-    hpFlashUntilMs_ = 0;
-    hpBlinkOn_ = false;
   }
   mode_ = Mode::ACTIVE;
   otaPrepared_ = false;
@@ -106,9 +96,9 @@ void BossTargetController::simulateHit(const char* source, int targetIndex) {
   if (targetIndex < 0) targetIndex = activeTarget_;
   if (targetIndex < 0 || targetIndex >= targetCount()) return;
   if (targetIndex == activeTarget_) {
-    applyDamage(static_cast<uint8_t>(targetIndex), source, 1, now);
+    applyDamage(static_cast<uint8_t>(targetIndex), source, 1, 0, now);
   } else {
-    recordWrongHit(static_cast<uint8_t>(targetIndex), source, 1, now);
+    recordWrongHit(static_cast<uint8_t>(targetIndex), source, 1, 0, now);
   }
 }
 
@@ -135,15 +125,17 @@ void BossTargetController::loop(uint32_t now) {
   }
 
   if (vulnerableNow(now)) {
+    pollPiezoAo(now);
     for (uint8_t i = 0; i < targetCount(); ++i) {
       uint16_t edges = popPiezoEdges(i);
       if (edges == 0) continue;
+      uint16_t peak = popPiezoPeak(i);
       if (now - lastTargetHitMs_[i] < config_.gameplay.hitCooldownMs) continue;
       lastTargetHitMs_[i] = now;
       if (i == activeTarget_) {
-        applyDamage(i, "piezo", edges, now);
+        applyDamage(i, "piezo_ao", edges, peak, now);
       } else {
-        recordWrongHit(i, "piezo", edges, now);
+        recordWrongHit(i, "piezo_ao", edges, peak, now);
       }
     }
   } else {
@@ -193,11 +185,6 @@ CRGB BossTargetController::hpColorForBand(uint8_t band) const {
   return colorFromRgb(phaseColorRgb(config_, paletteIndex));
 }
 
-CRGB BossTargetController::nextHpColorForBand(uint8_t band) const {
-  if (band == 0) return hpColorForBand(0);
-  return hpColorForBand(band - 1);
-}
-
 uint16_t BossTargetController::hpLitGroupCount() const {
   return hpLitGroupCountForValue(hpRemaining_);
 }
@@ -211,13 +198,9 @@ uint8_t BossTargetController::hpBandForValue(int hp) const {
 
 uint16_t BossTargetController::hpLitGroupCountForValue(int hp) const {
   if (hp <= 0) return 0;
-  const uint8_t count = activePhaseCount(config_);
-  const uint8_t band = hpBandForValue(hp);
-  const uint32_t lower = (static_cast<uint32_t>(band) * config_.gameplay.hpMax) / count;
-  const uint32_t upper = (static_cast<uint32_t>(band + 1) * config_.gameplay.hpMax) / count;
-  const uint32_t span = max<uint32_t>(1, upper - lower);
-  const uint32_t inBand = constrain(static_cast<int32_t>(hp - lower), static_cast<int32_t>(0), static_cast<int32_t>(span));
-  const uint32_t lit = (inBand * hpGroupCount()) / span;
+  if (config_.gameplay.hpMax == 0) return 0;
+  const uint32_t clampedHp = min<uint32_t>(static_cast<uint32_t>(hp), config_.gameplay.hpMax);
+  const uint32_t lit = (clampedHp * hpGroupCount() + config_.gameplay.hpMax - 1) / config_.gameplay.hpMax;
   return static_cast<uint16_t>(constrain(static_cast<int>(lit), 0, static_cast<int>(hpGroupCount())));
 }
 
@@ -261,17 +244,11 @@ void BossTargetController::clearActiveTarget() {
   targetStartedMs_ = 0;
 }
 
-void BossTargetController::applyDamage(uint8_t targetIndex, const char* source, uint16_t edges, uint32_t now) {
+void BossTargetController::applyDamage(uint8_t targetIndex, const char* source, uint16_t edges, uint16_t peak, uint32_t now) {
   if (!vulnerableNow(now)) return;
   if (now - lastAcceptedHitMs_ < config_.gameplay.hitCooldownMs) return;
   lastAcceptedHitMs_ = now;
-  const int oldHp = hpRemaining_;
-  const uint8_t oldBand = hpBandForValue(oldHp);
   hpRemaining_ = max(0, hpRemaining_ - static_cast<int>(config_.gameplay.damagePerHit));
-  const uint8_t newBand = hpBandForValue(hpRemaining_);
-  if (newBand != oldBand) clearHpBlinkMask();
-  if (hpRemaining_ > 0) addHpBlinkSegment(oldHp, hpRemaining_);
-  hpFlashUntilMs_ = now + ::boss_target::HIT_FLASH_MS;
   sequence_++;
   lastHitTargetIndex_ = targetIndex;
   lastTargetHitMs_[targetIndex] = now;
@@ -282,21 +259,21 @@ void BossTargetController::applyDamage(uint8_t targetIndex, const char* source, 
     mode_ = Mode::DEFEATED;
     clearActiveTarget();
     lastEvent_ = "destroyed";
-    emit("destroyed", targetIndex, 0, source, edges);
+    emit("destroyed", targetIndex, peak, source, edges);
   } else {
     selectNewTarget(now);
     lastEvent_ = "hit";
-    emit("hit", targetIndex, 0, source, edges);
+    emit("hit", targetIndex, peak, source, edges);
   }
 }
 
-void BossTargetController::recordWrongHit(uint8_t targetIndex, const char* source, uint16_t edges, uint32_t now) {
+void BossTargetController::recordWrongHit(uint8_t targetIndex, const char* source, uint16_t edges, uint16_t peak, uint32_t now) {
   sequence_++;
   lastWrongTargetIndex_ = targetIndex;
   lastTargetHitMs_[targetIndex] = now;
   lastTargetHitOk_[targetIndex] = false;
   lastEvent_ = "wrong_hit";
-  emit("wrong_hit", targetIndex, 0, source, edges);
+  emit("wrong_hit", targetIndex, peak, source, edges);
 }
 
 void BossTargetController::emit(const char* name, uint8_t targetIndex, uint16_t peak, const char* source, uint16_t edges) {
@@ -355,10 +332,6 @@ void BossTargetController::renderTargets(uint32_t now) {
 void BossTargetController::renderHpBar(uint32_t now) {
   fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
   if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;
-  if (static_cast<int32_t>(hpFlashUntilMs_ - now) > 0) {
-    setHpBarAll(CRGB::White);
-    return;
-  }
   if (mode_ == Mode::DEFEATED) {
     if (now - lastDeadBlinkMs_ >= config_.hpBar.deadBlinkMs) {
       lastDeadBlinkMs_ = now;
@@ -370,35 +343,8 @@ void BossTargetController::renderHpBar(uint32_t now) {
   const uint16_t lit = hpLitGroupCount();
   const uint8_t band = hpBandForValue(hpRemaining_);
   const CRGB base = hpColorForBand(band);
-  const CRGB blink = nextHpColorForBand(band);
-  if (now - lastHpBlinkMs_ >= ::boss_target::BLINK_MS) {
-    lastHpBlinkMs_ = now;
-    hpBlinkOn_ = !hpBlinkOn_;
-  }
   for (uint16_t group = 0; group < hpGroupCount(); ++group) {
-    if (group < lit) {
-      setHpBarGroup(group, base);
-    } else if (hpBlinkMask_[group]) {
-      setHpBarGroup(group, hpBlinkOn_ ? blink : CRGB::Black);
-    }
-  }
-}
-
-void BossTargetController::clearHpBlinkMask() {
-  for (uint16_t i = 0; i < ::boss_target::MAX_HP_BAR_GROUP_COUNT; ++i) hpBlinkMask_[i] = false;
-}
-
-void BossTargetController::addHpBlinkSegment(int oldHp, int newHp) {
-  const uint16_t oldLit = hpLitGroupCountForValue(oldHp);
-  const uint16_t newLit = hpLitGroupCountForValue(newHp);
-  if (newLit < oldLit) {
-    for (uint16_t group = newLit; group < oldLit && group < hpGroupCount(); ++group) hpBlinkMask_[group] = true;
-    return;
-  }
-  const uint8_t oldBand = hpBandForValue(oldHp);
-  const uint8_t newBand = hpBandForValue(newHp);
-  if (newBand < oldBand) {
-    for (uint16_t group = newLit; group < hpGroupCount(); ++group) hpBlinkMask_[group] = true;
+    if (group < lit) setHpBarGroup(group, base);
   }
 }
 
@@ -417,32 +363,43 @@ void BossTargetController::renderLeds(uint32_t now) {
   FastLED.show();
 }
 
+void BossTargetController::pollPiezoAo(uint32_t now) {
+  if (now - lastPiezoSampleMs_ < ::boss_target::PIEZO_AO_SAMPLE_PERIOD_MS) return;
+  lastPiezoSampleMs_ = now;
+  for (uint8_t i = 0; i < targetCount(); ++i) {
+    const int8_t pin = config_.hardware.piezoDoPins[i];
+    if (pin < 0) continue;
+    const uint16_t raw = static_cast<uint16_t>(analogRead(pin));
+    if (raw <= ::boss_target::PIEZO_AO_RELEASE) {
+      piezoArmed_[i] = true;
+    }
+    if (!piezoArmed_[i] || raw < ::boss_target::PIEZO_AO_THRESHOLD) continue;
+    piezoArmed_[i] = false;
+    if (piezoEdgeCount_[i] < UINT16_MAX) piezoEdgeCount_[i]++;
+    if (raw > piezoPeak_[i]) piezoPeak_[i] = raw;
+  }
+}
+
 uint16_t BossTargetController::popPiezoEdges(uint8_t index) {
   if (index >= ::boss_target::kMaxTargets) return 0;
-  noInterrupts();
   uint16_t pending = piezoEdgeCount_[index];
   piezoEdgeCount_[index] = 0;
-  interrupts();
   return pending;
 }
 
-void BossTargetController::clearPiezoEdges() {
-  noInterrupts();
-  for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) piezoEdgeCount_[i] = 0;
-  interrupts();
+uint16_t BossTargetController::popPiezoPeak(uint8_t index) {
+  if (index >= ::boss_target::kMaxTargets) return 0;
+  uint16_t peak = piezoPeak_[index];
+  piezoPeak_[index] = 0;
+  return peak;
 }
 
-void IRAM_ATTR BossTargetController::piezoIsr0() { if (isrInstance_) isrInstance_->onPiezoIsr(0); }
-void IRAM_ATTR BossTargetController::piezoIsr1() { if (isrInstance_) isrInstance_->onPiezoIsr(1); }
-void IRAM_ATTR BossTargetController::piezoIsr2() { if (isrInstance_) isrInstance_->onPiezoIsr(2); }
-void IRAM_ATTR BossTargetController::piezoIsr3() { if (isrInstance_) isrInstance_->onPiezoIsr(3); }
-
-void IRAM_ATTR BossTargetController::onPiezoIsr(uint8_t index) {
-  if (index >= ::boss_target::kMaxTargets) return;
-  const uint32_t nowUs = micros();
-  if (nowUs - lastIsrUs_[index] < config_.gameplay.digitalIsrDebounceUs) return;
-  lastIsrUs_[index] = nowUs;
-  if (piezoEdgeCount_[index] < UINT16_MAX) piezoEdgeCount_[index]++;
+void BossTargetController::clearPiezoEdges() {
+  for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
+    piezoEdgeCount_[i] = 0;
+    piezoPeak_[i] = 0;
+    piezoArmed_[i] = true;
+  }
 }
 
 void BossTargetController::appendStatus(JsonObject obj) const {
@@ -477,6 +434,8 @@ void BossTargetController::appendStatus(JsonObject obj) const {
   obj["target_duration_ms"] = config_.gameplay.targetDurationMs;
   obj["hit_cooldown_ms"] = config_.gameplay.hitCooldownMs;
   obj["digital_isr_debounce_us"] = config_.gameplay.digitalIsrDebounceUs;
+  obj["piezo_ao_threshold"] = ::boss_target::PIEZO_AO_THRESHOLD;
+  obj["piezo_ao_release"] = ::boss_target::PIEZO_AO_RELEASE;
   obj["last_hit_target_index"] = lastHitTargetIndex_;
   obj["last_wrong_target_index"] = lastWrongTargetIndex_;
   obj["last_event"] = lastEvent_;

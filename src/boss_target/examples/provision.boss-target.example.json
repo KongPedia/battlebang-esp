@@ -33,7 +33,7 @@
   "hardware_profile": {
     "max_targets": 4,
     "ring_pins": [23, 21, 18, 17],
-    "piezo_do_pins": [27, 32, 33, 25],
+    "piezo_do_pins": [34, 35, 32, 33],
     "hp_bar_pin": 12,
     "led_type": "WS2811",
     "color_order": "RGB"

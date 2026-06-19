@@ -53,13 +53,13 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 | `group` | `group` | empty | `boss-stage` | Placement/filter metadata for Command Center. |
 | `location` | `location` | empty | `stage-left` | Human-readable placement metadata. |
 | `debug_allow_simulate_hit` | `debug_sim` | `false` | `false` | Enables MQTT/serial simulated hits only for bench testing. Keep false in production. |
-| `gameplay.hp_max` | `hp_max` | `10` | `10` | Full HP at boot/reset/start. Range: 1..999. |
-| `gameplay.damage_per_hit` | `damage` | `1` | `1` | Damage from a correct active-target hit. Range: 1..`hp_max`. |
+| `gameplay.hp_max` | `hp_max` | `10` | `10` | Full normalized HP at boot/reset/start. Set this with `damage_per_hit` to choose how many correct hits defeat the boss. Range: 1..999. |
+| `gameplay.damage_per_hit` | `damage` | `1` | `1` | Damage from a correct active-target hit. With defaults, 10 hits defeat the boss. Range: 1..`hp_max`. |
 | `gameplay.phase_count` | `phases` | `3` | `3` | Number of HP bar palette phases. Range: 1..8. |
 | `gameplay.start_resets_hp` | `start_reset` | `true` | `true` | `start` restores HP to full before activating a target. |
 | `gameplay.target_duration_ms` | `target_ms` | `2500` | `2500` | Time before the active target moves. Range: 250..60000. |
 | `gameplay.hit_cooldown_ms` | `cooldown` | `300` | `300` | Per-target hit debounce/cooldown. Range: 20..5000. |
-| `gameplay.digital_isr_debounce_us` | `isr_us` | `20000` | `20000` | GPIO interrupt debounce for piezo DO inputs. Range: 500..50000. |
+| `gameplay.digital_isr_debounce_us` | `isr_us` | `20000` | `20000` | Legacy debounce field retained for piezo compatibility. Range: 500..50000. |
 | `target.count` | `tgt_count` | `4` | `4` | Runtime active target count. Must be 1..compiled `kMaxTargets` (currently 4). |
 | `target.ring_num_leds` | `ring_leds` | `120` | `120` | LED count per target ring. Must fit compiled LED buffer. |
 | `target.active_color` | `active_rgb` | `#0000FF` | `#0000FF` | Active ring color as RGB hex. |
@@ -68,7 +68,7 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 | `hp_bar.brightness` | `brightness` | `80` | `80` | FastLED brightness. Range: 1..255. |
 | `hp_bar.max_ma` | `max_ma` | `6000` | `6000` | FastLED power cap. Range: 100..12000. |
 | `hp_bar.dead_blink_ms` | `dead_blink` | `300` | `300` | HP bar blink period when defeated. |
-| `hp_bar.palette[]` | `pal0`..`pal7` | green/yellow/red | `#00FF00` | Palette entries for HP phases. Only `phase_count` entries are reported. |
+| `hp_bar.palette[]` | `pal0`..`pal7` | green/yellow/red | `#00FF00` | Lit HP-bar color phases by remaining HP ratio. Depleted columns stay off. Only `phase_count` entries are reported. |
 | `wifi.ssid` | `wifi_ssid` | empty | `BattleBangWiFi` | Provision over USB when possible. |
 | `wifi.password` | `wifi_pass` | empty | secret | Secret; omitted from tracked files and redacted from `show-config` unless explicitly requested in code. |
 | `wifi.auto_start` | `net_auto` | `false` in firmware, `true` in helper | `true` | Start Wi-Fi/MQTT automatically after boot when configured. |
@@ -95,7 +95,7 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 {
   "max_targets": 4,
   "ring_pins": [23, 21, 18, 17],
-  "piezo_do_pins": [27, 32, 33, 25],
+  "piezo_do_pins": [34, 35, 32, 33],
   "hp_bar_pin": 12,
   "led_type": "WS2811",
   "color_order": "RGB"

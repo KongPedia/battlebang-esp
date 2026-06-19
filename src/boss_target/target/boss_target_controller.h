@@ -40,12 +40,6 @@ class BossTargetController {
   void printBootBanner() const;
 
  private:
-  static void IRAM_ATTR piezoIsr0();
-  static void IRAM_ATTR piezoIsr1();
-  static void IRAM_ATTR piezoIsr2();
-  static void IRAM_ATTR piezoIsr3();
-  void IRAM_ATTR onPiezoIsr(uint8_t index);
-
   uint8_t targetCount() const;
   uint16_t ringLedCount() const;
   uint16_t hpLedCount() const;
@@ -53,7 +47,6 @@ class BossTargetController {
   CRGB colorFromRgb(uint32_t rgb) const;
   CRGB hpColor() const;
   CRGB hpColorForBand(uint8_t band) const;
-  CRGB nextHpColorForBand(uint8_t band) const;
   uint16_t hpLitGroupCount() const;
   uint8_t hpPhase() const;
   uint8_t hpBandForValue(int hp) const;
@@ -62,12 +55,14 @@ class BossTargetController {
   const char* commandState() const;
 
   void configurePins(const RuntimeConfig& previous, const RuntimeConfig& next);
+  void pollPiezoAo(uint32_t now);
   uint16_t popPiezoEdges(uint8_t index);
+  uint16_t popPiezoPeak(uint8_t index);
   void clearPiezoEdges();
   void selectNewTarget(uint32_t now);
   void clearActiveTarget();
-  void applyDamage(uint8_t targetIndex, const char* source, uint16_t edges, uint32_t now);
-  void recordWrongHit(uint8_t targetIndex, const char* source, uint16_t edges, uint32_t now);
+  void applyDamage(uint8_t targetIndex, const char* source, uint16_t edges, uint16_t peak, uint32_t now);
+  void recordWrongHit(uint8_t targetIndex, const char* source, uint16_t edges, uint16_t peak, uint32_t now);
   void emit(const char* name, uint8_t targetIndex, uint16_t peak, const char* source, uint16_t edges);
 
   void fillRing(uint8_t index, const CRGB& color);
@@ -75,8 +70,6 @@ class BossTargetController {
   void setHpBarAll(const CRGB& color);
   void renderTargets(uint32_t now);
   void renderHpBar(uint32_t now);
-  void clearHpBlinkMask();
-  void addHpBlinkSegment(int oldHp, int newHp);
   void clearAllLeds();
   void renderLeds(uint32_t now);
 
@@ -90,10 +83,7 @@ class BossTargetController {
   uint32_t targetStartedMs_ = 0;
   uint32_t lastAcceptedHitMs_ = 0;
   uint32_t lastShowMs_ = 0;
-  uint32_t hpFlashUntilMs_ = 0;
-  uint32_t lastHpBlinkMs_ = 0;
   uint32_t lastDeadBlinkMs_ = 0;
-  bool hpBlinkOn_ = false;
   bool deadBlinkOn_ = false;
   bool hitEnabled_ = true;
   bool otaPrepared_ = false;
@@ -106,21 +96,20 @@ class BossTargetController {
   bool lastTargetHitOk_[::boss_target::kMaxTargets] = {false, false, false, false};
   uint32_t targetFlashUntilMs_[::boss_target::kMaxTargets] = {0, 0, 0, 0};
 
-  volatile uint16_t piezoEdgeCount_[::boss_target::kMaxTargets] = {0, 0, 0, 0};
-  volatile uint32_t lastIsrUs_[::boss_target::kMaxTargets] = {0, 0, 0, 0};
+  uint16_t piezoEdgeCount_[::boss_target::kMaxTargets] = {0, 0, 0, 0};
+  uint16_t piezoPeak_[::boss_target::kMaxTargets] = {0, 0, 0, 0};
+  bool piezoArmed_[::boss_target::kMaxTargets] = {true, true, true, true};
+  uint32_t lastPiezoSampleMs_ = 0;
 
   CRGB ring1_[::boss_target::MAX_RING_NUM_LEDS];
   CRGB ring2_[::boss_target::MAX_RING_NUM_LEDS];
   CRGB ring3_[::boss_target::MAX_RING_NUM_LEDS];
   CRGB ring4_[::boss_target::MAX_RING_NUM_LEDS];
   CRGB hpBar_[::boss_target::MAX_HP_BAR_NUM_LEDS];
-  bool hpBlinkMask_[::boss_target::MAX_HP_BAR_GROUP_COUNT] = {};
   CRGB* rings_[::boss_target::kMaxTargets] = {ring1_, ring2_, ring3_, ring4_};
 
   EventCallback callback_ = nullptr;
   void* callbackCtx_ = nullptr;
-
-  static BossTargetController* isrInstance_;
 };
 
 }  // namespace boss_target

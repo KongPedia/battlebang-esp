@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "notes": "Boss-stage target factory defaults for the current 4-target board. This file is a committed schema/default reference; the ESP does not auto-load it at runtime. Actual device runtime config is written to NVS by serial provision/config JSON or MQTT config messages. Runtime provisioning persists identity, human-readable display_name, Wi-Fi, MQTT, gameplay, target/HP LED settings, and OTA policy in NVS; hardware_profile is validated against the compiled firmware as a compatibility guard, not used for live pin remapping. HP bar rendering groups the 300 LEDs as 100 vertical HP columns across 3 horizontal rows. Active match progress such as hp_remaining and active_target_index is intentionally not persisted. Boot/reset keeps all LEDs off with internal HP full until a start command is received.",
+  "notes": "Boss-stage target factory defaults for the current 4-target board. This file is a committed schema/default reference; the ESP does not auto-load it at runtime. Actual device runtime config is written to NVS by serial provision/config JSON or MQTT config messages. Runtime provisioning persists identity, human-readable display_name, Wi-Fi, MQTT, gameplay, target/HP LED settings, and OTA policy in NVS; hardware_profile is validated against the compiled firmware as a compatibility guard, not used for live pin remapping. HP bar rendering groups the 300 LEDs as 100 vertical HP columns across 3 horizontal rows and drains by hp_remaining / hp_max ratio with depleted columns off. Active match progress such as hp_remaining and active_target_index is intentionally not persisted. Boot/reset keeps all LEDs off with internal HP full until a start command is received.",
   "documentation": "docs/runtime-config.md",
   "examples": [
     "examples/provision.boss-target.example.json",
@@ -31,7 +31,7 @@
     "hardware_profile": {
       "max_targets": 4,
       "ring_pins": [23, 21, 18, 17],
-      "piezo_do_pins": [27, 32, 33, 25],
+      "piezo_do_pins": [34, 35, 32, 33],
       "hp_bar_pin": 12,
       "led_type": "WS2811",
       "color_order": "RGB"

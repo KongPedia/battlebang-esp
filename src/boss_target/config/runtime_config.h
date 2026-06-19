@@ -41,7 +41,7 @@ struct HpBarConfig {
 struct HardwareProfileConfig {
   uint8_t maxTargets = ::boss_target::kMaxTargets;
   int8_t ringPins[::boss_target::kMaxTargets] = {23, 21, 18, 17};
-  int8_t piezoDoPins[::boss_target::kMaxTargets] = {27, 32, 33, 25};
+  int8_t piezoDoPins[::boss_target::kMaxTargets] = {34, 35, 32, 33};
   int8_t hpBarPin = ::boss_target::HP_BAR_PIN;
   String ledType = ::boss_target::LED_TYPE_NAME;
   String colorOrder = ::boss_target::COLOR_ORDER_NAME;

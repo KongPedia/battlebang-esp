@@ -1,13 +1,13 @@
 # Boss Target firmware
 
-`src/boss_target/` is the boss-stage ESP32 firmware for **4 target LED rings + 4 piezo DO inputs + 1 HP bar**. It is separate from `src/hit_target/` because this device owns the boss HP bar and publishes boss-level status for Command Center orchestration.
+`src/boss_target/` is the boss-stage ESP32 firmware for **4 target LED rings + 4 piezo AO inputs + 1 HP bar**. It is separate from `src/hit_target/` because this device owns the boss HP bar and publishes boss-level status for Command Center orchestration.
 
 ## Operating model
 
 - Boot/reset: internal HP is full, but **all LEDs stay off** and hits are ignored.
 - MQTT/serial `start`: HP bar turns on at full green and one random target ring becomes active.
 - During ACTIVE: only the currently active ring accepts damage; wrong-ring hits are reported but do not reduce HP.
-- After a correct hit: `damage_per_hit` is subtracted, status is published, and another random target is selected from `0..target.count-1`.
+- After a correct hit: `damage_per_hit` is subtracted, the hit ring flashes white for 250 ms, status is published, and another random target is selected from `0..target.count-1`.
 - HP reaches 0: state becomes `DEFEATED`/`dead`, status keeps publishing periodically with `hp_remaining=0` and `destroyed=true` so Command Center can send turret `dead`/inactive commands.
 - `reset`: returns to READY with full internal HP and LEDs off. It does not start the game.
 
@@ -31,10 +31,10 @@ Current board profile is compiled as `kMaxTargets = 4`, while runtime config own
 | Ring 2 data | GPIO21 |
 | Ring 3 data | GPIO18 |
 | Ring 4 data | GPIO17 |
-| Piezo DO 1 | GPIO27 |
-| Piezo DO 2 | GPIO32 |
-| Piezo DO 3 | GPIO33 |
-| Piezo DO 4 | GPIO25 |
+| Piezo AO 1 | GPIO34 |
+| Piezo AO 2 | GPIO35 |
+| Piezo AO 3 | GPIO32 |
+| Piezo AO 4 | GPIO33 |
 | HP bar data | GPIO12 |
 | LED type/order | WS2811 / RGB |
 | Ring LEDs | 120 per target |
@@ -43,20 +43,36 @@ Current board profile is compiled as `kMaxTargets = 4`, while runtime config own
 Game logic iterates over `target.count`, not hard-coded `4`; if a future 6-target board appears, add a new hardware profile/env with a larger compiled capacity and pin map, then keep the random/HP/status logic mostly unchanged.
 
 The HP bar is physically wired as three horizontal LED rows on one data line.
-The renderer groups those rows by vertical column, so a HP decrement turns off
-or blinks the same column across all three rows together instead of draining one
-physical row before the next.
+The renderer groups those rows by vertical column, so HP always drains by overall `hp_remaining / hp_max` ratio across all three rows together. Depleted columns are simply off; they do not blink or show a trailing next-color segment.
+
+Latest live boss-stage wiring provided on 2026-06-19:
+
+```cpp
+#define RING1_PIN   23
+#define RING2_PIN   21
+#define RING3_PIN   18
+#define RING4_PIN   17
+#define HP_BAR_PIN  12
+#define PIEZO_AO_1  34
+#define PIEZO_AO_2  35
+#define PIEZO_AO_3  32
+#define PIEZO_AO_4  33
+```
 
 Bench GPIO check on 2026-06-19 with static-color diagnostic:
 
-| GPIO | Diagnostic color | Observed hardware | Note |
-| --- | --- | --- | --- |
-| GPIO23 | red | ring lit | ring candidate OK in latest static pass |
-| GPIO21 | green | not observed | recheck wiring before final target mapping |
-| GPIO17 | yellow | ring lit | ring candidate OK |
-| GPIO18 | blue | ring lit | ring candidate OK |
-| GPIO12 | cyan | HP bar lit | HP bar data pin |
-| GPIO26 | magenta | not observed | original HW branch HP pin, not current HP wiring |
+| GPIO | Observed hardware | Note |
+| --- | --- | --- |
+| GPIO23 | Ring 1 data | Initially open/disconnected during bench pass; keep as Ring 1 after wiring repair. |
+| GPIO21 | Ring 2 data | Confirmed as a ring data line. |
+| GPIO18 | Ring 3 data | Confirmed as a ring data line. |
+| GPIO17 | Ring 4 data | Confirmed as a ring data line. |
+| GPIO12 | HP bar data | Confirmed HP bar data line. |
+| GPIO26 | Not used | Old HW branch HP pin; not current HP wiring. |
+
+The original `HW_BossStage_Target` branch `main.cpp` differs from this live wiring:
+its HP bar pin is GPIO26 and its piezo inputs are digital DO pins GPIO27/32/33/25.
+The temporary bench Boss Stage firmware uploaded on 2026-06-19 keeps the original random-target/HP gameplay but uses ring pins 23/21/18/17, HP GPIO12, 120 LEDs per ring, 300 HP-bar LEDs, and analog AO polling on GPIO34/35/32/33.
 
 ## Runtime config / NVS
 
@@ -77,7 +93,7 @@ Persisted NVS config includes:
 
 - identity/placement (`boss_id`, `display_name`, `group`, `location`)
 - Wi-Fi and MQTT connection settings
-- gameplay values (`hp_max`, `damage_per_hit`, target duration, cooldown)
+- gameplay values (`hp_max`, `damage_per_hit`, target duration, cooldown). Defaults are normalized as 10 HP / 1 damage, and provisioning can change how many hits defeat the boss.
 - target count and LED counts/colors
 - OTA policy
 - debug simulation flag for bench testing

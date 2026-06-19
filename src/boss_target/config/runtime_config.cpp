@@ -300,7 +300,8 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
         ++i;
       }
     }
-    JsonArrayConst piezos = hw["piezo_do_pins"].as<JsonArrayConst>();
+    JsonArrayConst piezos = hw["piezo_ao_pins"].as<JsonArrayConst>();
+    if (piezos.isNull()) piezos = hw["piezo_do_pins"].as<JsonArrayConst>();
     if (!piezos.isNull()) {
       uint8_t i = 0;
       for (JsonVariantConst value : piezos) {

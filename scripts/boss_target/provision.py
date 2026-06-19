@@ -153,7 +153,7 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         "hardware_profile": {
             "max_targets": env_int(env, "BOSS_TARGET_MAX_TARGETS", 4),
             "ring_pins": split_csv_ints(env_first(env, "BOSS_TARGET_RING_PINS"), 4, "BOSS_TARGET_RING_PINS", [23, 21, 18, 17]),
-            "piezo_do_pins": split_csv_ints(env_first(env, "BOSS_TARGET_PIEZO_DO_PINS"), 4, "BOSS_TARGET_PIEZO_DO_PINS", [27, 32, 33, 25]),
+            "piezo_do_pins": split_csv_ints(env_first(env, "BOSS_TARGET_PIEZO_DO_PINS"), 4, "BOSS_TARGET_PIEZO_DO_PINS", [34, 35, 32, 33]),
             "hp_bar_pin": env_int(env, "BOSS_TARGET_HP_BAR_PIN", 12),
             "led_type": env_first(env, "BOSS_TARGET_LED_TYPE", default="WS2811"),
             "color_order": env_first(env, "BOSS_TARGET_COLOR_ORDER", default="RGB"),

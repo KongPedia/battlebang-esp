@@ -11,7 +11,7 @@ static constexpr const char* TARGET_ID_PREFIX = "boss_target";
 static constexpr const char* FIRMWARE_NAME = "battlebang-boss-target";
 static constexpr uint32_t SERIAL_BAUD = 115200;
 
-// Current boss-target board profile: 4 target LED rings, 4 piezo DO inputs, 1 HP bar.
+// Current boss-target board profile: 4 target LED rings, 4 piezo AO inputs, 1 HP bar.
 // Future 6-target hardware should add a new build profile/env with a different capacity/pin map.
 static constexpr uint8_t kMaxTargets = 4;
 static constexpr uint8_t DEFAULT_TARGET_COUNT = 4;
@@ -32,11 +32,14 @@ static constexpr int RING3_PIN = 18;
 static constexpr int RING4_PIN = 17;
 static constexpr int RING_PINS[kMaxTargets] = {RING1_PIN, RING2_PIN, RING3_PIN, RING4_PIN};
 
-static constexpr int PIEZO1_DO_PIN = 27;
-static constexpr int PIEZO2_DO_PIN = 32;
-static constexpr int PIEZO3_DO_PIN = 33;
-static constexpr int PIEZO4_DO_PIN = 25;
-static constexpr int PIEZO_DO_PINS[kMaxTargets] = {PIEZO1_DO_PIN, PIEZO2_DO_PIN, PIEZO3_DO_PIN, PIEZO4_DO_PIN};
+static constexpr int PIEZO1_AO_PIN = 34;
+static constexpr int PIEZO2_AO_PIN = 35;
+static constexpr int PIEZO3_AO_PIN = 32;
+static constexpr int PIEZO4_AO_PIN = 33;
+static constexpr int PIEZO_AO_PINS[kMaxTargets] = {PIEZO1_AO_PIN, PIEZO2_AO_PIN, PIEZO3_AO_PIN, PIEZO4_AO_PIN};
+// Keep the legacy config field name `piezo_do_pins` as a compatibility alias
+// for provision/config payloads while the physical wiring uses AO outputs.
+static constexpr int PIEZO_DO_PINS[kMaxTargets] = {PIEZO1_AO_PIN, PIEZO2_AO_PIN, PIEZO3_AO_PIN, PIEZO4_AO_PIN};
 
 static constexpr int HP_BAR_PIN = 12;
 
@@ -52,9 +55,11 @@ static constexpr uint16_t DAMAGE_PER_HIT = 1;
 static constexpr uint8_t HP_PHASE_COUNT = 3;
 static constexpr uint32_t TARGET_DURATION_MS = 2500;
 static constexpr uint32_t HIT_COOLDOWN_MS = 300;
-static constexpr uint32_t DIGITAL_ISR_DEBOUNCE_US = 20000;
-static constexpr uint32_t HIT_FLASH_MS = 60;
-static constexpr uint32_t BLINK_MS = 250;
+static constexpr uint32_t DIGITAL_ISR_DEBOUNCE_US = 20000;  // legacy config field, retained for compatibility
+static constexpr uint16_t PIEZO_AO_THRESHOLD = 1800;
+static constexpr uint16_t PIEZO_AO_RELEASE = 900;
+static constexpr uint32_t PIEZO_AO_SAMPLE_PERIOD_MS = 2;
+static constexpr uint32_t HIT_FLASH_MS = 250;
 static constexpr uint32_t DEAD_BLINK_MS = 300;
 
 static constexpr uint32_t HP_GREEN = 0x00FF00;
