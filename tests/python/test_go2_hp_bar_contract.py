@@ -158,7 +158,7 @@ def test_go2_piezo_threshold_default_is_lower_sensitivity_trial_value() -> None:
     for firmware, _bar_cpp, _ring_cpp, build_config, robots_json in FIRMWARES:
         defaults = json.loads(robots_json.read_text())["defaults"]
         assert defaults["piezo_ao_threshold_raw"] == 600, firmware
-        assert defaults["piezo_ao_rearm_raw"] == 100, firmware
+        assert defaults["piezo_ao_rearm_raw"] == 150, firmware
         assert defaults["piezo_ao_threshold_raw"] > defaults["piezo_ao_rearm_raw"], firmware
         assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 600" in build_config.read_text(), firmware
 
