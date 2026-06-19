@@ -368,13 +368,13 @@
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
-// Measured fire vibration reached ~1656 raw in bench tests, so default above
-// that range. Tune per harness/target with robots.json or env.
-#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 1200
+// BTB-770 sensitivity trial: lower threshold so off-center harness hits still
+// publish hit candidates. Tune per harness/target with robots.json or env.
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 600
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_REARM_RAW
-#define BATTLEBANG_PIEZO_AO_REARM_RAW 400
+#define BATTLEBANG_PIEZO_AO_REARM_RAW 150
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS

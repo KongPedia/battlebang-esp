@@ -27,7 +27,7 @@ battlebang/hit/{robot_id}/ring_display/command
   "sequence": 1,
   "hit": true,
   "peak": 2140,
-  "threshold": 1200,
+  "threshold": 600,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -40,7 +40,7 @@ battlebang/hit/{robot_id}/ring_display/command
     "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 1200
+    "adc_threshold_raw": 600
   }
 }
 ```
@@ -56,7 +56,7 @@ battlebang/hit/{robot_id}/ring_display/command
   "sequence": 7,
   "hit": true,
   "peak": 2188,
-  "threshold": 1200,
+  "threshold": 600,
   "firmware_ts_ms": 45678,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -71,7 +71,7 @@ battlebang/hit/{robot_id}/ring_display/command
     "client_id": "battlebang-hit-go2_05-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2188,
-    "adc_threshold_raw": 1200,
+    "adc_threshold_raw": 600,
     "queued": true,
     "queued_for_ms": 1200,
     "queue_depth": 3,

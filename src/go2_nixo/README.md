@@ -221,7 +221,7 @@ pio run -e esp32dev_go2_nixo_go2_03
   "sequence": 1,
   "hit": true,
   "peak": 2140,
-  "threshold": 1200,
+  "threshold": 600,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -234,7 +234,7 @@ pio run -e esp32dev_go2_nixo_go2_03
     "client_id": "battlebang-hit-go2_03-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 1200
+    "adc_threshold_raw": 600
   }
 }
 ```
@@ -275,8 +275,8 @@ Go2별 non-secret profile입니다.
     "ring_led_brightness": 80,
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 1200,
-    "piezo_ao_rearm_raw": 400,
+    "piezo_ao_threshold_raw": 600,
+    "piezo_ao_rearm_raw": 100,
     "piezo_ao_capture_window_ms": 30,
     "piezo_ao_debug_period_ms": 100,
     "nixo_mqtt_topic_prefix": "battlebang/nixo",
