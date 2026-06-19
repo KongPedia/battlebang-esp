@@ -47,6 +47,17 @@ The renderer groups those rows by vertical column, so a HP decrement turns off
 or blinks the same column across all three rows together instead of draining one
 physical row before the next.
 
+Bench GPIO check on 2026-06-19 with static-color diagnostic:
+
+| GPIO | Diagnostic color | Observed hardware | Note |
+| --- | --- | --- | --- |
+| GPIO23 | red | ring lit | ring candidate OK in latest static pass |
+| GPIO21 | green | not observed | recheck wiring before final target mapping |
+| GPIO17 | yellow | ring lit | ring candidate OK |
+| GPIO18 | blue | ring lit | ring candidate OK |
+| GPIO12 | cyan | HP bar lit | HP bar data pin |
+| GPIO26 | magenta | not observed | original HW branch HP pin, not current HP wiring |
+
 ## Runtime config / NVS
 
 NVS stores runtime configuration only. In this repo there are three different
