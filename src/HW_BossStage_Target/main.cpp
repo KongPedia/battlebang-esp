@@ -2,7 +2,7 @@
 
 // ================= LED 설정 =================
 #define RING_NUM_LEDS   40
-#define HP_NUM_LEDS     92
+#define HP_NUM_LEDS     100
 
 #define BRIGHTNESS      80
 #define LED_TYPE        WS2811
@@ -18,10 +18,10 @@
 #define HP_LED_PIN      12
 
 // 피에조 DO 핀 4개
-#define PIEZO1_DO_PIN   27
-#define PIEZO2_DO_PIN   32
-#define PIEZO3_DO_PIN   33
-#define PIEZO4_DO_PIN   25
+#define PIEZO1_DO_PIN   34
+#define PIEZO2_DO_PIN   35
+#define PIEZO3_DO_PIN   32
+#define PIEZO4_DO_PIN   33
 
 // ================= 게임 설정 =================
 constexpr int HP_MAX = 3000;
