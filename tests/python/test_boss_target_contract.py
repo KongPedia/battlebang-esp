@@ -40,6 +40,9 @@ def test_boss_target_factory_defaults_match_current_four_target_board() -> None:
     assert hw["color_order"] == "RGB"
     assert defaults["ring_num_leds"] == 120
     assert defaults["hp_bar_num_leds"] == 300
+    assert defaults["target_active_color"] == "#FF0000"
+    assert defaults["led_brightness"] == 255
+    assert defaults["led_max_ma"] == 12000
     assert BOSS_HP_BAR_LED_COUNT == defaults["hp_bar_num_leds"]
     assert "100 vertical HP columns across 3 horizontal rows" in config["notes"]
     assert defaults["ota_public_manifest_url"].endswith("/boss-target-latest/boss-target-manifest.json")
@@ -112,7 +115,7 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
     assert "setHpBarGroup(group, CHSV(hue, 255, neonOrbitValue(distance, 55)));" in render_intro
     assert "ring >= targetCount()" in render_intro
 
-    # Round LED rings are only target indicators: black by default, blue active target,
+    # Round LED rings are only target indicators: black by default, red active target,
     # white hit flash. HP fill/count rendering belongs to hpBar_ only.
     render_targets = controller[controller.index("void BossTargetController::renderTargets"):controller.index("void BossTargetController::renderHpBar")]
     assert "fillRing(i, CRGB::Black)" in render_targets

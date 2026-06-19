@@ -140,13 +140,13 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         "target": {
             "count": target_count,
             "ring_num_leds": env_int(env, "BOSS_TARGET_RING_NUM_LEDS", 120),
-            "active_color": env_first(env, "BOSS_TARGET_TARGET_ACTIVE_COLOR", default="#0000FF"),
+            "active_color": env_first(env, "BOSS_TARGET_TARGET_ACTIVE_COLOR", default="#FF0000"),
             "hit_flash_color": env_first(env, "BOSS_TARGET_TARGET_HIT_FLASH_COLOR", default="#FFFFFF"),
         },
         "hp_bar": {
             "num_leds": env_int(env, "BOSS_TARGET_HP_BAR_NUM_LEDS", 300),
-            "brightness": env_int(env, "BOSS_TARGET_LED_BRIGHTNESS", 80),
-            "max_ma": env_int(env, "BOSS_TARGET_LED_MAX_MA", 6000),
+            "brightness": env_int(env, "BOSS_TARGET_LED_BRIGHTNESS", 255),
+            "max_ma": env_int(env, "BOSS_TARGET_LED_MAX_MA", 12000),
             "palette": split_palette(env_first(env, "BOSS_TARGET_HP_PALETTE")),
             "dead_blink_ms": env_int(env, "BOSS_TARGET_HP_DEAD_BLINK_MS", 300),
         },

@@ -62,11 +62,11 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 | `gameplay.digital_isr_debounce_us` | `isr_us` | `20000` | `20000` | Legacy debounce field retained for piezo compatibility. Range: 500..50000. |
 | `target.count` | `tgt_count` | `4` | `4` | Runtime active target count. Must be 1..compiled `kMaxTargets` (currently 4). |
 | `target.ring_num_leds` | `ring_leds` | `120` | `120` | LED count per target ring. Must fit compiled LED buffer. |
-| `target.active_color` | `active_rgb` | `#0000FF` | `#0000FF` | Active ring color as RGB hex. |
+| `target.active_color` | `active_rgb` | `#FF0000` | `#FF0000` | Active ring color as RGB hex. |
 | `target.hit_flash_color` | `flash_rgb` | `#FFFFFF` | `#FFFFFF` | Correct-hit flash color as RGB hex. |
 | `hp_bar.num_leds` | `hp_leds` | `300` | `300` | HP bar LED count. Must fit compiled LED buffer and be divisible by 3 because the bar renders as 100 vertical HP columns × 3 horizontal rows. |
-| `hp_bar.brightness` | `brightness` | `80` | `80` | FastLED brightness. Range: 1..255. |
-| `hp_bar.max_ma` | `max_ma` | `6000` | `6000` | FastLED power cap. Range: 100..12000. |
+| `hp_bar.brightness` | `brightness` | `255` | `255` | FastLED brightness. Range: 1..255. |
+| `hp_bar.max_ma` | `max_ma` | `12000` | `12000` | FastLED power cap. Range: 100..12000. |
 | `hp_bar.dead_blink_ms` | `dead_blink` | `300` | `300` | HP bar blink period when defeated. |
 | `hp_bar.palette[]` | `pal0`..`pal7` | green/yellow/red | `#00FF00` | Lit HP-bar color phases by remaining HP ratio. Depleted columns stay off. Only `phase_count` entries are reported. |
 | `wifi.ssid` | `wifi_ssid` | empty | `BattleBangWiFi` | Provision over USB when possible. |

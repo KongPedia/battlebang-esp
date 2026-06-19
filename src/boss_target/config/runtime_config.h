@@ -23,7 +23,7 @@ struct GameplayConfig {
 struct TargetConfig {
   uint8_t count = ::boss_target::DEFAULT_TARGET_COUNT;
   uint16_t ringNumLeds = ::boss_target::RING_NUM_LEDS;
-  uint32_t activeColor = ::boss_target::TARGET_ACTIVE_BLUE;
+  uint32_t activeColor = ::boss_target::TARGET_ACTIVE_RED;
   uint32_t hitFlashColor = ::boss_target::TARGET_HIT_FLASH_WHITE;
 };
 

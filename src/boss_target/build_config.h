@@ -43,9 +43,9 @@ static constexpr int PIEZO_DO_PINS[kMaxTargets] = {PIEZO1_AO_PIN, PIEZO2_AO_PIN,
 
 static constexpr int HP_BAR_PIN = 12;
 
-static constexpr uint8_t LED_BRIGHTNESS = 80;
+static constexpr uint8_t LED_BRIGHTNESS = 255;
 static constexpr uint8_t LED_MAX_VOLTS = 5;
-static constexpr uint16_t LED_MAX_MA = 6000;
+static constexpr uint16_t LED_MAX_MA = 12000;
 static constexpr uint32_t LED_SHOW_PERIOD_MS = 16;
 static constexpr const char* LED_TYPE_NAME = "WS2811";
 static constexpr const char* COLOR_ORDER_NAME = "RGB";
@@ -68,7 +68,7 @@ static constexpr uint32_t DEAD_BLINK_MS = 300;
 static constexpr uint32_t HP_GREEN = 0x00FF00;
 static constexpr uint32_t HP_YELLOW = 0xFFFF00;
 static constexpr uint32_t HP_RED = 0xFF0000;
-static constexpr uint32_t TARGET_ACTIVE_BLUE = 0x0000FF;
+static constexpr uint32_t TARGET_ACTIVE_RED = 0xFF0000;
 static constexpr uint32_t TARGET_HIT_FLASH_WHITE = 0xFFFFFF;
 
 static_assert(kMaxTargets == 4, "Current boss-target profile is the 4-channel board");
