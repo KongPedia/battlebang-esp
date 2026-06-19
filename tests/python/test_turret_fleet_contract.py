@@ -918,6 +918,33 @@ def test_fleet_e2e_mqtt_harness_covers_modes_and_readable_patterns() -> None:
     assert module.sign_changes([2.0, -2.0, 2.0]) == 2
 
 
+def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
+            "--dry-run",
+            "--random-seed",
+            "7",
+            "--root",
+            "battlebang",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    output = result.stdout
+    assert "turrets=turret_1,turret_3,turret_4" in output
+    assert "order=random" in output
+    assert "parallel_loop=disabled" in output
+    assert "sequential round=1 order=turret_4,turret_1,turret_3" in output
+    assert "parallel turret=" not in output
+    for turret_id in ["turret_1", "turret_3", "turret_4"]:
+        assert f"topic=battlebang/turrets/{turret_id}/command" in output
+
+
 def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
     import importlib.util
 
