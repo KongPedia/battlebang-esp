@@ -348,31 +348,44 @@ def publish_one(
 
 def publish_turret_home_commands(
     client: MqttSession,
-    monitor: StatusMonitor,
-    args: argparse.Namespace,
     *,
     root: str,
     turrets: list[str],
-) -> None:
+) -> dict[str, str]:
     command_ids: dict[str, str] = {}
-    started: set[str] = set()
-    pending: set[str] = set()
-    last_printed: dict[str, tuple[Any, ...]] = {}
-    last_docs: dict[str, dict[str, Any]] = {}
-    start_deadline = time.time() + args.start_timeout_s
-    deadline = time.time() + args.turret_home_timeout_s
 
     for turret_id in turrets:
         command_topic = topic_for(root, turret_id, "command")
         payload = build_simple_turret_payload("home", turret_id, prefix="boss-home")
         command_id = str(payload["command_id"])
         command_ids[turret_id] = command_id
-        pending.add(turret_id)
         print(f"publish home turret={turret_id} topic={command_topic} command_id={command_id}", flush=True)
         client.publish_json(command_topic, payload)
 
-    while pending and time.time() < deadline:
-        item = monitor.pump_once(client, timeout_s=1.0)
+    return command_ids
+
+
+def wait_for_turret_home_commands(
+    client: MqttSession,
+    monitor: StatusMonitor,
+    args: argparse.Namespace,
+    *,
+    root: str,
+    command_ids: dict[str, str],
+    min_wait_until_s: float = 0.0,
+) -> None:
+    started: set[str] = set()
+    pending = set(command_ids)
+    last_printed: dict[str, tuple[Any, ...]] = {}
+    last_docs: dict[str, dict[str, Any]] = {}
+    start_deadline = time.time() + args.start_timeout_s
+    deadline = time.time() + args.turret_home_timeout_s
+
+    while pending or time.time() < min_wait_until_s:
+        if pending and time.time() >= deadline:
+            break
+        timeout_s = 1.0 if pending else min(0.5, max(0.0, min_wait_until_s - time.time()))
+        item = monitor.pump_once(client, timeout_s=timeout_s)
         if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
             raise BossDefeated(monitor.boss_dead_reason())
         if item is None:
@@ -511,11 +524,26 @@ def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse
         monitor.latest_boss = {}
         publish_boss_command(client, root=root, boss_id=boss_id, command="reset")
         wait_for_boss_ready(client, monitor, timeout_s=args.boss_ready_timeout_s)
-    if args.turret_home_first:
-        publish_turret_home_commands(client, monitor, args, root=root, turrets=monitor.turret_order)
     publish_boss_command(client, root=root, boss_id=boss_id, command="start")
-    print(f"boss intro wait {args.boss_intro_wait_s:.1f}s before lane_sweep starts", flush=True)
-    sleep_with_pump(client, monitor, args.boss_intro_wait_s)
+    intro_done_at_s = time.time() + max(0.0, args.boss_intro_wait_s)
+    if args.turret_home_first:
+        command_ids = publish_turret_home_commands(client, root=root, turrets=monitor.turret_order)
+        print(
+            f"boss intro and turret home overlap wait intro={args.boss_intro_wait_s:.1f}s "
+            f"home_timeout={args.turret_home_timeout_s:.1f}s before lane_sweep starts",
+            flush=True,
+        )
+        wait_for_turret_home_commands(
+            client,
+            monitor,
+            args,
+            root=root,
+            command_ids=command_ids,
+            min_wait_until_s=intro_done_at_s,
+        )
+    else:
+        print(f"boss intro wait {args.boss_intro_wait_s:.1f}s before lane_sweep starts", flush=True)
+        sleep_with_pump(client, monitor, args.boss_intro_wait_s)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -547,8 +575,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--boss-id", help="optional boss_target id; enables reset/start opening before turret lane_sweep")
     parser.add_argument("--boss-reset-first", action=argparse.BooleanOptionalAction, default=True, help="publish boss reset and wait for READY before boss start")
     parser.add_argument("--boss-ready-timeout-s", type=float, default=10.0, help="wait for boss READY after reset")
-    parser.add_argument("--turret-home-first", action=argparse.BooleanOptionalAction, default=True, help="with --boss-id, publish home to every configured turret after boss reset/READY and before boss start")
-    parser.add_argument("--turret-home-timeout-s", type=float, default=45.0, help="wait for all pre-start turret home commands to complete")
+    parser.add_argument("--turret-home-first", action=argparse.BooleanOptionalAction, default=True, help="with --boss-id, publish home to every configured turret immediately after boss start so home overlaps the boss intro")
+    parser.add_argument("--turret-home-timeout-s", type=float, default=45.0, help="wait for all intro-overlapped turret home commands to complete")
     parser.add_argument("--boss-intro-wait-s", type=float, default=5.0, help="wait after boss start so the 5s neon-rainbow intro finishes before turrets fire")
     parser.add_argument("--dry-run", action="store_true", help="print planned sequence without publishing/subscribing")
     return parser
@@ -581,14 +609,17 @@ def dry_run(args: argparse.Namespace, root: str, turrets: list[str]) -> None:
         print("dry-run boss opening:")
         if args.boss_reset_first:
             print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"reset\"}} wait_ready<={args.boss_ready_timeout_s:g}s")
+        print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"start\"}} start_intro={args.boss_intro_wait_s:g}s")
         if args.turret_home_first:
             for turret_id in turrets:
                 print(
                     f"  turret topic={topic_for(root, turret_id, 'command')} "
                     f"payload={{\"command\":\"home\",\"command_id\":\"boss-home-{turret_id}-<ms>\"}} "
-                    f"wait_home<={args.turret_home_timeout_s:g}s"
+                    f"overlaps_intro wait_home<={args.turret_home_timeout_s:g}s"
                 )
-        print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"start\"}} wait_intro={args.boss_intro_wait_s:g}s")
+            print("  wait gate=turret_home_done_and_intro_elapsed")
+        else:
+            print(f"  wait_intro={args.boss_intro_wait_s:g}s")
         print("dry-run boss defeat handling:")
         for turret_id in turrets:
             print(f"  if boss hp<=0 topic={topic_for(root, turret_id, 'command')} payload={{\"command\":\"dead\",\"command_id\":\"boss-dead-{turret_id}-<ms>\"}}")
