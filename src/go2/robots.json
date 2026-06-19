@@ -14,7 +14,7 @@
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
     "piezo_ao_threshold_raw": 600,
-    "piezo_ao_rearm_raw": 100,
+    "piezo_ao_rearm_raw": 150,
     "piezo_ao_capture_window_ms": 30,
     "piezo_ao_debug_period_ms": 100,
     "mqtt_topic_prefix": "battlebang/hit",
