@@ -945,6 +945,33 @@ def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> N
         assert f"topic=battlebang/turrets/{turret_id}/command" in output
 
 
+def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
+            "--dry-run",
+            "--root",
+            "battlebang",
+            "--boss-id",
+            "boss_target_6809477249D0",
+            "--count",
+            "1",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    output = result.stdout
+    assert "boss=boss_target_6809477249D0" in output
+    assert "dry-run boss opening:" in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"reset"} wait_ready<=10s' in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"start"} wait_intro=5s' in output
+    assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
+
+
 def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
     import importlib.util
 

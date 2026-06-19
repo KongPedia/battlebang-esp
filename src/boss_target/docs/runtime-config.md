@@ -112,10 +112,10 @@ Match progress is runtime state and is deliberately not written to NVS:
 - `hp_pct`
 - `active_target_index`
 - `targets[].active`
-- `mode` / `command_state` ACTIVE progress
+- `mode` / `command_state` INTRO/ACTIVE progress
 - `sequence`, last hit information, target timers, debounce timestamps
 
-A reboot or `reset` always returns to safe READY/UNCONFIGURED with internal HP full and all LEDs off. The game starts only after a `start` command.
+A reboot or `reset` always returns to safe READY/UNCONFIGURED with internal HP full and all LEDs off. The game starts only after a `start` command, which first runs a 5-second fast neon-rainbow orbit INTRO before ACTIVE target play.
 
 ## Example files
 

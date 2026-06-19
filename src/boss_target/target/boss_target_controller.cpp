@@ -5,6 +5,21 @@
 namespace battlebang {
 namespace boss_target {
 
+namespace {
+
+uint8_t circularDistance8(uint8_t lhs, uint8_t rhs) {
+  uint8_t delta = lhs > rhs ? lhs - rhs : rhs - lhs;
+  return delta > 127 ? 255 - delta : delta;
+}
+
+uint8_t neonOrbitValue(uint8_t distance, uint8_t width) {
+  static constexpr uint8_t kFloor = 70;
+  if (distance >= width) return kFloor;
+  return static_cast<uint8_t>(kFloor + ((static_cast<uint16_t>(width - distance) * (255 - kFloor)) / width));
+}
+
+}  // namespace
+
 void BossTargetController::begin(const RuntimeConfig& config, EventCallback callback, void* ctx) {
   callback_ = callback;
   callbackCtx_ = ctx;
@@ -53,6 +68,8 @@ void BossTargetController::reset(const char* source) {
   hpRemaining_ = config_.gameplay.hpMax;
   sequence_ = 0;
   clearActiveTarget();
+  startIntroStartedMs_ = 0;
+  startIntroUntilMs_ = 0;
   lastAcceptedHitMs_ = 0;
   lastHitTargetIndex_ = -1;
   lastWrongTargetIndex_ = -1;
@@ -84,15 +101,19 @@ void BossTargetController::start(const char* source, bool resetHp) {
   if (resetHp || config_.gameplay.startResetsHp || hpRemaining_ <= 0) {
     hpRemaining_ = config_.gameplay.hpMax;
   }
-  mode_ = Mode::ACTIVE;
+  const uint32_t now = millis();
+  clearActiveTarget();
+  for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) targetFlashUntilMs_[i] = 0;
+  mode_ = Mode::INTRO;
+  startIntroStartedMs_ = now;
+  startIntroUntilMs_ = now + ::boss_target::START_INTRO_MS;
   otaPrepared_ = false;
   hitEnabled_ = true;
   targetTransitionPending_ = false;
   nextTargetSelectionMs_ = 0;
   clearPiezoEdges();
-  selectNewTarget(millis());
-  lastEvent_ = "start";
-  emit("start", static_cast<uint8_t>(activeTarget_ >= 0 ? activeTarget_ : 255), 0, source, 0);
+  lastEvent_ = "start_intro";
+  emit("start", 255, 0, source, 0);
 }
 
 void BossTargetController::simulateHit(const char* source, int targetIndex) {
@@ -123,6 +144,13 @@ bool BossTargetController::vulnerableNow(uint32_t) const {
 }
 
 void BossTargetController::loop(uint32_t now) {
+  if (mode_ == Mode::INTRO && hpRemaining_ > 0 && static_cast<int32_t>(now - startIntroUntilMs_) >= 0) {
+    mode_ = Mode::ACTIVE;
+    startIntroStartedMs_ = 0;
+    startIntroUntilMs_ = 0;
+    selectNewTarget(now);
+  }
+
   if (mode_ == Mode::ACTIVE && hpRemaining_ > 0 && targetTransitionPending_ &&
       static_cast<int32_t>(now - nextTargetSelectionMs_) >= 0) {
     targetTransitionPending_ = false;
@@ -219,6 +247,7 @@ const char* BossTargetController::modeString() const {
   switch (mode_) {
     case Mode::UNCONFIGURED: return "UNCONFIGURED";
     case Mode::READY: return "READY";
+    case Mode::INTRO: return "INTRO";
     case Mode::ACTIVE: return "ACTIVE";
     case Mode::DEFEATED: return "DEFEATED";
   }
@@ -229,6 +258,7 @@ const char* BossTargetController::commandState() const {
   switch (mode_) {
     case Mode::UNCONFIGURED: return "unconfigured";
     case Mode::READY: return "ready";
+    case Mode::INTRO: return "intro";
     case Mode::ACTIVE: return "active";
     case Mode::DEFEATED: return "dead";
   }
@@ -331,6 +361,37 @@ void BossTargetController::setHpBarAll(const CRGB& color) {
   }
 }
 
+void BossTargetController::renderStartIntro(uint32_t now) {
+  fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
+  const uint32_t elapsed = now - startIntroStartedMs_;
+  const uint8_t baseHue = static_cast<uint8_t>((elapsed / ::boss_target::START_INTRO_HUE_STEP_MS) & 0xFF);
+
+  const uint16_t ringCount = ringLedCount();
+  for (uint8_t ring = 0; ring < ::boss_target::kMaxTargets; ++ring) {
+    fill_solid(rings_[ring], ::boss_target::MAX_RING_NUM_LEDS, CRGB::Black);
+    if (ring >= targetCount()) continue;
+    const uint8_t orbit = static_cast<uint8_t>(baseHue * 3 + ring * 48);
+    for (uint16_t led = 0; led < ringCount; ++led) {
+      const uint8_t position = static_cast<uint8_t>((led * 255U) / ringCount);
+      const uint8_t distance = circularDistance8(position, orbit);
+      const uint8_t hue = static_cast<uint8_t>(baseHue * 2 + ring * 32 + position);
+      rings_[ring][led] = CHSV(hue, 255, neonOrbitValue(distance, 42));
+    }
+  }
+
+  const uint16_t groups = hpGroupCount();
+  const uint8_t hpOrbitA = static_cast<uint8_t>(baseHue * 4);
+  const uint8_t hpOrbitB = static_cast<uint8_t>(128 + baseHue * 4);
+  for (uint16_t group = 0; group < groups; ++group) {
+    const uint8_t position = static_cast<uint8_t>((group * 255U) / groups);
+    const uint8_t distanceA = circularDistance8(position, hpOrbitA);
+    const uint8_t distanceB = circularDistance8(position, hpOrbitB);
+    const uint8_t distance = min(distanceA, distanceB);
+    const uint8_t hue = static_cast<uint8_t>(baseHue * 2 + position);
+    setHpBarGroup(group, CHSV(hue, 255, neonOrbitValue(distance, 55)));
+  }
+}
+
 void BossTargetController::renderTargets(uint32_t now) {
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) fillRing(i, CRGB::Black);
   if (mode_ != Mode::ACTIVE) return;
@@ -348,7 +409,7 @@ void BossTargetController::renderTargets(uint32_t now) {
 
 void BossTargetController::renderHpBar(uint32_t now) {
   fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
-  if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;
+  if (mode_ == Mode::INTRO || mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;
   if (mode_ == Mode::DEFEATED) {
     if (now - lastDeadBlinkMs_ >= config_.hpBar.deadBlinkMs) {
       lastDeadBlinkMs_ = now;
@@ -375,6 +436,11 @@ void BossTargetController::clearAllLeds() {
 void BossTargetController::renderLeds(uint32_t now) {
   if (now - lastShowMs_ < ::boss_target::LED_SHOW_PERIOD_MS) return;
   lastShowMs_ = now;
+  if (mode_ == Mode::INTRO) {
+    renderStartIntro(now);
+    FastLED.show();
+    return;
+  }
   renderTargets(now);
   renderHpBar(now);
   FastLED.show();
@@ -444,6 +510,7 @@ void BossTargetController::appendStatus(JsonObject obj) const {
   obj["vulnerable"] = vulnerableNow(now);
   obj["activation_active"] = vulnerableNow(now);
   obj["hit_target_active"] = vulnerableNow(now);
+  obj["start_intro_active"] = mode_ == Mode::INTRO;
   obj["target_transition_pending"] = targetTransitionPending_;
   const bool targetActiveForHits = vulnerableNow(now);
   obj["active_target_index"] = targetActiveForHits ? activeTarget_ : -1;

@@ -68,18 +68,21 @@ class BossTargetController {
   void fillRing(uint8_t index, const CRGB& color);
   void setHpBarGroup(uint16_t group0Based, const CRGB& color);
   void setHpBarAll(const CRGB& color);
+  void renderStartIntro(uint32_t now);
   void renderTargets(uint32_t now);
   void renderHpBar(uint32_t now);
   void clearAllLeds();
   void renderLeds(uint32_t now);
 
-  enum class Mode : uint8_t { UNCONFIGURED, READY, ACTIVE, DEFEATED };
+  enum class Mode : uint8_t { UNCONFIGURED, READY, INTRO, ACTIVE, DEFEATED };
 
   RuntimeConfig config_;
   Mode mode_ = Mode::UNCONFIGURED;
   int hpRemaining_ = 0;
   uint32_t sequence_ = 0;
   int activeTarget_ = -1;
+  uint32_t startIntroStartedMs_ = 0;
+  uint32_t startIntroUntilMs_ = 0;
   uint32_t targetStartedMs_ = 0;
   uint32_t nextTargetSelectionMs_ = 0;
   uint32_t lastAcceptedHitMs_ = 0;

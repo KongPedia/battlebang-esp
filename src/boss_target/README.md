@@ -5,7 +5,7 @@
 ## Operating model
 
 - Boot/reset: internal HP is full, but **all LEDs stay off** and hits are ignored.
-- MQTT/serial `start`: HP bar turns on at full green and one random target ring becomes active.
+- MQTT/serial `start`: all target rings and the HP bar run a 5-second fast neon-rainbow orbit intro (`INTRO`), then the HP bar turns on at full green and one random target ring becomes active.
 - During ACTIVE: only the currently active ring accepts damage; wrong-ring hits are reported but do not reduce HP.
 - After a correct hit: `damage_per_hit` is subtracted, the hit ring blinks white for about 1 second, hits are temporarily ignored, status is published, and then another random target is selected from `0..target.count-1`.
 - HP reaches 0: state becomes `DEFEATED`/`dead`, status keeps publishing periodically with `hp_remaining=0` and `destroyed=true` so Command Center can send turret `dead`/inactive commands.
@@ -141,7 +141,7 @@ battlebang/boss_targets/{boss_id}/ota
 battlebang/boss_targets/all/ota
 ```
 
-Status includes `boss_id`, `display_name`, `mode`, `command_state`, `hp_remaining`, `hp_max`, `hp_pct`, `destroyed`, `target_count`, `hardware_max_targets`, `target_transition_pending`, `active_target_index`, and a `targets[]` array. It publishes on state changes and on a 5-second heartbeat.
+Status includes `boss_id`, `display_name`, `mode`, `command_state`, `hp_remaining`, `hp_max`, `hp_pct`, `destroyed`, `target_count`, `hardware_max_targets`, `start_intro_active`, `target_transition_pending`, `active_target_index`, and a `targets[]` array. It publishes on state changes and on a 5-second heartbeat.
 
 ## Build / upload
 
@@ -153,7 +153,7 @@ Status includes `boss_id`, `display_name`, `mode`, `command_state`, `hp_remainin
 
 Serial commands:
 
-- `start`: begin ACTIVE round with full HP and random target.
+- `start`: begin the 5-second fast neon-rainbow orbit intro, then enter ACTIVE with full HP and a random target.
 - `r` / `reset`: READY reset with full internal HP and LEDs off.
 - `s` / `status` / `show-status`: print JSON status.
 - `h` / `hit`: simulate a hit only when debug simulation is enabled.

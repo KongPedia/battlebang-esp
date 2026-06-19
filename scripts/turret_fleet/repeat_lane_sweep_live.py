@@ -46,17 +46,29 @@ def clean_root(root: str) -> str:
     return root.strip("/") or "battlebang"
 
 
+def boss_topic_for(root: str, boss_id: str, suffix: str) -> str:
+    boss_id = boss_id.strip()
+    if not boss_id:
+        raise MqttCommandError("missing boss id")
+    return f"{clean_root(root)}/boss_targets/{boss_id}/{suffix}"
+
+
 class StatusMonitor:
-    def __init__(self, *, root: str, turrets: list[str]) -> None:
+    def __init__(self, *, root: str, turrets: list[str], boss_id: str = "") -> None:
         self.root = clean_root(root)
         self.turrets = set(turrets)
+        self.boss_id = boss_id.strip()
         self.turret_topics = {topic_for(self.root, turret_id, "status"): turret_id for turret_id in turrets}
+        self.boss_status_topic = boss_topic_for(self.root, self.boss_id, "status") if self.boss_id else ""
         self.latest_turret: dict[str, dict[str, Any]] = {}
         self.latest_hit_target: dict[str, dict[str, Any]] = {}
+        self.latest_boss: dict[str, Any] = {}
 
     def subscribe_all(self, client: MqttSession) -> None:
         for topic in self.turret_topics:
             client.subscribe(topic)
+        if self.boss_status_topic:
+            client.subscribe(self.boss_status_topic)
         client.subscribe(f"{self.root}/hit_targets/+/status")
 
     def process_publish(self, topic: str, payload: str) -> dict[str, Any] | None:
@@ -67,6 +79,9 @@ class StatusMonitor:
         turret_id = self.turret_topics.get(topic)
         if turret_id is not None:
             self.latest_turret[turret_id] = doc
+            return doc
+        if self.boss_status_topic and topic == self.boss_status_topic:
+            self.latest_boss = doc
             return doc
         if topic.startswith(f"{self.root}/hit_targets/") and topic.endswith("/status"):
             linked = str(doc.get("linked_device_id") or doc.get("linked_turret_id") or "")
@@ -116,6 +131,9 @@ class StatusMonitor:
 
     def dead_in_order(self, turrets: list[str]) -> list[str]:
         return [turret_id for turret_id in turrets if self.is_dead(turret_id)]
+
+    def boss_ready(self) -> bool:
+        return str(self.latest_boss.get("mode") or "") == "READY"
 
 
 def build_payload(args: argparse.Namespace, turret_id: str, cycle: int, *, loop: int) -> dict[str, Any]:
@@ -324,6 +342,37 @@ def publish_parallel(
         raise MqttCommandError(f"parallel commands did not complete within {args.command_timeout_s}s: {', '.join(sorted(pending))}")
 
 
+def publish_boss_command(client: MqttSession, *, root: str, boss_id: str, command: str) -> None:
+    topic = boss_topic_for(root, boss_id, "command")
+    payload = {"command": command}
+    print(f"publish boss={boss_id} command={command} topic={topic}", flush=True)
+    client.publish_json(topic, payload)
+
+
+def wait_for_boss_ready(client: MqttSession, monitor: StatusMonitor, *, timeout_s: float) -> None:
+    deadline = time.time() + timeout_s
+    last_mode = ""
+    while time.time() < deadline:
+        monitor.pump_once(client, timeout_s=min(0.5, max(0.0, deadline - time.time())))
+        mode = str(monitor.latest_boss.get("mode") or "")
+        if mode and mode != last_mode:
+            print(f"boss status mode={mode} command_state={monitor.latest_boss.get('command_state')}", flush=True)
+            last_mode = mode
+        if monitor.boss_ready():
+            return
+    raise MqttCommandError(f"boss target did not report READY within {timeout_s}s; latest_mode={last_mode or '<none>'}")
+
+
+def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse.Namespace, *, root: str, boss_id: str) -> None:
+    if args.boss_reset_first:
+        monitor.latest_boss = {}
+        publish_boss_command(client, root=root, boss_id=boss_id, command="reset")
+        wait_for_boss_ready(client, monitor, timeout_s=args.boss_ready_timeout_s)
+    publish_boss_command(client, root=root, boss_id=boss_id, command="start")
+    print(f"boss intro wait {args.boss_intro_wait_s:.1f}s before lane_sweep starts", flush=True)
+    sleep_with_pump(client, monitor, args.boss_intro_wait_s)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Random one-at-a-time live-fire lane_sweep director for turret_1, turret_3, and turret_4.")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="default: src/turret_fleet/.env.turret_fleet")
@@ -350,6 +399,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--count", type=int, default=0, help="full director cycles; 0 means forever")
     parser.add_argument("--start-timeout-s", type=float, default=20.0)
     parser.add_argument("--command-timeout-s", type=float, default=180.0)
+    parser.add_argument("--boss-id", help="optional boss_target id; enables reset/start opening before turret lane_sweep")
+    parser.add_argument("--boss-reset-first", action=argparse.BooleanOptionalAction, default=True, help="publish boss reset and wait for READY before boss start")
+    parser.add_argument("--boss-ready-timeout-s", type=float, default=10.0, help="wait for boss READY after reset")
+    parser.add_argument("--boss-intro-wait-s", type=float, default=5.0, help="wait after boss start so the 5s neon-rainbow intro finishes before turrets fire")
     parser.add_argument("--dry-run", action="store_true", help="print planned sequence without publishing/subscribing")
     return parser
 
@@ -368,6 +421,11 @@ def sequential_round_order(turrets: list[str], *, random_order: bool, rng: rando
 
 
 def dry_run(args: argparse.Namespace, root: str, turrets: list[str]) -> None:
+    if args.boss_id:
+        print("dry-run boss opening:")
+        if args.boss_reset_first:
+            print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"reset\"}} wait_ready<={args.boss_ready_timeout_s:g}s")
+        print(f"  boss topic={boss_topic_for(root, args.boss_id, 'command')} payload={{\"command\":\"start\"}} wait_intro={args.boss_intro_wait_s:g}s")
     print("dry-run normal cycle:")
     cycle = 1
     rng = random.Random(args.random_seed)
@@ -397,13 +455,16 @@ def main(argv: list[str] | None = None) -> int:
     username = args.username or env_first(env, "TURRET_FLEET_MQTT_USERNAME", "TURRET_MQTT_USERNAME")
     password = args.password or env_first(env, "TURRET_FLEET_MQTT_PASSWORD", "TURRET_MQTT_PASSWORD")
     turrets = [normalize_turret_id(t) for t in (args.turrets or DEFAULT_TURRETS)]
+    boss_id = args.boss_id or env_first(env, "BOSS_TARGET_BOSS_ID", "BOSS_TARGET_TARGET_ID", "BATTLEBANG_BOSS_TARGET_ID", default="") or ""
 
     print(
         f"lane_sweep director host={host or '<dry-run>'}:{port} root={root} turrets={','.join(turrets)} "
         f"order={'random' if args.random_order else 'listed'} sequential_rounds={args.sequential_rounds} "
-        f"single_loop={args.single_loop} parallel_loop={args.parallel_loop or 'disabled'} count={args.count or 'forever'}",
+        f"single_loop={args.single_loop} parallel_loop={args.parallel_loop or 'disabled'} "
+        f"boss={boss_id or 'disabled'} count={args.count or 'forever'}",
         flush=True,
     )
+    args.boss_id = boss_id
     if args.dry_run:
         dry_run(args, root, turrets)
         return 0
@@ -411,9 +472,11 @@ def main(argv: list[str] | None = None) -> int:
     assert host is not None
     try:
         with MqttSession(host=host, port=port, username=username, password=password, timeout_s=args.timeout_s) as client:
-            monitor = StatusMonitor(root=root, turrets=turrets)
+            monitor = StatusMonitor(root=root, turrets=turrets, boss_id=boss_id)
             monitor.subscribe_all(client)
             monitor.warmup(client, duration_s=2.0)
+            if boss_id:
+                run_boss_opening(client, monitor, args, root=root, boss_id=boss_id)
             director_cycle = 0
             rng = random.Random(args.random_seed)
             while True:

@@ -30,7 +30,7 @@ def test_boss_target_factory_defaults_match_current_four_target_board() -> None:
     assert defaults["display_name"] == "Boss Target"
     assert defaults["hp_max"] == 10
     assert defaults["damage_per_hit"] == 1
-    assert "3000" not in read("src/boss_target/build_config.h")
+    assert "static constexpr uint16_t HP_MAX = 3000;" not in read("src/boss_target/build_config.h")
     assert defaults["target_count"] == 4
     assert hw["max_targets"] == 4
     assert hw["ring_pins"] == [23, 21, 18, 17]
@@ -71,9 +71,16 @@ def test_boss_target_boot_reset_are_leds_off_until_start() -> None:
     assert "mode_ = config_.configured ? Mode::READY : Mode::UNCONFIGURED;" in controller
     assert "clearAllLeds();\n  FastLED.show();\n  emit(\"reset\"" in controller
     assert "void BossTargetController::start" in controller
+    assert "static constexpr uint32_t START_INTRO_MS = 5000;" in read("src/boss_target/build_config.h")
+    assert "static constexpr uint32_t START_INTRO_HUE_STEP_MS = 3;" in read("src/boss_target/build_config.h")
+    assert "mode_ = Mode::INTRO;" in controller
+    assert "startIntroUntilMs_ = now + ::boss_target::START_INTRO_MS;" in controller
+    assert "if (mode_ == Mode::INTRO && hpRemaining_ > 0" in controller
     assert "mode_ = Mode::ACTIVE;" in controller
-    assert "selectNewTarget(millis());" in controller
-    assert "if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;" in controller
+    assert "selectNewTarget(now);" in controller
+    assert "void BossTargetController::renderStartIntro" in controller
+    assert 'obj["start_intro_active"] = mode_ == Mode::INTRO;' in controller
+    assert "if (mode_ == Mode::INTRO || mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;" in controller
     assert 'lower == "start" || lower == "arm" || lower == "activate"' in main
     assert 'strcmp(command, "start") == 0' in mqtt
     assert 'strcmp(command, "reset") == 0' in mqtt
@@ -98,6 +105,12 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
     assert "static constexpr uint32_t HIT_FLASH_MS = 1000;" in header
     assert "static constexpr uint32_t HIT_FLASH_BLINK_MS = 125;" in header
     assert "FastLED.addLeds<WS2811, ::boss_target::HP_BAR_PIN, RGB>(hpBar_" in controller
+
+    render_intro = controller[controller.index("void BossTargetController::renderStartIntro"):controller.index("void BossTargetController::renderTargets")]
+    assert "neonOrbitValue(distance" in render_intro
+    assert "START_INTRO_HUE_STEP_MS" in render_intro
+    assert "setHpBarGroup(group, CHSV(hue, 255, neonOrbitValue(distance, 55)));" in render_intro
+    assert "ring >= targetCount()" in render_intro
 
     # Round LED rings are only target indicators: black by default, blue active target,
     # white hit flash. HP fill/count rendering belongs to hpBar_ only.
