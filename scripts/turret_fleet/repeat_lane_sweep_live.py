@@ -169,15 +169,16 @@ class StatusMonitor:
         )
 
 
-def build_payload(args: argparse.Namespace, turret_id: str, cycle: int, *, loop: int) -> dict[str, Any]:
+def build_payload(args: argparse.Namespace, turret_id: str, cycle: int, *, loop: int | None) -> dict[str, Any]:
     now_ms = int(time.time() * 1000)
     command_id = f"seq-lane-sweep-{turret_id}-{cycle}-{now_ms}"
-    params: dict[str, Any] = {
-        "loop": loop,
-        "move_timeout_ms": args.move_timeout_ms,
-        "return_to": args.return_to,
-        "ping_pong": True,
-    }
+    params: dict[str, Any] = {}
+    if loop is not None:
+        params["loop"] = loop
+    if args.move_timeout_ms is not None:
+        params["move_timeout_ms"] = args.move_timeout_ms
+    if args.return_to is not None:
+        params["return_to"] = args.return_to
     if args.dwell_ms is not None:
         params["dwell_ms"] = args.dwell_ms
     if args.fire_ms is not None:
@@ -186,7 +187,7 @@ def build_payload(args: argparse.Namespace, turret_id: str, cycle: int, *, loop:
         "command": "pattern",
         "command_id": command_id,
         "pattern_id": "lane_sweep",
-        "pattern_instance_id": command_id,
+        "pattern_instance_id": f"lane_sweep-{command_id}",
         "frame_id": args.frame_id,
         "ttl_ms": args.ttl_ms,
         "issued_at_ms": now_ms,
@@ -314,7 +315,7 @@ def publish_one(
     root: str,
     turret_id: str,
     cycle: int,
-    loop: int,
+    loop: int | None,
 ) -> str:
     if publish_turret_dead_commands_if_boss_destroyed(client, monitor, root=root):
         raise BossDefeated(monitor.boss_dead_reason())
@@ -447,15 +448,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-s", type=float, default=5.0)
     parser.add_argument("--turret", action="append", dest="turrets", help="repeatable; default turret_1, turret_3, then turret_4")
     parser.add_argument("--frame-id", default="boss_stage_v1")
-    parser.add_argument("--single-loop", type=int, default=1, help="loop count for one-at-a-time and solo-dead mode")
+    parser.add_argument("--single-loop", type=int, help="override loop count for one-at-a-time and solo-dead mode; omit to use the ESP's pattern preset/default")
     parser.add_argument("--parallel-loop", type=int, default=0, help="loop count for optional parallel phase; 0 disables parallel and keeps one-at-a-time flow")
     parser.add_argument("--sequential-rounds", type=int, default=1, help="number of one-at-a-time shuffled bags before optional parallel")
     parser.add_argument("--random-order", action=argparse.BooleanOptionalAction, default=True, help="shuffle turret order each sequential round; use --no-random-order for listed order")
     parser.add_argument("--random-seed", type=int, help="deterministic shuffle seed for dry-run/testing")
     parser.add_argument("--dwell-ms", type=int, help="override dwell before fire; omit to use turret preset/NVS")
-    parser.add_argument("--move-timeout-ms", type=int, default=20000)
+    parser.add_argument("--move-timeout-ms", type=int, help="override pattern move timeout; omit to use the ESP's pattern preset/default")
     parser.add_argument("--fire-ms", type=int, help="override fire duration; omit to use turret preset/default")
-    parser.add_argument("--ttl-ms", type=int, default=120000)
+    parser.add_argument("--ttl-ms", type=int, default=3000)
     parser.add_argument("--return-to", choices=["wait_command", "idle"], default="wait_command")
     parser.add_argument("--single-delay-s", type=float, default=0.0, help="optional sleep after each one-at-a-time command completes")
     parser.add_argument("--dead-poll-s", type=float, default=5.0, help="sleep when all turrets are dead/no-command state")
@@ -535,7 +536,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"lane_sweep director host={host or '<dry-run>'}:{port} root={root} turrets={','.join(turrets)} "
         f"order={'random' if args.random_order else 'listed'} sequential_rounds={args.sequential_rounds} "
-        f"single_loop={args.single_loop} parallel_loop={args.parallel_loop or 'disabled'} "
+        f"single_loop={args.single_loop if args.single_loop is not None else 'preset'} parallel_loop={args.parallel_loop or 'disabled'} "
         f"boss={boss_id or 'disabled'} count={args.count or 'forever'}",
         flush=True,
     )

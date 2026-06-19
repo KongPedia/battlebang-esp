@@ -943,6 +943,11 @@ def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> N
     assert "parallel turret=" not in output
     for turret_id in ["turret_1", "turret_3", "turret_4"]:
         assert f"topic=battlebang/turrets/{turret_id}/command" in output
+    first_payload_line = next(line for line in output.splitlines() if "turret=turret_4 " in line)
+    payload = json.loads(first_payload_line.split("payload=", 1)[1])
+    assert payload["ttl_ms"] == 3000
+    assert payload["pattern_instance_id"] == f"lane_sweep-{payload['command_id']}"
+    assert payload["params"] == {"return_to": "wait_command"}
 
 
 def test_repeat_lane_sweep_can_stage_boss_target_intro_before_turrets() -> None:
