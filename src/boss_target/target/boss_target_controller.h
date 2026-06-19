@@ -81,6 +81,7 @@ class BossTargetController {
   uint32_t sequence_ = 0;
   int activeTarget_ = -1;
   uint32_t targetStartedMs_ = 0;
+  uint32_t nextTargetSelectionMs_ = 0;
   uint32_t lastAcceptedHitMs_ = 0;
   uint32_t lastShowMs_ = 0;
   uint32_t lastDeadBlinkMs_ = 0;
@@ -88,6 +89,7 @@ class BossTargetController {
   bool hitEnabled_ = true;
   bool otaPrepared_ = false;
   bool pinsConfigured_ = false;
+  bool targetTransitionPending_ = false;
 
   int lastHitTargetIndex_ = -1;
   int lastWrongTargetIndex_ = -1;

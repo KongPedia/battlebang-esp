@@ -7,7 +7,7 @@
 - Boot/reset: internal HP is full, but **all LEDs stay off** and hits are ignored.
 - MQTT/serial `start`: HP bar turns on at full green and one random target ring becomes active.
 - During ACTIVE: only the currently active ring accepts damage; wrong-ring hits are reported but do not reduce HP.
-- After a correct hit: `damage_per_hit` is subtracted, the hit ring flashes white for 250 ms, status is published, and another random target is selected from `0..target.count-1`.
+- After a correct hit: `damage_per_hit` is subtracted, the hit ring blinks white for about 1 second, hits are temporarily ignored, status is published, and then another random target is selected from `0..target.count-1`.
 - HP reaches 0: state becomes `DEFEATED`/`dead`, status keeps publishing periodically with `hp_remaining=0` and `destroyed=true` so Command Center can send turret `dead`/inactive commands.
 - `reset`: returns to READY with full internal HP and LEDs off. It does not start the game.
 
@@ -141,7 +141,7 @@ battlebang/boss_targets/{boss_id}/ota
 battlebang/boss_targets/all/ota
 ```
 
-Status includes `boss_id`, `display_name`, `mode`, `command_state`, `hp_remaining`, `hp_max`, `hp_pct`, `destroyed`, `target_count`, `hardware_max_targets`, `active_target_index`, and a `targets[]` array. It publishes on state changes and on a 5-second heartbeat.
+Status includes `boss_id`, `display_name`, `mode`, `command_state`, `hp_remaining`, `hp_max`, `hp_pct`, `destroyed`, `target_count`, `hardware_max_targets`, `target_transition_pending`, `active_target_index`, and a `targets[]` array. It publishes on state changes and on a 5-second heartbeat.
 
 ## Build / upload
 

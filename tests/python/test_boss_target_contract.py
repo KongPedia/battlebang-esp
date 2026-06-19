@@ -95,7 +95,8 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
     assert "static constexpr uint16_t HP_BAR_NUM_LEDS = HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP;" in header
     assert "static constexpr int HP_BAR_PIN = 12;" in header
     assert "HP bar LED count must match grouped bar layout" in header
-    assert "static constexpr uint32_t HIT_FLASH_MS = 250;" in header
+    assert "static constexpr uint32_t HIT_FLASH_MS = 1000;" in header
+    assert "static constexpr uint32_t HIT_FLASH_BLINK_MS = 125;" in header
     assert "FastLED.addLeds<WS2811, ::boss_target::HP_BAR_PIN, RGB>(hpBar_" in controller
 
     # Round LED rings are only target indicators: black by default, blue active target,
@@ -103,6 +104,8 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
     render_targets = controller[controller.index("void BossTargetController::renderTargets"):controller.index("void BossTargetController::renderHpBar")]
     assert "fillRing(i, CRGB::Black)" in render_targets
     assert "config_.target.hitFlashColor" in render_targets
+    assert "HIT_FLASH_BLINK_MS" in render_targets
+    assert "} else if (!targetTransitionPending_ && i == activeTarget_) {" in render_targets
     assert "config_.target.activeColor" in render_targets
     assert "hpRemaining_" not in render_targets
     assert "hpLit" not in render_targets
@@ -125,6 +128,9 @@ def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> N
 
     assert "clampedHp * hpGroupCount() + config_.gameplay.hpMax - 1" in controller
     assert "targetFlashUntilMs_[targetIndex] = now + ::boss_target::HIT_FLASH_MS;" in controller
+    assert "targetTransitionPending_ = true;" in controller
+    assert "nextTargetSelectionMs_ = now + ::boss_target::HIT_FLASH_MS;" in controller
+    assert "if (mode_ == Mode::ACTIVE && hpRemaining_ > 0 && targetTransitionPending_" in controller
     assert "hpFlashUntilMs_" not in controller
     assert "hpBlinkMask_" not in controller_header
     assert "4 target LED rings + 4 piezo AO inputs + 1 HP bar" in readme

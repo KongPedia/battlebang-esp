@@ -57,9 +57,11 @@ void BossTargetController::reset(const char* source) {
   lastHitTargetIndex_ = -1;
   lastWrongTargetIndex_ = -1;
   lastEvent_ = "reset";
+  nextTargetSelectionMs_ = 0;
   deadBlinkOn_ = false;
   otaPrepared_ = false;
   hitEnabled_ = true;
+  targetTransitionPending_ = false;
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
     lastTargetHitMs_[i] = 0;
     lastTargetHitOk_[i] = false;
@@ -85,6 +87,8 @@ void BossTargetController::start(const char* source, bool resetHp) {
   mode_ = Mode::ACTIVE;
   otaPrepared_ = false;
   hitEnabled_ = true;
+  targetTransitionPending_ = false;
+  nextTargetSelectionMs_ = 0;
   clearPiezoEdges();
   selectNewTarget(millis());
   lastEvent_ = "start";
@@ -115,11 +119,18 @@ bool BossTargetController::isSafeForOta() const {
 }
 
 bool BossTargetController::vulnerableNow(uint32_t) const {
-  return hitEnabled_ && mode_ == Mode::ACTIVE && hpRemaining_ > 0 && activeTarget_ >= 0;
+  return hitEnabled_ && mode_ == Mode::ACTIVE && hpRemaining_ > 0 && activeTarget_ >= 0 && !targetTransitionPending_;
 }
 
 void BossTargetController::loop(uint32_t now) {
-  if (mode_ == Mode::ACTIVE && hpRemaining_ > 0 && activeTarget_ >= 0 &&
+  if (mode_ == Mode::ACTIVE && hpRemaining_ > 0 && targetTransitionPending_ &&
+      static_cast<int32_t>(now - nextTargetSelectionMs_) >= 0) {
+    targetTransitionPending_ = false;
+    nextTargetSelectionMs_ = 0;
+    selectNewTarget(now);
+  }
+
+  if (mode_ == Mode::ACTIVE && hpRemaining_ > 0 && !targetTransitionPending_ && activeTarget_ >= 0 &&
       now - targetStartedMs_ >= config_.gameplay.targetDurationMs) {
     selectNewTarget(now);
   }
@@ -242,6 +253,8 @@ void BossTargetController::selectNewTarget(uint32_t now) {
 void BossTargetController::clearActiveTarget() {
   activeTarget_ = -1;
   targetStartedMs_ = 0;
+  targetTransitionPending_ = false;
+  nextTargetSelectionMs_ = 0;
 }
 
 void BossTargetController::applyDamage(uint8_t targetIndex, const char* source, uint16_t edges, uint16_t peak, uint32_t now) {
@@ -261,7 +274,8 @@ void BossTargetController::applyDamage(uint8_t targetIndex, const char* source, 
     lastEvent_ = "destroyed";
     emit("destroyed", targetIndex, peak, source, edges);
   } else {
-    selectNewTarget(now);
+    targetTransitionPending_ = true;
+    nextTargetSelectionMs_ = now + ::boss_target::HIT_FLASH_MS;
     lastEvent_ = "hit";
     emit("hit", targetIndex, peak, source, edges);
   }
@@ -319,11 +333,14 @@ void BossTargetController::setHpBarAll(const CRGB& color) {
 
 void BossTargetController::renderTargets(uint32_t now) {
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) fillRing(i, CRGB::Black);
-  if (mode_ != Mode::ACTIVE || activeTarget_ < 0) return;
+  if (mode_ != Mode::ACTIVE) return;
   for (uint8_t i = 0; i < targetCount(); ++i) {
     if (targetFlashUntilMs_[i] != 0 && static_cast<int32_t>(targetFlashUntilMs_[i] - now) > 0) {
-      fillRing(i, colorFromRgb(config_.target.hitFlashColor));
-    } else if (i == activeTarget_) {
+      const uint32_t remaining = targetFlashUntilMs_[i] - now;
+      const uint32_t elapsed = ::boss_target::HIT_FLASH_MS - min<uint32_t>(remaining, ::boss_target::HIT_FLASH_MS);
+      const bool flashOn = ((elapsed / ::boss_target::HIT_FLASH_BLINK_MS) % 2) == 0;
+      if (flashOn) fillRing(i, colorFromRgb(config_.target.hitFlashColor));
+    } else if (!targetTransitionPending_ && i == activeTarget_) {
       fillRing(i, colorFromRgb(config_.target.activeColor));
     }
   }
@@ -427,8 +444,10 @@ void BossTargetController::appendStatus(JsonObject obj) const {
   obj["vulnerable"] = vulnerableNow(now);
   obj["activation_active"] = vulnerableNow(now);
   obj["hit_target_active"] = vulnerableNow(now);
-  obj["active_target_index"] = activeTarget_ >= 0 ? activeTarget_ : -1;
-  obj["active_target_id"] = activeTarget_ >= 0 ? String("target_") + String(activeTarget_ + 1) : String("");
+  obj["target_transition_pending"] = targetTransitionPending_;
+  const bool targetActiveForHits = vulnerableNow(now);
+  obj["active_target_index"] = targetActiveForHits ? activeTarget_ : -1;
+  obj["active_target_id"] = targetActiveForHits ? String("target_") + String(activeTarget_ + 1) : String("");
   obj["target_count"] = targetCount();
   obj["hardware_max_targets"] = ::boss_target::kMaxTargets;
   obj["target_duration_ms"] = config_.gameplay.targetDurationMs;
@@ -446,7 +465,8 @@ void BossTargetController::appendStatus(JsonObject obj) const {
     JsonObject t = targets.createNestedObject();
     t["index"] = i;
     t["id"] = String("target_") + String(i + 1);
-    t["active"] = i == activeTarget_ && mode_ == Mode::ACTIVE;
+    t["active"] = targetActiveForHits && i == activeTarget_;
+    t["hit_flash_active"] = targetTransitionPending_ && i == activeTarget_;
     t["last_hit_ms"] = lastTargetHitMs_[i];
     t["last_hit_ok"] = lastTargetHitOk_[i];
   }
@@ -462,6 +482,8 @@ String BossTargetController::statusSignature() const {
   s += String(hpRemaining_);
   s += '|';
   s += String(activeTarget_);
+  s += '|';
+  s += targetTransitionPending_ ? '1' : '0';
   s += '|';
   s += hitEnabled_ ? '1' : '0';
   s += '|';

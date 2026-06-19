@@ -59,7 +59,8 @@ static constexpr uint32_t DIGITAL_ISR_DEBOUNCE_US = 20000;  // legacy config fie
 static constexpr uint16_t PIEZO_AO_THRESHOLD = 1800;
 static constexpr uint16_t PIEZO_AO_RELEASE = 900;
 static constexpr uint32_t PIEZO_AO_SAMPLE_PERIOD_MS = 2;
-static constexpr uint32_t HIT_FLASH_MS = 250;
+static constexpr uint32_t HIT_FLASH_MS = 1000;
+static constexpr uint32_t HIT_FLASH_BLINK_MS = 125;
 static constexpr uint32_t DEAD_BLINK_MS = 300;
 
 static constexpr uint32_t HP_GREEN = 0x00FF00;
