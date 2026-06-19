@@ -49,6 +49,7 @@ static constexpr uint32_t TARGET_DURATION_MS = 2500;
 static constexpr uint32_t HIT_COOLDOWN_MS = 300;
 static constexpr uint32_t DIGITAL_ISR_DEBOUNCE_US = 20000;
 static constexpr uint32_t HIT_FLASH_MS = 60;
+static constexpr uint32_t BLINK_MS = 250;
 static constexpr uint32_t DEAD_BLINK_MS = 300;
 
 static constexpr uint32_t HP_GREEN = 0x00FF00;

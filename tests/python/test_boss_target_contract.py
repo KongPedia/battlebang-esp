@@ -69,6 +69,45 @@ def test_boss_target_boot_reset_are_leds_off_until_start() -> None:
     assert 'strcmp(command, "stop")' not in mqtt
 
 
+def test_boss_target_round_rings_are_targets_and_hp_bar_owns_hp_rendering() -> None:
+    header = read("src/boss_target/build_config.h")
+    controller = read("src/boss_target/target/boss_target_controller.cpp")
+    controller_header = read("src/boss_target/target/boss_target_controller.h")
+    readme = read("src/boss_target/README.md")
+
+    assert "static constexpr uint16_t RING_NUM_LEDS = 40;" in header
+    assert "static constexpr uint16_t HP_BAR_NUM_LEDS = 92;" in header
+    assert "static constexpr int HP_BAR_PIN = 26;" in header
+    assert "static constexpr uint32_t HIT_FLASH_MS = 60;" in header
+    assert "static constexpr uint32_t BLINK_MS = 250;" in header
+    assert "FastLED.addLeds<WS2811, ::boss_target::HP_BAR_PIN, RGB>(hpBar_" in controller
+
+    # Round LED rings are only target indicators: black by default, blue active target,
+    # white hit flash. HP fill/count/blink rendering belongs to hpBar_ only.
+    render_targets = controller[controller.index("void BossTargetController::renderTargets"):controller.index("void BossTargetController::renderHpBar")]
+    assert "fillRing(i, CRGB::Black)" in render_targets
+    assert "config_.target.hitFlashColor" in render_targets
+    assert "config_.target.activeColor" in render_targets
+    assert "hpRemaining_" not in render_targets
+    assert "hpLitCount" not in render_targets
+
+    render_hp = controller[controller.index("void BossTargetController::renderHpBar"):controller.index("void BossTargetController::clearHpBlinkMask")]
+    assert "fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black)" in render_hp
+    assert "hpFlashUntilMs_" in render_hp
+    assert "fill_solid(hpBar_, hpLedCount(), CRGB::White)" in render_hp
+    assert "hpBlinkMask_[i]" in render_hp
+    assert "hpBlinkOn_ ? blink : CRGB::Black" in render_hp
+    assert "fillRing" not in render_hp
+
+    assert "void BossTargetController::addHpBlinkSegment" in controller
+    assert "const int oldHp = hpRemaining_;" in controller
+    assert "if (newBand != oldBand) clearHpBlinkMask();" in controller
+    assert "if (hpRemaining_ > 0) addHpBlinkSegment(oldHp, hpRemaining_);" in controller
+    assert "hpFlashUntilMs_ = now + ::boss_target::HIT_FLASH_MS;" in controller
+    assert "bool hpBlinkMask_[::boss_target::MAX_HP_BAR_NUM_LEDS]" in controller_header
+    assert "4 target LED rings + 4 piezo DO inputs + 1 HP bar" in readme
+
+
 def test_boss_target_runtime_config_persists_config_not_match_progress() -> None:
     header = read("src/boss_target/config/runtime_config.h")
     source = read("src/boss_target/config/runtime_config.cpp")

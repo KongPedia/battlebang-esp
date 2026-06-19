@@ -61,9 +61,12 @@ void BossTargetController::reset(const char* source) {
   lastHitTargetIndex_ = -1;
   lastWrongTargetIndex_ = -1;
   lastEvent_ = "reset";
+  hpFlashUntilMs_ = 0;
+  hpBlinkOn_ = false;
   deadBlinkOn_ = false;
   otaPrepared_ = false;
   hitEnabled_ = true;
+  clearHpBlinkMask();
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
     lastTargetHitMs_[i] = 0;
     lastTargetHitOk_[i] = false;
@@ -83,7 +86,12 @@ void BossTargetController::start(const char* source, bool resetHp) {
     emit("start_rejected", 255, 0, source, 0);
     return;
   }
-  if (resetHp || config_.gameplay.startResetsHp || hpRemaining_ <= 0) hpRemaining_ = config_.gameplay.hpMax;
+  if (resetHp || config_.gameplay.startResetsHp || hpRemaining_ <= 0) {
+    hpRemaining_ = config_.gameplay.hpMax;
+    clearHpBlinkMask();
+    hpFlashUntilMs_ = 0;
+    hpBlinkOn_ = false;
+  }
   mode_ = Mode::ACTIVE;
   otaPrepared_ = false;
   hitEnabled_ = true;
@@ -169,13 +177,41 @@ uint8_t BossTargetController::hpPhase() const {
 }
 
 CRGB BossTargetController::hpColor() const {
-  return colorFromRgb(phaseColorRgb(config_, hpPhase()));
+  return hpColorForBand(hpBandForValue(hpRemaining_));
+}
+
+CRGB BossTargetController::hpColorForBand(uint8_t band) const {
+  const uint8_t count = activePhaseCount(config_);
+  if (band >= count) band = count - 1;
+  const uint8_t paletteIndex = count - 1 - band;
+  return colorFromRgb(phaseColorRgb(config_, paletteIndex));
+}
+
+CRGB BossTargetController::nextHpColorForBand(uint8_t band) const {
+  if (band == 0) return hpColorForBand(0);
+  return hpColorForBand(band - 1);
 }
 
 uint16_t BossTargetController::hpLitCount() const {
-  if (hpRemaining_ <= 0) return 0;
-  const uint32_t lit = (static_cast<uint32_t>(hpRemaining_) * hpLedCount() + config_.gameplay.hpMax - 1) /
-                       config_.gameplay.hpMax;
+  return hpLitCountForValue(hpRemaining_);
+}
+
+uint8_t BossTargetController::hpBandForValue(int hp) const {
+  if (hp <= 0) return 0;
+  const uint8_t count = activePhaseCount(config_);
+  const uint32_t band = ((static_cast<uint32_t>(hp) - 1) * count) / config_.gameplay.hpMax;
+  return constrain(static_cast<uint8_t>(band), static_cast<uint8_t>(0), static_cast<uint8_t>(count - 1));
+}
+
+uint16_t BossTargetController::hpLitCountForValue(int hp) const {
+  if (hp <= 0) return 0;
+  const uint8_t count = activePhaseCount(config_);
+  const uint8_t band = hpBandForValue(hp);
+  const uint32_t lower = (static_cast<uint32_t>(band) * config_.gameplay.hpMax) / count;
+  const uint32_t upper = (static_cast<uint32_t>(band + 1) * config_.gameplay.hpMax) / count;
+  const uint32_t span = max<uint32_t>(1, upper - lower);
+  const uint32_t inBand = constrain(static_cast<int32_t>(hp - lower), static_cast<int32_t>(0), static_cast<int32_t>(span));
+  const uint32_t lit = (inBand * hpLedCount()) / span;
   return static_cast<uint16_t>(constrain(static_cast<int>(lit), 0, static_cast<int>(hpLedCount())));
 }
 
@@ -223,7 +259,13 @@ void BossTargetController::applyDamage(uint8_t targetIndex, const char* source, 
   if (!vulnerableNow(now)) return;
   if (now - lastAcceptedHitMs_ < config_.gameplay.hitCooldownMs) return;
   lastAcceptedHitMs_ = now;
+  const int oldHp = hpRemaining_;
+  const uint8_t oldBand = hpBandForValue(oldHp);
   hpRemaining_ = max(0, hpRemaining_ - static_cast<int>(config_.gameplay.damagePerHit));
+  const uint8_t newBand = hpBandForValue(hpRemaining_);
+  if (newBand != oldBand) clearHpBlinkMask();
+  if (hpRemaining_ > 0) addHpBlinkSegment(oldHp, hpRemaining_);
+  hpFlashUntilMs_ = now + ::boss_target::HIT_FLASH_MS;
   sequence_++;
   lastHitTargetIndex_ = targetIndex;
   lastTargetHitMs_[targetIndex] = now;
@@ -283,6 +325,10 @@ void BossTargetController::renderTargets(uint32_t now) {
 void BossTargetController::renderHpBar(uint32_t now) {
   fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
   if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;
+  if (static_cast<int32_t>(hpFlashUntilMs_ - now) > 0) {
+    fill_solid(hpBar_, hpLedCount(), CRGB::White);
+    return;
+  }
   if (mode_ == Mode::DEFEATED) {
     if (now - lastDeadBlinkMs_ >= config_.hpBar.deadBlinkMs) {
       lastDeadBlinkMs_ = now;
@@ -292,8 +338,38 @@ void BossTargetController::renderHpBar(uint32_t now) {
     return;
   }
   const uint16_t lit = hpLitCount();
-  CRGB color = hpColor();
-  for (uint16_t i = 0; i < lit && i < hpLedCount(); ++i) hpBar_[i] = color;
+  const uint8_t band = hpBandForValue(hpRemaining_);
+  const CRGB base = hpColorForBand(band);
+  const CRGB blink = nextHpColorForBand(band);
+  if (now - lastHpBlinkMs_ >= ::boss_target::BLINK_MS) {
+    lastHpBlinkMs_ = now;
+    hpBlinkOn_ = !hpBlinkOn_;
+  }
+  for (uint16_t i = 0; i < hpLedCount(); ++i) {
+    if (i < lit) {
+      hpBar_[i] = base;
+    } else if (hpBlinkMask_[i]) {
+      hpBar_[i] = hpBlinkOn_ ? blink : CRGB::Black;
+    }
+  }
+}
+
+void BossTargetController::clearHpBlinkMask() {
+  for (uint16_t i = 0; i < ::boss_target::MAX_HP_BAR_NUM_LEDS; ++i) hpBlinkMask_[i] = false;
+}
+
+void BossTargetController::addHpBlinkSegment(int oldHp, int newHp) {
+  const uint16_t oldLit = hpLitCountForValue(oldHp);
+  const uint16_t newLit = hpLitCountForValue(newHp);
+  if (newLit < oldLit) {
+    for (uint16_t i = newLit; i < oldLit && i < hpLedCount(); ++i) hpBlinkMask_[i] = true;
+    return;
+  }
+  const uint8_t oldBand = hpBandForValue(oldHp);
+  const uint8_t newBand = hpBandForValue(newHp);
+  if (newBand < oldBand) {
+    for (uint16_t i = newLit; i < hpLedCount(); ++i) hpBlinkMask_[i] = true;
+  }
 }
 
 void BossTargetController::clearAllLeds() {

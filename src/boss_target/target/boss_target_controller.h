@@ -51,8 +51,12 @@ class BossTargetController {
   uint16_t hpLedCount() const;
   CRGB colorFromRgb(uint32_t rgb) const;
   CRGB hpColor() const;
+  CRGB hpColorForBand(uint8_t band) const;
+  CRGB nextHpColorForBand(uint8_t band) const;
   uint16_t hpLitCount() const;
   uint8_t hpPhase() const;
+  uint8_t hpBandForValue(int hp) const;
+  uint16_t hpLitCountForValue(int hp) const;
   const char* modeString() const;
   const char* commandState() const;
 
@@ -68,6 +72,8 @@ class BossTargetController {
   void fillRing(uint8_t index, const CRGB& color);
   void renderTargets(uint32_t now);
   void renderHpBar(uint32_t now);
+  void clearHpBlinkMask();
+  void addHpBlinkSegment(int oldHp, int newHp);
   void clearAllLeds();
   void renderLeds(uint32_t now);
 
@@ -81,7 +87,10 @@ class BossTargetController {
   uint32_t targetStartedMs_ = 0;
   uint32_t lastAcceptedHitMs_ = 0;
   uint32_t lastShowMs_ = 0;
+  uint32_t hpFlashUntilMs_ = 0;
+  uint32_t lastHpBlinkMs_ = 0;
   uint32_t lastDeadBlinkMs_ = 0;
+  bool hpBlinkOn_ = false;
   bool deadBlinkOn_ = false;
   bool hitEnabled_ = true;
   bool otaPrepared_ = false;
@@ -102,6 +111,7 @@ class BossTargetController {
   CRGB ring3_[::boss_target::MAX_RING_NUM_LEDS];
   CRGB ring4_[::boss_target::MAX_RING_NUM_LEDS];
   CRGB hpBar_[::boss_target::MAX_HP_BAR_NUM_LEDS];
+  bool hpBlinkMask_[::boss_target::MAX_HP_BAR_NUM_LEDS] = {};
   CRGB* rings_[::boss_target::kMaxTargets] = {ring1_, ring2_, ring3_, ring4_};
 
   EventCallback callback_ = nullptr;
