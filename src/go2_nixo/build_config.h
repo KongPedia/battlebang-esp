@@ -370,7 +370,7 @@
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
 // BTB-770 sensitivity trial: lower threshold so off-center harness hits still
 // publish hit candidates. Tune per harness/target with robots.json or env.
-#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 600
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 400
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_REARM_RAW
