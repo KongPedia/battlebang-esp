@@ -15,7 +15,7 @@
 #define RING4_PIN       17
 
 // HP 선형 LED 데이터 핀
-#define HP_LED_PIN      26
+#define HP_LED_PIN      12
 
 // 피에조 DO 핀 4개
 #define PIEZO1_DO_PIN   27
