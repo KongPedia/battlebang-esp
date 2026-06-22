@@ -239,6 +239,34 @@ bool validateConfig(RuntimeConfig& config, String& error) {
   return true;
 }
 
+void copyConnectivityConfig(RuntimeConfig& dest, const RuntimeConfig& source) {
+  dest.configVersion = source.configVersion;
+  dest.configured = source.configured;
+  dest.bossId = source.bossId;
+  dest.targetId = source.targetId;
+  dest.displayName = source.displayName;
+  dest.group = source.group;
+  dest.location = source.location;
+  dest.debugAllowSimulateHit = source.debugAllowSimulateHit;
+  dest.wifiSsid = source.wifiSsid;
+  dest.wifiPassword = source.wifiPassword;
+  dest.networkAutoStart = source.networkAutoStart;
+  dest.networkStartDelayMs = source.networkStartDelayMs;
+  dest.mqttHost = source.mqttHost;
+  dest.mqttPort = source.mqttPort;
+  dest.mqttUsername = source.mqttUsername;
+  dest.mqttPassword = source.mqttPassword;
+  dest.mqttRoot = source.mqttRoot;
+  dest.otaCommandCenterControlled = source.otaCommandCenterControlled;
+  dest.otaAutoCheckEnabled = source.otaAutoCheckEnabled;
+  dest.otaChannel = source.otaChannel;
+  dest.otaDesiredBuild = source.otaDesiredBuild;
+  dest.otaPublicManifestUrl = source.otaPublicManifestUrl;
+  dest.otaLocalMirrorUrl = source.otaLocalMirrorUrl;
+  dest.otaCheckIntervalS = source.otaCheckIntervalS;
+  dest.otaApplyOnlyInSafeState = source.otaApplyOnlyInSafeState;
+}
+
 void writeHardwareProfile(JsonObject obj, const RuntimeConfig& config) {
   obj["max_targets"] = config.hardware.maxTargets;
   JsonArray rings = obj.createNestedArray("ring_pins");
@@ -561,6 +589,18 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   if (!validateConfig(loaded, error)) {
     Serial.print("[boss_target][config] stored config invalid: ");
     Serial.println(error);
+
+    RuntimeConfig salvaged = config;
+    copyConnectivityConfig(salvaged, loaded);
+    String salvageError;
+    if (validateConfig(salvaged, salvageError)) {
+      Serial.println("[boss_target][config] preserving connectivity with compiled defaults");
+      config = salvaged;
+      return true;
+    }
+
+    Serial.print("[boss_target][config] connectivity salvage failed: ");
+    Serial.println(salvageError);
     return false;
   }
   config = loaded;

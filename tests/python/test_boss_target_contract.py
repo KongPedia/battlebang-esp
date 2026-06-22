@@ -196,6 +196,9 @@ def test_boss_target_runtime_config_persists_config_not_match_progress() -> None
     assert "RuntimeConfig loaded = config;" in source
     assert "if (!validateConfig(loaded, error))" in source
     assert "stored config invalid" in source
+    assert "RuntimeConfig salvaged = config;" in source
+    assert "copyConnectivityConfig(salvaged, loaded);" in source
+    assert "preserving connectivity with compiled defaults" in source
     assert "config = loaded;" in source
     assert "const bool loadedStoredConfig = configStore.load(config);" in main
     assert "no valid stored config; using MAC-derived defaults" in main

@@ -106,6 +106,8 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 
 If a future 6-target board exists, add a new compiled hardware profile / PlatformIO environment and then set `target.count <= kMaxTargets` for that profile. Do not expect MQTT or NVS to move GPIO pins on an already compiled firmware.
 
+If an OTA boot finds an older stored `hardware_profile` or LED shape that no longer validates against the compiled firmware, the firmware keeps the safe compiled hardware defaults but attempts to preserve identity, Wi-Fi, MQTT, debug, and OTA fields so the device can still reconnect and receive a corrected config.
+
 ## Intentionally not persisted
 
 Match progress is runtime state and is deliberately not written to NVS:
