@@ -288,7 +288,7 @@ Go2별 non-secret profile입니다.
     "nixo_fire_default_duration_ms": 3000,
     "nixo_fire_min_duration_ms": 100,
     "nixo_fire_max_duration_ms": 10000,
-    "nixo_fire_cooldown_ms": 1000,
+    "nixo_fire_cooldown_ms": 1500,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
@@ -342,7 +342,7 @@ MQTT 연결이 없거나 publish가 실패하면 ESP는 valid hit event를 RAM q
 - queue가 꽉 차면 오래된 hit부터 버리고 최신 hit를 보관합니다.
 - 리셋 명령(`reset_hit_state=true` 또는 로컬 `2`)은 센서 latch와 queue를 같이 비웁니다.
 - Command Center/MQTT가 내려주는 `ring_display`가 없으면 ESP는 로컬 점수 계산 없이 full idle HP bar를 표시합니다.
-- 기존 ring LED는 HP/hit/down 표시를 하지 않고 Nixo fire 상태만 표시합니다. Ready는 green full, firing은 red full이며, 발사 종료 후 설정된 1초 cooldown을 green fill animation으로 표시합니다.
+- 기존 ring LED는 HP/hit/down 표시를 하지 않고 Nixo fire 상태만 표시합니다. Ready는 green full, firing은 red full이며, 발사 종료 후 설정된 1.5초 cooldown을 green fill animation으로 표시합니다.
 
 주의:
 

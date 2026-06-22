@@ -111,7 +111,7 @@ Payload:
 ```
 
 `enabled=false` stops an active fire sequence immediately. The ESP deduplicates repeated `request_id` values, clamps
-`duration_ms` to `NIXO_FIRE_MIN_DURATION_MS..NIXO_FIRE_MAX_DURATION_MS`, keeps the local fallback cooldown at 1000ms, and
+`duration_ms` to `NIXO_FIRE_MIN_DURATION_MS..NIXO_FIRE_MAX_DURATION_MS`, keeps the local fallback cooldown at 1500ms, and
 clears any stale retained command on connect before subscribing. Command Center should publish with `retain=false`.
 
 ## Smoke tests

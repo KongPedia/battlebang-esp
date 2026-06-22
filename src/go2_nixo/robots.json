@@ -25,7 +25,7 @@
     "nixo_fire_default_duration_ms": 3000,
     "nixo_fire_min_duration_ms": 100,
     "nixo_fire_max_duration_ms": 10000,
-    "nixo_fire_cooldown_ms": 1000,
+    "nixo_fire_cooldown_ms": 1500,
     "mqtt_topic_prefix": "battlebang/hit",
     "nixo_relay_delay1_ms": 800
   },

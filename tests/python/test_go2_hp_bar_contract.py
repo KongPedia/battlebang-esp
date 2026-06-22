@@ -76,7 +76,7 @@ def test_go2_defaults_are_hp_bar_only() -> None:
     assert "nixo_fire_cooldown_ms" not in defaults, firmware
 
 
-def test_go2_nixo_defaults_keep_fire_ring_and_one_second_cooldown_fallback() -> None:
+def test_go2_nixo_defaults_keep_fire_ring_and_one_point_five_second_cooldown_fallback() -> None:
     firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
     defaults = json.loads(robots_json.read_text())["defaults"]
     assert defaults["led_pin"] == 18, firmware
@@ -86,7 +86,7 @@ def test_go2_nixo_defaults_keep_fire_ring_and_one_second_cooldown_fallback() -> 
     assert defaults["ring_num_leds"] == RING_LED_COUNT, firmware
     assert defaults["ring_led_brightness"] == 80, firmware
     assert defaults["nixo_fire_default_duration_ms"] == 3000, firmware
-    assert defaults["nixo_fire_cooldown_ms"] == 1000, firmware
+    assert defaults["nixo_fire_cooldown_ms"] == 1500, firmware
 
 
 def test_go2_06_default_integrated_nixo_profile_is_two_channel_active_low() -> None:
@@ -197,7 +197,7 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
     assert "#define BATTLEBANG_RING_NUM_LEDS 40" in source, firmware
     assert "#define BATTLEBANG_RING_LED_BRIGHTNESS 80" in source, firmware
     assert "#define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 3000" in source, firmware
-    assert "#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 1000" in source, firmware
+    assert "#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 1500" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_GROUP_COUNT 28" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_LEDS_PER_GROUP 3" in source, firmware
     assert "HP bar LED count must match grouped bar layout" in source, firmware
@@ -315,7 +315,7 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     )
 
 
-def test_standalone_nixo_uses_one_second_local_cooldown_fallback() -> None:
+def test_standalone_nixo_uses_one_point_five_second_local_cooldown_fallback() -> None:
     source = (ROOT / "src/nIxo/main.cpp").read_text()
     build_config = (ROOT / "src/nIxo/build_config.h").read_text()
     stop_block = source.split("static void stopFireSequence", 1)[1].split("static bool startFireSequence", 1)[0]
@@ -329,4 +329,4 @@ def test_standalone_nixo_uses_one_second_local_cooldown_fallback() -> None:
     assert "#define NIXO_RELAY2_PIN -1" in build_config
     assert "#define NIXO_RELAY_ON_LEVEL HIGH" in build_config
     assert "#define NIXO_FIRE_DEFAULT_DURATION_MS 3000" in build_config
-    assert "#define NIXO_FIRE_COOLDOWN_MS 1000" in build_config
+    assert "#define NIXO_FIRE_COOLDOWN_MS 1500" in build_config
