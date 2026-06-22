@@ -756,6 +756,7 @@ def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
     assert "plan.loopCount = normalizePatternLoopCount(params, 1);" in pattern_cpp
     assert "if (!plan.addSweep(1, true)) return false;" in pattern_cpp
     assert "if (!plan.addStep(PATTERN_STEP_DWELL, 1, plan.dwellMs)) return false;" in pattern_cpp
+    assert "Keep the final return edge in PATTERN long enough" in pattern_cpp
     assert control.count("ensurePatternSweepFire(patternPlan_.fireMs);") == 1
     assert "bool TurretControl::patternSweepYawReached() const" in control
     assert "if (patternSweepYawReached())" in control
