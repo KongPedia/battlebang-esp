@@ -206,6 +206,8 @@ class TurretControl {
   bool commandBlockedByBrownoutLockout(const char* command, const char* source);
   bool clearBrownoutLockoutIfSafe(const char* source);
   void parkRelayPinsSafeOff();
+  bool relayPinActiveLow(int pin) const;
+  int relayOffLevel(int pin) const;
   void ensureRelayOutputsAttached(const char* reason);
   void relayWrite(int pin, bool on);
   void relayAllOff();

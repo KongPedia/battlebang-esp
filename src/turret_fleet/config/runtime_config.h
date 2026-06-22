@@ -89,6 +89,15 @@ struct RuntimeConfig {
   uint32_t fireMinHoldMs = 100;
   uint32_t fireMaxHoldMs = 60000;
   uint32_t fireRelayStepDelayMs = 250;
+  // Relay modules differ by channel: BTB-766 2ch relays are active-LOW,
+  // while the observed 1ch fire relay is active-HIGH. Keep a global default
+  // plus per-channel overrides so a one-channel relay profile can invert only
+  // CH3 without breaking the active-LOW CH2 flywheel path used by 2ch hardware.
+  bool fireRelayActiveLow = true;
+  bool fireRelayCh1ActiveLow = true;
+  bool fireRelayCh2ActiveLow = true;
+  bool fireRelayCh3ActiveLow = true;
+  String fireRelayProfile;
 
   String wifiSsid;
   String wifiPassword;

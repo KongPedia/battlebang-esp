@@ -210,6 +210,8 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
         'fire["esc_attached"]',
         'fire["esc_command_us"]',
         'fire["relay_ch2_on"]',
+        'fire["relay_ch3_active_low_config"]',
+        'fire["relay_profile_config"]',
         'fire["pending_fire"]',
         'fire["aim_stable_ms"]',
         'doc.createNestedObject("motion_state")',
@@ -324,6 +326,10 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "uint16_t fireEscRunUs = 1700;" in config
     assert "uint32_t fireDefaultHoldMs = 500;" in config
     assert "uint32_t fireMinHoldMs = 100;" in config
+    assert "bool fireRelayActiveLow = true;" in config
+    assert "bool fireRelayCh3ActiveLow = true;" in config
+    assert 'fire["relay_ch3_active_low"]' in read("src/turret_fleet/config/runtime_config.cpp")
+    assert 'prefs.getBool("fire_r3_al"' in read("src/turret_fleet/config/runtime_config.cpp")
     assert "const int kRelayCh1Pin = 21;" in control
     assert "const int kRelayCh2Pin = 22;" in control
     assert "const int kRelayCh3Pin = 23;" in control
@@ -332,6 +338,8 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "FIRE_SEQUENCE_CH2_ON_WAIT" in header
     assert "runEscNow(\"fire-command\")" in control
     assert "relayWrite(kRelayCh2Pin, true)" in control
+    assert "relayPinActiveLow(kRelayCh3Pin) ? INPUT_PULLUP : INPUT_PULLDOWN" in control
+    assert "relayOffLevel(kRelayCh3Pin)" in control
     assert "config_.fireEscRunUs" in control
     assert "fireKeepAliveUntilMs_ = 0;" in control
     assert "fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0" in control
@@ -345,6 +353,25 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "forceFireOutputsSafeOff();" in control
     assert "fire rejected in DEAD mode" in control
     assert "fire rejected: hardware disabled by config" not in control
+
+
+def test_fleet_relay_profile_is_explicit_nvs_contract_not_turret_id_mapping() -> None:
+    config = read("src/turret_fleet/config/runtime_config.cpp")
+    header = read("src/turret_fleet/config/runtime_config.h")
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    docs = read("src/turret_fleet/config/README.md")
+
+    assert "String fireRelayProfile;" in header
+    assert 'profile == "single_channel_ch3_active_high"' in config
+    assert 'profile == "two_channel_active_low"' in config
+    assert 'fire["relay_profile"]' in config
+    assert 'prefs.getString("fire_profile"' in config
+    assert 'prefs.putString("fire_profile", config.fireRelayProfile)' in config
+    assert 'fire["relay_profile_config"] = config_.fireRelayProfile' in control
+    assert "hasOneChannelFireRelay" not in config
+    assert "relayPolarityDefaultsForTurret" not in config
+    assert "`fire.relay_profile` is the explicit hardware preset saved in NVS" in docs
+    assert "`fire.relay_ch*_active_low` values; per-channel values remain authoritative" in docs
 
 
 def test_explicit_fire_does_not_wait_for_target_aim_stability() -> None:
@@ -648,6 +675,15 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         assert config["motion"]["command_envelope_ratio"] == 0.65
         assert config["motion"]["pitch_max_delta_us"] == 140
         assert config["motion"]["pitch_min_drive_us"] == 90
+        expected_fire_polarity = {
+            "relay_profile": "two_channel_active_low" if turret_id == "turret_4" else "single_channel_ch3_active_high",
+            "relay_active_low": True,
+            "relay_ch1_active_low": True,
+            "relay_ch2_active_low": True,
+            "relay_ch3_active_low": turret_id == "turret_4",
+        }
+        for key, value in expected_fire_polarity.items():
+            assert config["fire"][key] == value
         for key in (
             "yaw_plus_max_delta_us",
             "yaw_minus_max_delta_us",
@@ -741,6 +777,7 @@ def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
     assert "plan.loopCount = normalizePatternLoopCount(params, 1);" in pattern_cpp
     assert "if (!plan.addSweep(1, true)) return false;" in pattern_cpp
     assert "if (!plan.addStep(PATTERN_STEP_DWELL, 1, plan.dwellMs)) return false;" in pattern_cpp
+    assert "Keep the final return edge in PATTERN long enough" in pattern_cpp
     assert control.count("ensurePatternSweepFire(patternPlan_.fireMs);") == 1
     assert "bool TurretControl::patternSweepYawReached() const" in control
     assert "if (patternSweepYawReached())" in control
@@ -1346,6 +1383,11 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
     assert full_payload["motion"]["yaw_minus_max_delta_us"] == 420
     assert full_payload["motion"]["yaw_plus_min_drive_us"] == 400
     assert full_payload["motion"]["yaw_minus_min_drive_us"] == 400
+    assert full_payload["fire"]["relay_active_low"] is True
+    assert full_payload["fire"]["relay_ch1_active_low"] is True
+    assert full_payload["fire"]["relay_ch2_active_low"] is True
+    assert full_payload["fire"]["relay_ch3_active_low"] is False
+    assert full_payload["fire"]["relay_profile"] == "single_channel_ch3_active_high"
     assert 500 <= full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] <= 2000
     assert full_payload["patterns"]["presets"]["lane_sweep"]["fire_ms"] == 2000
     lane_points = full_payload["patterns"]["presets"]["lane_sweep"]["points"]
