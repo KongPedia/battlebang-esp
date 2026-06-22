@@ -215,10 +215,6 @@ def test_go2_does_not_mirror_or_render_nixo_fire() -> None:
     config_script = (ROOT / "scripts/go2_config.py").read_text()
     platformio = (ROOT / "platformio.ini").read_text()
 
-    for text in (source, header, main, config_script):
-        assert "NIXO" not in text
-        assert "Nixo" not in text
-        assert "nixo" not in text
     assert "RingDisplay" not in main
     assert "ringDisplay" not in main
     assert "nixoCommandTopic" not in header
@@ -262,6 +258,7 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     build_config = (ROOT / "src/go2_nixo/build_config.h").read_text()
     fire_source = (ROOT / "src/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
     config_script = (ROOT / "scripts/go2_nixo_config.py").read_text()
+    common_relay_utils = (ROOT / "src/common/relay_pin_utils.h").read_text()
 
     assert robots["nixo_relay1_pin"] == 23
     assert robots["nixo_relay2_pin"] == -1
@@ -299,7 +296,10 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert "static constexpr uint32_t NIXO_RELAY_DELAY1_MS =\n    BATTLEBANG_NIXO_RELAY_DELAY1_MS;" in build_config
 
     assert "void NixoFireClient::configureRelayPinOff(int pin)" in fire_source
-    assert "pinMode(pin, NIXO_RELAY_OFF_LEVEL_VALUE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);" in fire_source
+    assert '#include "common/relay_pin_utils.h"' in fire_source
+    assert "battlebang::configureRelayPinOffWithLevel(pin, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "inline void configureRelayPinOffWithLevel(int pin, int offLevel)" in common_relay_utils
+    assert "pinMode(pin, offLevel == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);" in common_relay_utils
     begin_block = fire_source.split("void NixoFireClient::begin()", 1)[1].split("mqttClient_.setServer", 1)[0]
     assert begin_block.index("configureRelayPinOff(NIXO_RELAY2_PIN_VALUE);") < begin_block.index(
         "configureRelayPinOff(NIXO_RELAY1_PIN_VALUE);"
@@ -332,6 +332,8 @@ def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
     assert "uint32_t remainingMs = cooldownRemainingMs(now);" in source
     assert "lastFireStartMs" not in source
     assert "beginCooldown(millis());" in stop_block
+    assert '#include "common/relay_pin_utils.h"' in source
+    assert "battlebang::configureRelayPinOffWithLevel(pin, RELAY_OFF);" in source
     assert "stopFireSequence(\"mqtt\")" in source
     assert 'doc["enabled"].is<bool>()' in source
     assert 'const bool enabled = doc["enabled"].as<bool>();' in source

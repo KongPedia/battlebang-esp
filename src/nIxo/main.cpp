@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 #include "build_config.h"
+#include "common/relay_pin_utils.h"
 
 // Standalone Nixo ESP firmware for the 2-ESP split.
 // Control path is server/Command Center -> MQTT only.
@@ -110,11 +111,7 @@ static void beginCooldown(uint32_t now) {
 }
 
 static void configureRelayPinOff(int pin) {
-  if (pin < 0) return;
-  pinMode(pin, RELAY_OFF == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);
-  digitalWrite(pin, RELAY_OFF);
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, RELAY_OFF);
+  battlebang::configureRelayPinOffWithLevel(pin, RELAY_OFF);
 }
 
 static void relayOff() {

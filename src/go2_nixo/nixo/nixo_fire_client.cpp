@@ -1,5 +1,7 @@
 #include "go2_nixo/nixo/nixo_fire_client.h"
 
+#include "common/relay_pin_utils.h"
+
 namespace go2 {
 
 NixoFireClient* NixoFireClient::instance_ = nullptr;
@@ -126,11 +128,7 @@ uint32_t NixoFireClient::cooldownDurationMs() const {
 
 
 void NixoFireClient::configureRelayPinOff(int pin) {
-  if (pin < 0) return;
-  pinMode(pin, NIXO_RELAY_OFF_LEVEL_VALUE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);
-  digitalWrite(pin, NIXO_RELAY_OFF_LEVEL_VALUE);
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, NIXO_RELAY_OFF_LEVEL_VALUE);
+  battlebang::configureRelayPinOffWithLevel(pin, NIXO_RELAY_OFF_LEVEL_VALUE);
 }
 
 void NixoFireClient::relayOff() {
