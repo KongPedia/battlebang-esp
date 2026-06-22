@@ -273,6 +273,8 @@ void MqttBus::handleOtaPayload(const char* payload) {
     writeOtaRebootMarker(true);
     delay(500);
     ESP.restart();
+  } else if (target_ != nullptr) {
+    target_->recoverFromFailedOta("mqtt_ota_failed");
   }
 }
 

@@ -169,6 +169,7 @@ def test_boss_target_hp_bar_links_three_rows_by_vertical_column() -> None:
 def test_boss_target_runtime_config_persists_config_not_match_progress() -> None:
     header = read("src/boss_target/config/runtime_config.h")
     source = read("src/boss_target/config/runtime_config.cpp")
+    main = read("src/boss_target/main.cpp")
 
     assert "struct RuntimeConfig" in header
     assert "String displayName" in header
@@ -192,9 +193,40 @@ def test_boss_target_runtime_config_persists_config_not_match_progress() -> None
     assert 'doc["display_name"] = config.displayName' in source
     assert 'next.displayName = getStringOr(doc["display_name"], next.displayName);' in source
     assert 'next.displayName = getStringOr(doc["name"], next.displayName);' in source
+    assert "RuntimeConfig loaded = config;" in source
+    assert "if (!validateConfig(loaded, error))" in source
+    assert "stored config invalid" in source
+    assert "config = loaded;" in source
+    assert "const bool loadedStoredConfig = configStore.load(config);" in main
+    assert "no valid stored config; using MAC-derived defaults" in main
     assert "hp_remaining" not in source
     assert "active_target_index" not in source
     assert "targetStartedMs" not in source
+
+
+def test_boss_target_runtime_config_requires_versions_and_safe_mqtt_topics() -> None:
+    source = read("src/boss_target/config/runtime_config.cpp")
+    docs = read("src/boss_target/docs/runtime-config.md")
+    readme = read("src/boss_target/README.md")
+
+    assert 'doc.containsKey("config_version")' in source
+    assert 'error = "config_version is required";' in source
+    assert 'error = "config_version must be positive";' in source
+    assert "incomingVersion < config.configVersion" in source
+    assert "bool validateTopicSegment" in source
+    assert "bool validateMqttRoot" in source
+    assert "validateTopicSegment(config.deviceId, \"device_id\", error)" in source
+    assert "validateTopicSegment(config.bossId, \"boss_id\", error)" in source
+    assert "validateTopicSegment(config.targetId, \"target_id\", error)" in source
+    assert "mqtt.root must not contain empty path segments" in source
+    assert "mqtt.root must use slash-separated topic segments" in source
+
+    assert "Every provisioning/config update must include a positive `config_version`" in docs
+    assert "`boss_id`, `target_id`, and `device_id` are MQTT topic segments" in docs
+    assert "`mqtt.root` is normalized as slash-separated MQTT topic segments" in docs
+    assert "A-Z, a-z, 0-9, `_`, `-`, or `.`" in docs
+    assert "`config_version` is mandatory for all `provision` and `config` payloads" in readme
+    assert "`boss_id`, `target_id`, and `device_id` are restricted to MQTT-safe topic segment characters" in readme
 
 
 def test_boss_target_mqtt_topics_status_and_ota_are_firmware_specific() -> None:
@@ -226,6 +258,33 @@ def test_boss_target_mqtt_topics_status_and_ota_are_firmware_specific() -> None:
     assert "[env:esp32dev_boss_target]" in pio
     assert "+<boss_target/**>" in pio
     assert "board_build.partitions = min_spiffs.csv" in pio
+
+
+def test_boss_target_ota_uses_tls_ca_and_recovers_after_failed_download() -> None:
+    ota = read("src/boss_target/ota/http_ota.cpp")
+    controller = read("src/boss_target/target/boss_target_controller.cpp")
+    controller_header = read("src/boss_target/target/boss_target_controller.h")
+    main = read("src/boss_target/main.cpp")
+    mqtt = read("src/boss_target/mqtt/mqtt_bus.cpp")
+    readme = read("src/boss_target/README.md")
+
+    assert "setInsecure" not in ota
+    assert "kGithubReleaseRootCaPem" in ota
+    assert "ensureTlsClock()" in ota
+    assert 'configTime(0, 0, "pool.ntp.org", "time.nist.gov");' in ota
+    assert "secureClient.setCACert(kGithubReleaseRootCaPem);" in ota
+    assert "kOtaNoProgressTimeoutMs" in ota
+    assert 'result.message = "download stalled with no progress";' in ota
+    assert "Update.abort();" in ota
+    assert "void recoverFromFailedOta(const char* source);" in controller_header
+    assert "void BossTargetController::recoverFromFailedOta" in controller
+    assert "otaPrepared_ = false;" in controller
+    assert "hitEnabled_ = true;" in controller
+    assert 'emit("ota_failed"' in controller
+    assert 'target.recoverFromFailedOta("ota_failed");' in main
+    assert 'target_->recoverFromFailedOta("mqtt_ota_failed");' in mqtt
+    assert "uses a pinned GitHub Release root CA" in readme
+    assert "clears OTA-prepared state and restores normal target rendering" in readme
 
 
 def test_boss_target_helpers_and_docs_do_not_require_committed_secrets() -> None:
@@ -279,6 +338,8 @@ def test_boss_target_runtime_config_docs_and_examples_explain_nvs_contract() -> 
         "`display_name`",
         "`gameplay.hp_max`",
         "`target.count`",
+        "Every provisioning/config update must include a positive `config_version`",
+        "`boss_id`, `target_id`, and `device_id` are MQTT topic segments",
         "`hardware_profile` appears in provision/config payloads",
         "`hp_remaining`",
         "`active_target_index`",

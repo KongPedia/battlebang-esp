@@ -88,10 +88,60 @@ void normalizeIdentity(RuntimeConfig& config) {
   config.bossId.trim();
   config.targetId.trim();
   config.displayName.trim();
+  config.deviceId.trim();
   if (config.bossId.length() == 0) config.bossId = config.targetId;
   if (config.bossId.length() == 0) config.bossId = config.deviceId;
   if (config.targetId.length() == 0) config.targetId = config.bossId;
   if (config.displayName.length() == 0) config.displayName = config.bossId;
+}
+
+bool isSafeTopicSegmentChar(char c) {
+  return (c >= 'A' && c <= 'Z') ||
+         (c >= 'a' && c <= 'z') ||
+         (c >= '0' && c <= '9') ||
+         c == '_' ||
+         c == '-' ||
+         c == '.';
+}
+
+bool validateTopicSegment(const String& value, const char* field, String& error) {
+  if (value.length() == 0) {
+    error = String(field) + " is required";
+    return false;
+  }
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (!isSafeTopicSegmentChar(value[i])) {
+      error = String(field) + " must use only A-Z, a-z, 0-9, '_', '-', or '.'";
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validateMqttRoot(RuntimeConfig& config, String& error) {
+  config.mqttRoot.trim();
+  while (config.mqttRoot.startsWith("/")) config.mqttRoot.remove(0, 1);
+  while (config.mqttRoot.endsWith("/")) config.mqttRoot.remove(config.mqttRoot.length() - 1);
+  if (config.mqttRoot.length() == 0) config.mqttRoot = "battlebang";
+
+  bool previousWasSlash = false;
+  for (size_t i = 0; i < config.mqttRoot.length(); ++i) {
+    const char c = config.mqttRoot[i];
+    if (c == '/') {
+      if (previousWasSlash) {
+        error = "mqtt.root must not contain empty path segments";
+        return false;
+      }
+      previousWasSlash = true;
+      continue;
+    }
+    previousWasSlash = false;
+    if (!isSafeTopicSegmentChar(c)) {
+      error = "mqtt.root must use slash-separated topic segments with only A-Z, a-z, 0-9, '_', '-', or '.'";
+      return false;
+    }
+  }
+  return true;
 }
 
 bool hardwareProfileMatchesCompiled(const RuntimeConfig& config) {
@@ -108,6 +158,9 @@ bool hardwareProfileMatchesCompiled(const RuntimeConfig& config) {
 
 bool validateConfig(RuntimeConfig& config, String& error) {
   normalizeIdentity(config);
+  if (!validateTopicSegment(config.deviceId, "device_id", error)) return false;
+  if (!validateTopicSegment(config.bossId, "boss_id", error)) return false;
+  if (!validateTopicSegment(config.targetId, "target_id", error)) return false;
   if (config.bossId.length() > 48) {
     error = "boss_id too long";
     return false;
@@ -177,6 +230,7 @@ bool validateConfig(RuntimeConfig& config, String& error) {
     error = "mqtt.port must be positive";
     return false;
   }
+  if (!validateMqttRoot(config, error)) return false;
   if (config.otaCheckIntervalS < 30) config.otaCheckIntervalS = 30;
   if (!hardwareProfileMatchesCompiled(config)) {
     error = "hardware_profile does not match compiled boss-target board profile";
@@ -230,7 +284,15 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
   }
 
   RuntimeConfig next = config;
-  const uint32_t incomingVersion = doc["config_version"] | config.configVersion;
+  if (!doc.containsKey("config_version")) {
+    error = "config_version is required";
+    return false;
+  }
+  const uint32_t incomingVersion = getUIntOr(doc["config_version"], 0);
+  if (incomingVersion == 0) {
+    error = "config_version must be positive";
+    return false;
+  }
   if (incomingVersion < config.configVersion) {
     error = "stale config_version";
     return false;
@@ -447,59 +509,61 @@ bool ledHardwareChanged(const RuntimeConfig& before, const RuntimeConfig& after)
 bool RuntimeConfigStore::load(RuntimeConfig& config) {
   Preferences prefs;
   if (!prefs.begin("boss_target", true)) return false;
-  config.configVersion = prefs.getUInt("cfg_ver", config.configVersion);
-  config.configured = prefs.getBool("configured", config.configured);
-  config.bossId = prefs.getString("boss_id", config.bossId);
-  config.targetId = prefs.getString("target_id", config.targetId);
-  config.displayName = prefs.getString("display", config.displayName);
-  config.group = prefs.getString("group", config.group);
-  config.location = prefs.getString("location", config.location);
-  config.gameplay.hpMax = prefs.getUShort("hp_max", config.gameplay.hpMax);
-  config.gameplay.damagePerHit = prefs.getUShort("damage", config.gameplay.damagePerHit);
-  config.gameplay.phaseCount = prefs.getUChar("phases", config.gameplay.phaseCount);
-  config.gameplay.startResetsHp = prefs.getBool("start_reset", config.gameplay.startResetsHp);
-  config.gameplay.targetDurationMs = prefs.getUInt("target_ms", config.gameplay.targetDurationMs);
-  config.gameplay.hitCooldownMs = prefs.getUInt("cooldown", config.gameplay.hitCooldownMs);
-  config.gameplay.digitalIsrDebounceUs = prefs.getUInt("isr_us", config.gameplay.digitalIsrDebounceUs);
-  config.target.count = prefs.getUChar("tgt_count", config.target.count);
-  config.target.ringNumLeds = prefs.getUShort("ring_leds", config.target.ringNumLeds);
-  config.target.activeColor = prefs.getUInt("active_rgb", config.target.activeColor);
-  config.target.hitFlashColor = prefs.getUInt("flash_rgb", config.target.hitFlashColor);
-  config.hpBar.numLeds = prefs.getUShort("hp_leds", config.hpBar.numLeds);
-  config.hpBar.brightness = prefs.getUChar("brightness", config.hpBar.brightness);
-  config.hpBar.maxMa = prefs.getUShort("max_ma", config.hpBar.maxMa);
-  config.hpBar.deadBlinkMs = prefs.getUInt("dead_blink", config.hpBar.deadBlinkMs);
+  RuntimeConfig loaded = config;
+  loaded.configVersion = prefs.getUInt("cfg_ver", loaded.configVersion);
+  loaded.configured = prefs.getBool("configured", loaded.configured);
+  loaded.bossId = prefs.getString("boss_id", loaded.bossId);
+  loaded.targetId = prefs.getString("target_id", loaded.targetId);
+  loaded.displayName = prefs.getString("display", loaded.displayName);
+  loaded.group = prefs.getString("group", loaded.group);
+  loaded.location = prefs.getString("location", loaded.location);
+  loaded.gameplay.hpMax = prefs.getUShort("hp_max", loaded.gameplay.hpMax);
+  loaded.gameplay.damagePerHit = prefs.getUShort("damage", loaded.gameplay.damagePerHit);
+  loaded.gameplay.phaseCount = prefs.getUChar("phases", loaded.gameplay.phaseCount);
+  loaded.gameplay.startResetsHp = prefs.getBool("start_reset", loaded.gameplay.startResetsHp);
+  loaded.gameplay.targetDurationMs = prefs.getUInt("target_ms", loaded.gameplay.targetDurationMs);
+  loaded.gameplay.hitCooldownMs = prefs.getUInt("cooldown", loaded.gameplay.hitCooldownMs);
+  loaded.gameplay.digitalIsrDebounceUs = prefs.getUInt("isr_us", loaded.gameplay.digitalIsrDebounceUs);
+  loaded.target.count = prefs.getUChar("tgt_count", loaded.target.count);
+  loaded.target.ringNumLeds = prefs.getUShort("ring_leds", loaded.target.ringNumLeds);
+  loaded.target.activeColor = prefs.getUInt("active_rgb", loaded.target.activeColor);
+  loaded.target.hitFlashColor = prefs.getUInt("flash_rgb", loaded.target.hitFlashColor);
+  loaded.hpBar.numLeds = prefs.getUShort("hp_leds", loaded.hpBar.numLeds);
+  loaded.hpBar.brightness = prefs.getUChar("brightness", loaded.hpBar.brightness);
+  loaded.hpBar.maxMa = prefs.getUShort("max_ma", loaded.hpBar.maxMa);
+  loaded.hpBar.deadBlinkMs = prefs.getUInt("dead_blink", loaded.hpBar.deadBlinkMs);
   for (uint8_t i = 0; i < kMaxHpPhases; ++i) {
     char key[12];
     snprintf(key, sizeof(key), "pal_%u", i);
-    config.hpBar.palette[i] = prefs.getUInt(key, config.hpBar.palette[i]);
+    loaded.hpBar.palette[i] = prefs.getUInt(key, loaded.hpBar.palette[i]);
   }
-  config.wifiSsid = prefs.getString("wifi_ssid", config.wifiSsid);
-  config.wifiPassword = prefs.getString("wifi_pass", config.wifiPassword);
-  config.networkAutoStart = prefs.getBool("net_auto", config.networkAutoStart);
-  config.networkStartDelayMs = prefs.getUInt("net_delay", config.networkStartDelayMs);
-  config.mqttHost = prefs.getString("mqtt_host", config.mqttHost);
-  config.mqttPort = prefs.getUShort("mqtt_port", config.mqttPort);
-  config.mqttUsername = prefs.getString("mqtt_user", config.mqttUsername);
-  config.mqttPassword = prefs.getString("mqtt_pass", config.mqttPassword);
-  config.mqttRoot = prefs.getString("mqtt_root", config.mqttRoot);
-  config.debugAllowSimulateHit = prefs.getBool("debug_sim", config.debugAllowSimulateHit);
-  config.otaCommandCenterControlled = prefs.getBool("ota_cc", config.otaCommandCenterControlled);
-  config.otaAutoCheckEnabled = prefs.getBool("ota_auto", config.otaAutoCheckEnabled);
-  config.otaChannel = prefs.getString("ota_channel", config.otaChannel);
-  config.otaDesiredBuild = prefs.getUInt("ota_build", config.otaDesiredBuild);
-  config.otaPublicManifestUrl = prefs.getString("ota_pub", config.otaPublicManifestUrl);
-  config.otaLocalMirrorUrl = prefs.getString("ota_mirror", config.otaLocalMirrorUrl);
-  config.otaCheckIntervalS = prefs.getUInt("ota_secs", config.otaCheckIntervalS);
-  config.otaApplyOnlyInSafeState = prefs.getBool("ota_safe", config.otaApplyOnlyInSafeState);
+  loaded.wifiSsid = prefs.getString("wifi_ssid", loaded.wifiSsid);
+  loaded.wifiPassword = prefs.getString("wifi_pass", loaded.wifiPassword);
+  loaded.networkAutoStart = prefs.getBool("net_auto", loaded.networkAutoStart);
+  loaded.networkStartDelayMs = prefs.getUInt("net_delay", loaded.networkStartDelayMs);
+  loaded.mqttHost = prefs.getString("mqtt_host", loaded.mqttHost);
+  loaded.mqttPort = prefs.getUShort("mqtt_port", loaded.mqttPort);
+  loaded.mqttUsername = prefs.getString("mqtt_user", loaded.mqttUsername);
+  loaded.mqttPassword = prefs.getString("mqtt_pass", loaded.mqttPassword);
+  loaded.mqttRoot = prefs.getString("mqtt_root", loaded.mqttRoot);
+  loaded.debugAllowSimulateHit = prefs.getBool("debug_sim", loaded.debugAllowSimulateHit);
+  loaded.otaCommandCenterControlled = prefs.getBool("ota_cc", loaded.otaCommandCenterControlled);
+  loaded.otaAutoCheckEnabled = prefs.getBool("ota_auto", loaded.otaAutoCheckEnabled);
+  loaded.otaChannel = prefs.getString("ota_channel", loaded.otaChannel);
+  loaded.otaDesiredBuild = prefs.getUInt("ota_build", loaded.otaDesiredBuild);
+  loaded.otaPublicManifestUrl = prefs.getString("ota_pub", loaded.otaPublicManifestUrl);
+  loaded.otaLocalMirrorUrl = prefs.getString("ota_mirror", loaded.otaLocalMirrorUrl);
+  loaded.otaCheckIntervalS = prefs.getUInt("ota_secs", loaded.otaCheckIntervalS);
+  loaded.otaApplyOnlyInSafeState = prefs.getBool("ota_safe", loaded.otaApplyOnlyInSafeState);
   prefs.end();
 
   String error;
-  if (!validateConfig(config, error)) {
+  if (!validateConfig(loaded, error)) {
     Serial.print("[boss_target][config] stored config invalid: ");
     Serial.println(error);
     return false;
   }
+  config = loaded;
   return true;
 }
 

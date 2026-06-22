@@ -214,6 +214,8 @@ void checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterA
     writeOtaRebootMarker(true);
     delay(500);
     ESP.restart();
+  } else {
+    target.recoverFromFailedOta("ota_failed");
   }
 }
 
@@ -418,9 +420,12 @@ void setup() {
   postOtaReboot = consumeOtaRebootMarker();
   identity = battlebang::boss_target::buildDeviceIdentity(::boss_target::TARGET_ID_PREFIX);
   config = makeDefaultRuntimeConfig(identity);
-  configStore.load(config);
+  const bool loadedStoredConfig = configStore.load(config);
 
   Serial.println("=== BATTLEBANG BOSS TARGET FIRMWARE ===");
+  if (!loadedStoredConfig) {
+    Serial.println("[boss_target][config] no valid stored config; using MAC-derived defaults");
+  }
   target.begin(config, onTargetEvent, nullptr);
   target.printBootBanner();
   Serial.print("release_repo=");

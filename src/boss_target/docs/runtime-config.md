@@ -37,7 +37,9 @@ or the same JSON can be sent over serial as:
 config {json}
 ```
 
-Every update should carry a monotonically increasing `config_version`. The firmware rejects stale config versions.
+Every provisioning/config update must include a positive `config_version`. The firmware rejects missing/zero versions and any version lower than the active config; equal versions are allowed so Command Center can safely retry the same payload.
+
+`boss_id`, `target_id`, and `device_id` are MQTT topic segments, so they must use only the allowed character set: A-Z, a-z, 0-9, `_`, `-`, or `.`. `mqtt.root` is normalized as slash-separated MQTT topic segments with the same allowed characters per segment; leading/trailing slashes are trimmed and empty middle segments are rejected.
 
 ## Persisted NVS values
 
@@ -45,10 +47,10 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 
 | JSON path | NVS key | Default | Example | Notes |
 | --- | --- | --- | --- | --- |
-| `config_version` | `cfg_ver` | `0` | `1700000000` | Monotonic version used to reject stale config. |
+| `config_version` | `cfg_ver` | `0` | `1700000000` | Mandatory positive version used to reject stale config. |
 | `configured` / `type=provision` | `configured` | `false` | `true` | `type: "provision"` marks the device configured. |
-| `boss_id` | `boss_id` | MAC-derived | `boss_target_E465B89B51E8` | Stable unique control identity and MQTT route. Leave empty during provision to use the ESP32 MAC-derived id. |
-| `target_id` | `target_id` | same as `boss_id` | `boss_target_E465B89B51E8` | Compatibility alias for older hit-target consumers. |
+| `boss_id` | `boss_id` | MAC-derived | `boss_target_E465B89B51E8` | Stable unique control identity and MQTT route. Leave empty during provision to use the ESP32 MAC-derived id. Must be a safe MQTT topic segment. |
+| `target_id` | `target_id` | same as `boss_id` | `boss_target_E465B89B51E8` | Compatibility alias for older hit-target consumers. Must be a safe MQTT topic segment. |
 | `display_name` / `name` | `display` | `boss_id` | `Mini Boss Left` | Human-readable UI label. Commands should still route by `boss_id`. |
 | `group` | `group` | empty | `boss-stage` | Placement/filter metadata for Command Center. |
 | `location` | `location` | empty | `stage-left` | Human-readable placement metadata. |
@@ -77,7 +79,7 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 | `mqtt.port` | `mqtt_port` | `1883` | `1883` | MQTT broker port. |
 | `mqtt.username` | `mqtt_user` | empty | `battlebang` | Optional MQTT auth. |
 | `mqtt.password` | `mqtt_pass` | empty | secret | Secret; keep in ignored `.env.boss_target` or secure Command Center channel. |
-| `mqtt.root` | `mqtt_root` | `battlebang` | `battlebang` | Topic root. |
+| `mqtt.root` | `mqtt_root` | `battlebang` | `battlebang/boss-stage` | Topic root. Trimmed and validated as slash-separated safe MQTT topic segments. |
 | `ota.command_center_controlled` | `ota_cc` | `true` | `true` | If true, automatic polling applies only to desired Command Center build. |
 | `ota.auto_check_enabled` | `ota_auto` | `false` | `false` | Enables periodic manifest polling. |
 | `ota.channel` | `ota_channel` | `boss-target` | `boss-target` | Firmware OTA channel. |

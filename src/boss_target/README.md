@@ -89,6 +89,10 @@ config-looking artifacts:
 See [`docs/runtime-config.md`](docs/runtime-config.md) for the full NVS field
 table, examples, validation ranges, and what is intentionally not persisted.
 
+`config_version` is mandatory for all `provision` and `config` payloads; the
+firmware rejects missing/zero versions and versions older than the active NVS
+config.
+
 Persisted NVS config includes:
 
 - identity/placement (`boss_id`, `display_name`, `group`, `location`)
@@ -123,6 +127,8 @@ Default gameplay is simple and production-readable:
 ### Identity vs display name
 
 `boss_id` is the stable unique MQTT/control identity. By default it is derived from the ESP32 MAC, for example `boss_target_E465B89B51E8`, so multiple bosses can run under one Command Center without colliding.
+
+`boss_id`, `target_id`, and `device_id` are restricted to MQTT-safe topic segment characters (`A-Z`, `a-z`, `0-9`, `_`, `-`, `.`). `mqtt.root` may contain `/`, but only as separators between safe non-empty segments.
 
 `display_name` is only for humans/UI, for example `Mini Boss Left` or `Final Boss HP`. Command Center should send commands by `boss_id`, then show `display_name` in lists and dashboards. The firmware also includes a `name` alias in status with the same value for UI clients that expect a generic name field.
 
@@ -186,3 +192,5 @@ https://github.com/KongPedia/battlebang-esp/releases/download/boss-target-latest
 ```
 
 With `ota.command_center_controlled=true`, automatic polling applies only when manifest `build` exactly matches provisioned `ota.desired_build`. OTA is accepted only in safe states (`READY`, `DEFEATED`, `UNCONFIGURED`) unless policy is explicitly changed.
+
+HTTPS OTA syncs the ESP32 clock, then uses a pinned GitHub Release root CA rather than disabling TLS verification. If a firmware download stalls or fails after entering OTA-prepared mode, the controller clears OTA-prepared state and restores normal target rendering instead of staying dark with hits disabled.

@@ -29,6 +29,7 @@ class BossTargetController {
   void start(const char* source, bool resetHp = true);
   void simulateHit(const char* source, int targetIndex = -1);
   void prepareForOta();
+  void recoverFromFailedOta(const char* source);
   bool isSafeForOta() const;
   bool destroyed() const { return hpRemaining_ <= 0; }
   bool hitEnabled() const { return hitEnabled_; }

@@ -135,6 +135,20 @@ void BossTargetController::prepareForOta() {
   FastLED.show();
 }
 
+void BossTargetController::recoverFromFailedOta(const char* source) {
+  otaPrepared_ = false;
+  hitEnabled_ = true;
+  if (mode_ == Mode::INTRO || mode_ == Mode::ACTIVE) {
+    reset(source);
+    return;
+  }
+  const uint32_t now = millis();
+  lastShowMs_ = now - ::boss_target::LED_SHOW_PERIOD_MS;
+  renderLeds(now);
+  FastLED.show();
+  emit("ota_failed", 255, 0, source, 0);
+}
+
 bool BossTargetController::isSafeForOta() const {
   return mode_ == Mode::READY || mode_ == Mode::DEFEATED || mode_ == Mode::UNCONFIGURED || otaPrepared_;
 }
