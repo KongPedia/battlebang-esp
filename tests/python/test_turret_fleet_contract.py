@@ -210,6 +210,8 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
         'fire["esc_attached"]',
         'fire["esc_command_us"]',
         'fire["relay_ch2_on"]',
+        'fire["relay_ch3_active_low_config"]',
+        'fire["relay_profile_config"]',
         'fire["pending_fire"]',
         'fire["aim_stable_ms"]',
         'doc.createNestedObject("motion_state")',
@@ -324,6 +326,10 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "uint16_t fireEscRunUs = 1700;" in config
     assert "uint32_t fireDefaultHoldMs = 500;" in config
     assert "uint32_t fireMinHoldMs = 100;" in config
+    assert "bool fireRelayActiveLow = true;" in config
+    assert "bool fireRelayCh3ActiveLow = true;" in config
+    assert 'fire["relay_ch3_active_low"]' in read("src/turret_fleet/config/runtime_config.cpp")
+    assert 'prefs.getBool("fire_r3_al"' in read("src/turret_fleet/config/runtime_config.cpp")
     assert "const int kRelayCh1Pin = 21;" in control
     assert "const int kRelayCh2Pin = 22;" in control
     assert "const int kRelayCh3Pin = 23;" in control
@@ -332,6 +338,8 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "FIRE_SEQUENCE_CH2_ON_WAIT" in header
     assert "runEscNow(\"fire-command\")" in control
     assert "relayWrite(kRelayCh2Pin, true)" in control
+    assert "relayPinActiveLow(kRelayCh3Pin) ? INPUT_PULLUP : INPUT_PULLDOWN" in control
+    assert "relayOffLevel(kRelayCh3Pin)" in control
     assert "config_.fireEscRunUs" in control
     assert "fireKeepAliveUntilMs_ = 0;" in control
     assert "fireSequenceState_ == FIRE_SEQUENCE_RUNNING && fireKeepAliveUntilMs_ != 0" in control
@@ -345,6 +353,25 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "forceFireOutputsSafeOff();" in control
     assert "fire rejected in DEAD mode" in control
     assert "fire rejected: hardware disabled by config" not in control
+
+
+def test_fleet_relay_profile_is_explicit_nvs_contract_not_turret_id_mapping() -> None:
+    config = read("src/turret_fleet/config/runtime_config.cpp")
+    header = read("src/turret_fleet/config/runtime_config.h")
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    docs = read("src/turret_fleet/config/README.md")
+
+    assert "String fireRelayProfile;" in header
+    assert 'profile == "single_channel_ch3_active_high"' in config
+    assert 'profile == "two_channel_active_low"' in config
+    assert 'fire["relay_profile"]' in config
+    assert 'prefs.getString("fire_profile"' in config
+    assert 'prefs.putString("fire_profile", config.fireRelayProfile)' in config
+    assert 'fire["relay_profile_config"] = config_.fireRelayProfile' in control
+    assert "hasOneChannelFireRelay" not in config
+    assert "relayPolarityDefaultsForTurret" not in config
+    assert "`fire.relay_profile` is the explicit hardware preset saved in NVS" in docs
+    assert "`fire.relay_ch*_active_low` values; per-channel values remain authoritative" in docs
 
 
 def test_explicit_fire_does_not_wait_for_target_aim_stability() -> None:
@@ -648,6 +675,15 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         assert config["motion"]["command_envelope_ratio"] == 0.65
         assert config["motion"]["pitch_max_delta_us"] == 140
         assert config["motion"]["pitch_min_drive_us"] == 90
+        expected_fire_polarity = {
+            "relay_profile": "two_channel_active_low" if turret_id == "turret_4" else "single_channel_ch3_active_high",
+            "relay_active_low": True,
+            "relay_ch1_active_low": True,
+            "relay_ch2_active_low": True,
+            "relay_ch3_active_low": turret_id == "turret_4",
+        }
+        for key, value in expected_fire_polarity.items():
+            assert config["fire"][key] == value
         for key in (
             "yaw_plus_max_delta_us",
             "yaw_minus_max_delta_us",
@@ -741,6 +777,7 @@ def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
     assert "plan.loopCount = normalizePatternLoopCount(params, 1);" in pattern_cpp
     assert "if (!plan.addSweep(1, true)) return false;" in pattern_cpp
     assert "if (!plan.addStep(PATTERN_STEP_DWELL, 1, plan.dwellMs)) return false;" in pattern_cpp
+    assert "Keep the final return edge in PATTERN long enough" in pattern_cpp
     assert control.count("ensurePatternSweepFire(patternPlan_.fireMs);") == 1
     assert "bool TurretControl::patternSweepYawReached() const" in control
     assert "if (patternSweepYawReached())" in control
@@ -916,6 +953,145 @@ def test_fleet_e2e_mqtt_harness_covers_modes_and_readable_patterns() -> None:
         "yaw_current_deg",
     ) == 3.5
     assert module.sign_changes([2.0, -2.0, 2.0]) == 2
+
+
+def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
+            "--dry-run",
+            "--random-seed",
+            "7",
+            "--root",
+            "battlebang",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    output = result.stdout
+    assert "turrets=turret_1,turret_3,turret_4" in output
+    assert "order=random" in output
+    assert "parallel_loop=disabled" in output
+    assert "sequential round=1 order=turret_4,turret_1,turret_3" in output
+    assert "parallel turret=" not in output
+    for turret_id in ["turret_1", "turret_3", "turret_4"]:
+        assert f"topic=battlebang/turrets/{turret_id}/command" in output
+    first_payload_line = next(line for line in output.splitlines() if "turret=turret_4 " in line)
+    payload = json.loads(first_payload_line.split("payload=", 1)[1])
+    assert payload["ttl_ms"] == 3000
+    assert payload["pattern_instance_id"] == f"lane_sweep-{payload['command_id']}"
+    assert payload["params"] == {"return_to": "wait_command"}
+
+
+def test_repeat_lane_sweep_can_stage_boss_target_start_before_immediate_turret_patterns() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
+            "--dry-run",
+            "--root",
+            "battlebang",
+            "--boss-id",
+            "boss_target_6809477249D0",
+            "--count",
+            "1",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    output = result.stdout
+    assert "boss=boss_target_6809477249D0" in output
+    assert "dry-run boss opening:" in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"reset"} wait_ready<=10s' in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"start"} start_intro=0s' in output
+    assert 'payload={"command":"home"' not in output
+    assert "pattern starts immediately" in output
+    assert "dry-run boss defeat handling:" in output
+    assert 'if boss hp<=0 topic=battlebang/turrets/turret_1/command payload={"command":"dead","command_id":"boss-dead-turret_1-<ms>"}' in output
+    assert output.index('payload={"command":"reset"}') < output.index('payload={"command":"start"}')
+    assert output.index('payload={"command":"start"}') < output.index("pattern starts immediately")
+    assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
+
+
+def test_repeat_lane_sweep_publishes_turret_dead_when_boss_hp_zero() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"
+    spec = importlib.util.spec_from_file_location("repeat_lane_sweep_dead_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.published: list[tuple[str, dict[str, object]]] = []
+
+        def publish_json(self, topic: str, payload: dict[str, object]) -> None:
+            self.published.append((topic, payload))
+
+    client = FakeClient()
+    monitor = module.StatusMonitor(
+        root="battlebang",
+        turrets=["turret_1", "turret_3", "turret_4"],
+        boss_id="boss_target_6809477249D0",
+    )
+    monitor.latest_boss = {
+        "mode": "DEFEATED",
+        "life_state": "dead",
+        "destroyed": True,
+        "hp_remaining": 0,
+        "hp_max": 10,
+    }
+
+    assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
+    assert [topic for topic, _payload in client.published] == [
+        "battlebang/turrets/turret_1/command",
+        "battlebang/turrets/turret_3/command",
+        "battlebang/turrets/turret_4/command",
+    ]
+    for turret_id, (_topic, payload) in zip(["turret_1", "turret_3", "turret_4"], client.published):
+        assert payload["command"] == "dead"
+        assert str(payload["command_id"]).startswith(f"boss-dead-{turret_id}-")
+
+    assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
+    assert len(client.published) == 3
+
+
+def test_turret_fleet_mqtt_subscribe_tolerates_live_status_before_suback() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/e2e_mqtt_test.py"
+    spec = importlib.util.spec_from_file_location("e2e_mqtt_subscribe_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.sent: list[bytes] = []
+
+        def sendall(self, data: bytes) -> None:
+            self.sent.append(data)
+
+    publish_body = b"\x00#battlebang/turrets/turret_1/status{}"
+    packets = [(0x30, publish_body), (0x90, b"\x00\x01\x00")]
+    session = module.MqttSession(host="unused", port=1883, timeout_s=1.0)
+    session.sock = FakeSocket()
+    session.read_packet = lambda *, deadline: packets.pop(0) if packets else (None, b"")
+
+    session.subscribe("battlebang/boss_targets/boss_target_6809477249D0/status")
+
+    assert session.sock.sent[0].startswith(b"\x82")
+    assert packets == []
 
 
 def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
@@ -1207,6 +1383,11 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
     assert full_payload["motion"]["yaw_minus_max_delta_us"] == 420
     assert full_payload["motion"]["yaw_plus_min_drive_us"] == 400
     assert full_payload["motion"]["yaw_minus_min_drive_us"] == 400
+    assert full_payload["fire"]["relay_active_low"] is True
+    assert full_payload["fire"]["relay_ch1_active_low"] is True
+    assert full_payload["fire"]["relay_ch2_active_low"] is True
+    assert full_payload["fire"]["relay_ch3_active_low"] is False
+    assert full_payload["fire"]["relay_profile"] == "single_channel_ch3_active_high"
     assert 500 <= full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] <= 2000
     assert full_payload["patterns"]["presets"]["lane_sweep"]["fire_ms"] == 2000
     lane_points = full_payload["patterns"]["presets"]["lane_sweep"]["points"]

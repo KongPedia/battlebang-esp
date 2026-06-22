@@ -193,7 +193,12 @@ bool compileLaneSweepPattern(JsonObjectConst params, const RuntimeConfig& config
     if (pingPong) {
       if (!plan.addStep(PATTERN_STEP_DWELL, 1, plan.dwellMs)) return false;
       if (!plan.addSweep(0, true)) return false;
-      if (loop + 1 < plan.loopCount && !plan.addStep(PATTERN_STEP_DWELL, 0, plan.dwellMs)) return false;
+      // Keep the final return edge in PATTERN long enough for the closed-loop
+      // yaw controller to settle after the fire window is cut. Without this
+      // dwell the final sweep can report DONE immediately after a transient
+      // endpoint reading, and WAIT_COMMAND then freezes the current yaw as the
+      // new goal before the turret visibly reaches the lane edge.
+      if (!plan.addStep(PATTERN_STEP_DWELL, 0, plan.dwellMs)) return false;
     } else if (loop + 1 < plan.loopCount) {
       if (!plan.addStep(PATTERN_STEP_MOVE, 0, plan.moveTimeoutMs)) return false;
       if (!plan.addStep(PATTERN_STEP_DWELL, 0, plan.dwellMs)) return false;

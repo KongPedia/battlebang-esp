@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "config_version": 2,
+  "display_name": "Mini Boss Left",
+  "group": "boss-stage",
+  "location": "stage-left"
+}
