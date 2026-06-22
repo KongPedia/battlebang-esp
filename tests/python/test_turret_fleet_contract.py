@@ -211,6 +211,7 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
         'fire["esc_command_us"]',
         'fire["relay_ch2_on"]',
         'fire["relay_ch3_active_low_config"]',
+        'fire["relay_profile_config"]',
         'fire["pending_fire"]',
         'fire["aim_stable_ms"]',
         'doc.createNestedObject("motion_state")',
@@ -352,6 +353,25 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
     assert "forceFireOutputsSafeOff();" in control
     assert "fire rejected in DEAD mode" in control
     assert "fire rejected: hardware disabled by config" not in control
+
+
+def test_fleet_relay_profile_is_explicit_nvs_contract_not_turret_id_mapping() -> None:
+    config = read("src/turret_fleet/config/runtime_config.cpp")
+    header = read("src/turret_fleet/config/runtime_config.h")
+    control = read("src/turret_fleet/control/turret_control.cpp")
+    docs = read("src/turret_fleet/config/README.md")
+
+    assert "String fireRelayProfile;" in header
+    assert 'profile == "single_channel_ch3_active_high"' in config
+    assert 'profile == "two_channel_active_low"' in config
+    assert 'fire["relay_profile"]' in config
+    assert 'prefs.getString("fire_profile"' in config
+    assert 'prefs.putString("fire_profile", config.fireRelayProfile)' in config
+    assert 'fire["relay_profile_config"] = config_.fireRelayProfile' in control
+    assert "hasOneChannelFireRelay" not in config
+    assert "relayPolarityDefaultsForTurret" not in config
+    assert "`fire.relay_profile` is the explicit hardware preset saved in NVS" in docs
+    assert "`fire.relay_ch*_active_low` values; per-channel values remain authoritative" in docs
 
 
 def test_explicit_fire_does_not_wait_for_target_aim_stability() -> None:
@@ -656,13 +676,14 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
         assert config["motion"]["pitch_max_delta_us"] == 140
         assert config["motion"]["pitch_min_drive_us"] == 90
         expected_fire_polarity = {
+            "relay_profile": "two_channel_active_low" if turret_id == "turret_4" else "single_channel_ch3_active_high",
             "relay_active_low": True,
             "relay_ch1_active_low": True,
             "relay_ch2_active_low": True,
             "relay_ch3_active_low": turret_id == "turret_4",
         }
         for key, value in expected_fire_polarity.items():
-            assert config["fire"][key] is value
+            assert config["fire"][key] == value
         for key in (
             "yaw_plus_max_delta_us",
             "yaw_minus_max_delta_us",
@@ -1366,6 +1387,7 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
     assert full_payload["fire"]["relay_ch1_active_low"] is True
     assert full_payload["fire"]["relay_ch2_active_low"] is True
     assert full_payload["fire"]["relay_ch3_active_low"] is False
+    assert full_payload["fire"]["relay_profile"] == "single_channel_ch3_active_high"
     assert 500 <= full_payload["patterns"]["presets"]["lane_sweep"]["dwell_ms"] <= 2000
     assert full_payload["patterns"]["presets"]["lane_sweep"]["fire_ms"] == 2000
     lane_points = full_payload["patterns"]["presets"]["lane_sweep"]["points"]

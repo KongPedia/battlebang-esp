@@ -78,7 +78,8 @@
     "relay_active_low": true,
     "relay_ch1_active_low": true,
     "relay_ch2_active_low": true,
-    "relay_ch3_active_low": true
+    "relay_ch3_active_low": true,
+    "relay_profile": "two_channel_active_low"
   },
   "network": {
     "auto_start": true,
