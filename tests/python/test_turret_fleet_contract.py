@@ -955,7 +955,7 @@ def test_fleet_e2e_mqtt_harness_covers_modes_and_readable_patterns() -> None:
     assert module.sign_changes([2.0, -2.0, 2.0]) == 2
 
 
-def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> None:
+def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_2_3_4() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -973,12 +973,12 @@ def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> N
     )
 
     output = result.stdout
-    assert "turrets=turret_1,turret_3,turret_4" in output
+    assert "turrets=turret_1,turret_2,turret_3,turret_4" in output
     assert "order=random" in output
     assert "parallel_loop=disabled" in output
-    assert "sequential round=1 order=turret_4,turret_1,turret_3" in output
+    assert "sequential round=1 order=turret_4,turret_2,turret_1,turret_3" in output
     assert "parallel turret=" not in output
-    for turret_id in ["turret_1", "turret_3", "turret_4"]:
+    for turret_id in ["turret_1", "turret_2", "turret_3", "turret_4"]:
         assert f"topic=battlebang/turrets/{turret_id}/command" in output
     first_payload_line = next(line for line in output.splitlines() if "turret=turret_4 " in line)
     payload = json.loads(first_payload_line.split("payload=", 1)[1])
@@ -1040,7 +1040,7 @@ def test_repeat_lane_sweep_publishes_turret_dead_when_boss_hp_zero() -> None:
     client = FakeClient()
     monitor = module.StatusMonitor(
         root="battlebang",
-        turrets=["turret_1", "turret_3", "turret_4"],
+        turrets=["turret_1", "turret_2", "turret_3", "turret_4"],
         boss_id="boss_target_6809477249D0",
     )
     monitor.latest_boss = {
@@ -1054,15 +1054,16 @@ def test_repeat_lane_sweep_publishes_turret_dead_when_boss_hp_zero() -> None:
     assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
     assert [topic for topic, _payload in client.published] == [
         "battlebang/turrets/turret_1/command",
+        "battlebang/turrets/turret_2/command",
         "battlebang/turrets/turret_3/command",
         "battlebang/turrets/turret_4/command",
     ]
-    for turret_id, (_topic, payload) in zip(["turret_1", "turret_3", "turret_4"], client.published):
+    for turret_id, (_topic, payload) in zip(["turret_1", "turret_2", "turret_3", "turret_4"], client.published):
         assert payload["command"] == "dead"
         assert str(payload["command_id"]).startswith(f"boss-dead-{turret_id}-")
 
     assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
-    assert len(client.published) == 3
+    assert len(client.published) == 4
 
 
 def test_turret_fleet_mqtt_subscribe_tolerates_live_status_before_suback() -> None:

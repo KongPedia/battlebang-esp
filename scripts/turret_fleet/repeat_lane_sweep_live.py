@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BattleBang live lane_sweep director for turret_1, turret_3, and turret_4.
+"""BattleBang live lane_sweep director for turret_1 through turret_4.
 
 Normal cycle:
 1. Build one random shuffled bag of the alive turrets.
@@ -39,7 +39,7 @@ from mqtt_command import (  # noqa: E402
 
 TERMINAL_MODES = {"WAIT_COMMAND", "DEAD"}
 TERMINAL_PATTERN_STATES = {"IDLE", "DONE", ""}
-DEFAULT_TURRETS = ["turret_1", "turret_3", "turret_4"]
+DEFAULT_TURRETS = ["turret_1", "turret_2", "turret_3", "turret_4"]
 
 
 class BossDefeated(RuntimeError):
@@ -550,7 +550,7 @@ def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Random one-at-a-time live-fire lane_sweep director for turret_1, turret_3, and turret_4.")
+    parser = argparse.ArgumentParser(description="Random one-at-a-time live-fire lane_sweep director for turret_1 through turret_4.")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="default: src/turret_fleet/.env.turret_fleet")
     parser.add_argument("--host", help="MQTT broker host; default from env file")
     parser.add_argument("--port", type=int, help="MQTT broker port; default 1883")
@@ -558,7 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--username", help="MQTT username")
     parser.add_argument("--password", help="MQTT password")
     parser.add_argument("--timeout-s", type=float, default=5.0)
-    parser.add_argument("--turret", action="append", dest="turrets", help="repeatable; default turret_1, turret_3, then turret_4")
+    parser.add_argument("--turret", action="append", dest="turrets", help="repeatable; default turret_1 through turret_4")
     parser.add_argument("--frame-id", default="boss_stage_v1")
     parser.add_argument("--single-loop", type=int, help="override loop count for one-at-a-time and solo-dead mode; omit to use the ESP's pattern preset/default")
     parser.add_argument("--parallel-loop", type=int, default=0, help="loop count for optional parallel phase; 0 disables parallel and keeps one-at-a-time flow")
