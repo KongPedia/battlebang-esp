@@ -103,4 +103,4 @@ mosquitto_pub -h <BROKER_IP> -p 1883 -q 1 \
 
 ## Cooldown ring
 
-The original ring LED remains on GPIO4 and displays only Nixo fire/cooldown: ready=full green, firing=full red, and the 10-second cooldown starts dark then fills 1/10 of the ring in green every second. Hit/down HP states are rendered separately on the 84-LED bar on GPIO18.
+The original ring LED remains on GPIO4 and displays only Nixo fire state: ready=full green, firing=full red, and the configured cooldown as a green fill animation. Hit/down HP states are rendered separately on the 84-LED bar on GPIO18.

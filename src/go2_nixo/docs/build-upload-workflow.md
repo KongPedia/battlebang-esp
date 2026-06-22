@@ -26,7 +26,7 @@ cp src/go2_nixo/local_secrets.example.h src/go2_nixo/local_secrets.h
 
 - `hit_cooldown_ms`
 - offline hit queue capacity / flush interval
-- HP bar LED pin/count/brightness (default GPIO18 / 84 / 120) and ring fire/cooldown LED pin/count/brightness (default GPIO4 / 40 / 80)
+- HP bar LED pin/count/brightness (default GPIO18 / 84 / 120) and ring fire-state LED pin/count/brightness (default GPIO4 / 40 / 80)
 - piezo AO ADC pin / threshold / rearm raw / capture window
 - piezo D0 pin은 hit 판정에 쓰지 않고 debug readback 용도
 - MQTT topic prefix

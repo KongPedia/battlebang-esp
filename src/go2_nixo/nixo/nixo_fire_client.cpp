@@ -198,6 +198,10 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
 }
 
 void NixoFireClient::beginCooldown(uint32_t now) {
+  if (NIXO_FIRE_COOLDOWN_MS == 0) {
+    cooldownStartedMs_ = 0;
+    return;
+  }
   cooldownStartedMs_ = now;
   Serial.printf("[FIRE] cooldown start duration_ms=%lu\n", (unsigned long)NIXO_FIRE_COOLDOWN_MS);
 }

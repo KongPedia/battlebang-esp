@@ -296,7 +296,7 @@
 #endif
 
 #ifndef BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS
-#define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 1500
+#define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 3000
 #endif
 
 #ifndef BATTLEBANG_NIXO_FIRE_MIN_DURATION_MS
@@ -308,7 +308,7 @@
 #endif
 
 #ifndef BATTLEBANG_NIXO_FIRE_COOLDOWN_MS
-#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 10000
+#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 1000
 #endif
 
 #ifndef BATTLEBANG_HIT_COOLDOWN_MS
@@ -444,9 +444,9 @@ static_assert(HP_BAR_LEDS_PER_GROUP == 3,
               "Go2 HP bar renderer expects 3 linked LEDs per group");
 static_assert(NUM_LEDS == HP_BAR_EXPECTED_LED_COUNT,
               "HP bar LED count must match grouped bar layout");
-static_assert(RING_NUM_LEDS > 0, "cooldown ring LED count must be positive");
+static_assert(RING_NUM_LEDS > 0, "fire ring LED count must be positive");
 static_assert(HP_BAR_LED_PIN != RING_LED_PIN,
-              "HP bar and cooldown ring pins must be different");
+              "HP bar and fire ring pins must be different");
 static_assert(PIEZO_AO_PIN >= 0,
               "piezo AO pin must be configured for ADC threshold hit firmware");
 static_assert(PIEZO_AO_THRESHOLD_RAW > 0,

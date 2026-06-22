@@ -22,10 +22,10 @@
     "nixo_relay2_pin": -1,
     "nixo_relay_on_level": 1,
     "nixo_relay_off_level": 0,
-    "nixo_fire_default_duration_ms": 1500,
+    "nixo_fire_default_duration_ms": 3000,
     "nixo_fire_min_duration_ms": 100,
     "nixo_fire_max_duration_ms": 10000,
-    "nixo_fire_cooldown_ms": 10000,
+    "nixo_fire_cooldown_ms": 1000,
     "mqtt_topic_prefix": "battlebang/hit",
     "nixo_relay_delay1_ms": 800
   },
