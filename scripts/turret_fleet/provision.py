@@ -189,6 +189,19 @@ def build_config(
 
     fire_default_ms = int(env_first(env, "TURRET_FLEET_FIRE_DEFAULT_HOLD_MS", default="500") or "500")
     fire_run_us = int(env_first(env, "TURRET_FLEET_FIRE_ESC_RUN_US", default="1700") or "1700")
+    fire_relay_active_low = parse_bool(env_first(env, "TURRET_FLEET_FIRE_RELAY_ACTIVE_LOW", default="true"), default=True)
+    fire_relay_ch1_active_low = parse_bool(
+        env_first(env, "TURRET_FLEET_FIRE_RELAY_CH1_ACTIVE_LOW", default=str(fire_relay_active_low).lower()),
+        default=fire_relay_active_low,
+    )
+    fire_relay_ch2_active_low = parse_bool(
+        env_first(env, "TURRET_FLEET_FIRE_RELAY_CH2_ACTIVE_LOW", default=str(fire_relay_active_low).lower()),
+        default=fire_relay_active_low,
+    )
+    fire_relay_ch3_active_low = parse_bool(
+        env_first(env, "TURRET_FLEET_FIRE_RELAY_CH3_ACTIVE_LOW", default=str(fire_relay_active_low).lower()),
+        default=fire_relay_active_low,
+    )
     dead_pitch = float(env_first(env, "TURRET_FLEET_DEAD_PITCH_DEG", default=str(pitch_motion.get("dead_deg", 20.0))) or 20.0)
     home_yaw_deg = float(env_first(env, "TURRET_FLEET_HOME_YAW_DEG", default="0.0") or "0.0")
     home_pitch_deg = float(env_first(env, "TURRET_FLEET_HOME_PITCH_DEG", default="0.0") or "0.0")
@@ -283,6 +296,10 @@ def build_config(
             "min_hold_ms": 100,
             "max_hold_ms": 60000,
             "relay_step_delay_ms": int(env_first(env, "TURRET_FLEET_FIRE_RELAY_STEP_DELAY_MS", default="250") or "250"),
+            "relay_active_low": fire_relay_active_low,
+            "relay_ch1_active_low": fire_relay_ch1_active_low,
+            "relay_ch2_active_low": fire_relay_ch2_active_low,
+            "relay_ch3_active_low": fire_relay_ch3_active_low,
         },
         "network": {
             "auto_start": network_auto_start,

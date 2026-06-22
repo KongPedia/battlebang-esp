@@ -267,7 +267,12 @@ unsigned long fireHardOffDelayMs(const RuntimeConfig& config, unsigned long hold
   // fire command gets an absolute wall-clock cap from the first relay-on edge,
   // so a stuck pattern leg or missed state transition cannot leave relays/ESC
   // energized indefinitely.
-  return holdMs + (config.fireRelayStepDelayMs * 6UL) + 250UL;
+  // Normal completion takes seven relay-step windows from command start
+  // (three staged ON waits, three staged OFF waits, and the final safe-off
+  // settle window) plus the requested hold. Leave a fixed margin so the hard
+  // cap catches genuinely stuck states instead of racing the final CH2 OFF
+  // transition and leaving the command mode in FIRING after outputs are safe.
+  return holdMs + (config.fireRelayStepDelayMs * 7UL) + 1000UL;
 }
 
 void writeFireRecoveryMarker(bool active) {
@@ -297,8 +302,8 @@ void TurretControl::begin(const RuntimeConfig& config) {
   randomSeed(static_cast<unsigned long>(micros()) ^
              (static_cast<unsigned long>(analogRead(kYawPotPin)) << 16) ^
              static_cast<unsigned long>(analogRead(kPitchPotPin)));
-  parkRelayPinsSafeOff();
   applyConfig(config);
+  parkRelayPinsSafeOff();
   // Keep the legacy src/turret ESC contract: GPIO25 gets a 50Hz low-throttle
   // STOP signal at boot so the BLDC ESC can initialize/arm safely before an
   // explicit fire command. Relays remain parked safe-off until fire.
@@ -425,7 +430,15 @@ void TurretControl::enterBootInitialTarget(bool motionAllowed) {
 
 void TurretControl::applyConfig(const RuntimeConfig& config) {
   const bool wasUnconfigured = (mode_ == "UNCONFIGURED" || mode_ == "BOOT");
+  const bool relayIdle = !relayCh1On_ && !relayCh2On_ && !relayCh3On_;
   config_ = config;
+  if (relayIdle) {
+    if (relayOutputsAttached_) {
+      relayAllOff();
+    } else {
+      parkRelayPinsSafeOff();
+    }
+  }
   if (wasUnconfigured && config_.configured) {
     mode_ = "WAIT_COMMAND";
   }
@@ -470,7 +483,14 @@ void TurretControl::applyConfig(const RuntimeConfig& config) {
   Serial.print(" pitch_max_delta_us=");
   Serial.print(config.pitchMaxDeltaUs);
   Serial.print(" axis_switch_cooldown_ms=");
-  Serial.println(config.axisSwitchCooldownMs);
+  Serial.print(config.axisSwitchCooldownMs);
+  Serial.print(" relay_active_low=(");
+  Serial.print(config.fireRelayCh1ActiveLow ? "1" : "0");
+  Serial.print(",");
+  Serial.print(config.fireRelayCh2ActiveLow ? "1" : "0");
+  Serial.print(",");
+  Serial.print(config.fireRelayCh3ActiveLow ? "1" : "0");
+  Serial.println(")");
 }
 
 void TurretControl::setBrownoutLockout(bool active) {
@@ -1231,27 +1251,29 @@ bool TurretControl::runBootAxisProbe() {
 }
 
 void TurretControl::parkRelayPinsSafeOff() {
-  if (kRelayActiveLow) {
-    pinMode(kRelayCh1Pin, INPUT_PULLUP);
-    pinMode(kRelayCh2Pin, INPUT_PULLUP);
-    pinMode(kRelayCh3Pin, INPUT_PULLUP);
-  } else {
-    pinMode(kRelayCh1Pin, INPUT);
-    pinMode(kRelayCh2Pin, INPUT);
-    pinMode(kRelayCh3Pin, INPUT);
-  }
+  pinMode(kRelayCh1Pin, relayPinActiveLow(kRelayCh1Pin) ? INPUT_PULLUP : INPUT_PULLDOWN);
+  pinMode(kRelayCh2Pin, relayPinActiveLow(kRelayCh2Pin) ? INPUT_PULLUP : INPUT_PULLDOWN);
+  pinMode(kRelayCh3Pin, relayPinActiveLow(kRelayCh3Pin) ? INPUT_PULLUP : INPUT_PULLDOWN);
   relayOutputsAttached_ = false;
   relayCh1On_ = false;
   relayCh2On_ = false;
   relayCh3On_ = false;
 }
 
+bool TurretControl::relayPinActiveLow(int pin) const {
+  if (pin == kRelayCh1Pin) return config_.fireRelayCh1ActiveLow;
+  if (pin == kRelayCh2Pin) return config_.fireRelayCh2ActiveLow;
+  if (pin == kRelayCh3Pin) return config_.fireRelayCh3ActiveLow;
+  return config_.fireRelayActiveLow;
+}
+
+int TurretControl::relayOffLevel(int pin) const {
+  return relayPinActiveLow(pin) ? HIGH : LOW;
+}
+
 void TurretControl::relayWrite(int pin, bool on) {
-  if (kRelayActiveLow) {
-    digitalWrite(pin, on ? LOW : HIGH);
-  } else {
-    digitalWrite(pin, on ? HIGH : LOW);
-  }
+  const bool activeLow = relayPinActiveLow(pin);
+  digitalWrite(pin, on ? (activeLow ? LOW : HIGH) : (activeLow ? HIGH : LOW));
 
   if (pin == kRelayCh1Pin) {
     relayCh1On_ = on;
@@ -1274,9 +1296,9 @@ void TurretControl::ensureRelayOutputsAttached(const char* reason) {
   Serial.print("[fleet][fire] attaching relay outputs for ");
   Serial.println(reason);
 
-  digitalWrite(kRelayCh1Pin, kRelayActiveLow ? HIGH : LOW);
-  digitalWrite(kRelayCh2Pin, kRelayActiveLow ? HIGH : LOW);
-  digitalWrite(kRelayCh3Pin, kRelayActiveLow ? HIGH : LOW);
+  digitalWrite(kRelayCh1Pin, relayOffLevel(kRelayCh1Pin));
+  digitalWrite(kRelayCh2Pin, relayOffLevel(kRelayCh2Pin));
+  digitalWrite(kRelayCh3Pin, relayOffLevel(kRelayCh3Pin));
   pinMode(kRelayCh1Pin, OUTPUT);
   pinMode(kRelayCh2Pin, OUTPUT);
   pinMode(kRelayCh3Pin, OUTPUT);
@@ -1330,6 +1352,9 @@ void TurretControl::forceFireOutputsSafeOff() {
   pendingFire_ = false;
   pendingFireHoldMs_ = 0;
   fireState_ = "SAFE_OFF";
+  if (mode_ == "FIRING") {
+    mode_ = postFireMode_.length() > 0 ? postFireMode_ : String("WAIT_COMMAND");
+  }
   writeFireRecoveryMarker(false);
 }
 
@@ -3428,6 +3453,11 @@ void TurretControl::appendStatus(JsonObject doc) const {
   fire["esc_run_us_config"] = config_.fireEscRunUs;
   fire["esc_stop_us_config"] = config_.fireEscStopUs;
   fire["relay_step_delay_ms"] = config_.fireRelayStepDelayMs;
+  fire["relay_active_low_default"] = kRelayActiveLow;
+  fire["relay_active_low_config"] = config_.fireRelayActiveLow;
+  fire["relay_ch1_active_low_config"] = config_.fireRelayCh1ActiveLow;
+  fire["relay_ch2_active_low_config"] = config_.fireRelayCh2ActiveLow;
+  fire["relay_ch3_active_low_config"] = config_.fireRelayCh3ActiveLow;
   fire["esc_attached"] = escAttached_;
   fire["esc_command_us"] = escLastCommandUs_;
   fire["relay_outputs_attached"] = relayOutputsAttached_;

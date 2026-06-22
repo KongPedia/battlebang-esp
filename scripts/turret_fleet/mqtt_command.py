@@ -352,6 +352,14 @@ def build_command_payload(args: argparse.Namespace) -> tuple[str, dict[str, Any]
             fire["esc_stop_us"] = args.fire_esc_stop_us
         if args.fire_relay_step_delay_ms is not None:
             fire["relay_step_delay_ms"] = args.fire_relay_step_delay_ms
+        if args.fire_relay_active_low is not None:
+            fire["relay_active_low"] = args.fire_relay_active_low
+        if args.fire_relay_ch1_active_low is not None:
+            fire["relay_ch1_active_low"] = args.fire_relay_ch1_active_low
+        if args.fire_relay_ch2_active_low is not None:
+            fire["relay_ch2_active_low"] = args.fire_relay_ch2_active_low
+        if args.fire_relay_ch3_active_low is not None:
+            fire["relay_ch3_active_low"] = args.fire_relay_ch3_active_low
         if fire:
             merge_object(doc, "fire", fire)
             config_touched = True
@@ -645,6 +653,10 @@ def build_parser() -> argparse.ArgumentParser:
     cfg.add_argument("--fire-esc-run-us", type=int)
     cfg.add_argument("--fire-esc-stop-us", type=int)
     cfg.add_argument("--fire-relay-step-delay-ms", type=int)
+    cfg.add_argument("--fire-relay-active-low", type=parse_bool_text, help="default relay polarity: true means LOW=on, false means HIGH=on")
+    cfg.add_argument("--fire-relay-ch1-active-low", type=parse_bool_text, help="GPIO21 polarity override")
+    cfg.add_argument("--fire-relay-ch2-active-low", type=parse_bool_text, help="GPIO22 polarity override")
+    cfg.add_argument("--fire-relay-ch3-active-low", type=parse_bool_text, help="GPIO23 polarity override")
     cfg.add_argument("--network-auto-start", type=parse_bool_text)
     cfg.add_argument("--network-start-delay-ms", type=int)
     cfg.add_argument("--ota-command-center-controlled", type=parse_bool_text)
