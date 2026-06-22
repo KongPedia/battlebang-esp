@@ -180,7 +180,7 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
   "sequence": 1,
   "hit": true,
   "peak": 2140,
-  "threshold": 400,
+  "threshold": 200,
   "firmware_ts_ms": 12345,
   "firmware": "go2",
   "firmware_role": "hit_led",
@@ -193,7 +193,7 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
     "client_id": "battlebang-hit-go2_03-go2-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 400
+    "adc_threshold_raw": 200
   }
 }
 ```
@@ -217,7 +217,7 @@ Go2별 non-secret profile입니다.
     "led_brightness": 120,
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 400,
+    "piezo_ao_threshold_raw": 200,
     "piezo_ao_rearm_raw": 150,
     "piezo_ao_capture_window_ms": 30,
     "piezo_ao_debug_period_ms": 100,

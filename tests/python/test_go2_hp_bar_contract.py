@@ -164,13 +164,13 @@ def test_fire_ring_cooldown_fill_updates_only_when_pixels_change() -> None:
         assert "if (mismatch)" in source, firmware
 
 
-def test_go2_piezo_threshold_default_is_lower_sensitivity_trial_value() -> None:
+def test_go2_piezo_threshold_default_is_higher_sensitivity_trial_value() -> None:
     for firmware, _bar_cpp, build_config, robots_json in HP_BAR_FIRMWARES:
         defaults = json.loads(robots_json.read_text())["defaults"]
-        assert defaults["piezo_ao_threshold_raw"] == 400, firmware
+        assert defaults["piezo_ao_threshold_raw"] == 200, firmware
         assert defaults["piezo_ao_rearm_raw"] == 150, firmware
         assert defaults["piezo_ao_threshold_raw"] > defaults["piezo_ao_rearm_raw"], firmware
-        assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 400" in build_config.read_text(), firmware
+        assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 200" in build_config.read_text(), firmware
         assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 150" in build_config.read_text(), firmware
 
 

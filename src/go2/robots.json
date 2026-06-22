@@ -10,7 +10,7 @@
     "led_brightness": 120,
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 400,
+    "piezo_ao_threshold_raw": 200,
     "piezo_ao_rearm_raw": 150,
     "piezo_ao_capture_window_ms": 30,
     "piezo_ao_debug_period_ms": 100,
