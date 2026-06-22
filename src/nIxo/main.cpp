@@ -110,10 +110,6 @@ static void beginCooldown(uint32_t now) {
   Serial.printf("[FIRE] cooldown start duration_ms=%lu\n", (unsigned long)FIRE_COOLDOWN_MS);
 }
 
-static void configureRelayPinOff(int pin) {
-  battlebang::configureRelayPinOffWithLevel(pin, RELAY_OFF);
-}
-
 static void relayOff() {
   if (RELAY2_ENABLED) {
     digitalWrite(RELAY2_PIN, RELAY_OFF);
@@ -385,9 +381,9 @@ void setup() {
   delay(200);
 
   if (RELAY2_ENABLED) {
-    configureRelayPinOff(RELAY2_PIN);
+    battlebang::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);
   }
-  configureRelayPinOff(RELAY1_PIN);
+  battlebang::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);
   relayOff();
 
   Serial.println("[MODE] standalone Nixo relay ESP: server/MQTT command only; USB serial is log-only");

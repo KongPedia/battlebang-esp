@@ -49,7 +49,6 @@ class NixoFireClient {
   static NixoFireClient* instance_;
   static void mqttMessageCallback(char* topic, byte* payload, unsigned int length);
 
-  void configureRelayPinOff(int pin);
   void relayOff();
   void updateFireSequence(uint32_t now);
   void beginCooldown(uint32_t now);

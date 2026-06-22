@@ -11,9 +11,9 @@ void NixoFireClient::begin() {
   snprintf(clientId_, sizeof(clientId_), "battlebang-nixo-%s", NIXO_ID_VALUE);
 
   if (NIXO_RELAY2_ENABLED_VALUE) {
-    configureRelayPinOff(NIXO_RELAY2_PIN_VALUE);
+    battlebang::configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   }
-  configureRelayPinOff(NIXO_RELAY1_PIN_VALUE);
+  battlebang::configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   relayOff();
 
   mqttClient_.setServer(MQTT_HOST, MQTT_PORT);
@@ -124,11 +124,6 @@ uint32_t NixoFireClient::cooldownRemainingMs(uint32_t now) const {
 
 uint32_t NixoFireClient::cooldownDurationMs() const {
   return NIXO_FIRE_COOLDOWN_MS;
-}
-
-
-void NixoFireClient::configureRelayPinOff(int pin) {
-  battlebang::configureRelayPinOffWithLevel(pin, NIXO_RELAY_OFF_LEVEL_VALUE);
 }
 
 void NixoFireClient::relayOff() {

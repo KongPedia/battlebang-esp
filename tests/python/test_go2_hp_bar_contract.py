@@ -295,14 +295,16 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert "#define BATTLEBANG_NIXO_RELAY_DELAY1_MS 800" in build_config
     assert "static constexpr uint32_t NIXO_RELAY_DELAY1_MS =\n    BATTLEBANG_NIXO_RELAY_DELAY1_MS;" in build_config
 
-    assert "void NixoFireClient::configureRelayPinOff(int pin)" in fire_source
     assert '#include "common/relay_pin_utils.h"' in fire_source
-    assert "battlebang::configureRelayPinOffWithLevel(pin, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "void configureRelayPinOff(int pin)" not in fire_source
+    assert "void configureRelayPinOff(int pin)" not in (ROOT / "src/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    assert "battlebang::configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "battlebang::configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
     assert "inline void configureRelayPinOffWithLevel(int pin, int offLevel)" in common_relay_utils
     assert "pinMode(pin, offLevel == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);" in common_relay_utils
     begin_block = fire_source.split("void NixoFireClient::begin()", 1)[1].split("mqttClient_.setServer", 1)[0]
-    assert begin_block.index("configureRelayPinOff(NIXO_RELAY2_PIN_VALUE);") < begin_block.index(
-        "configureRelayPinOff(NIXO_RELAY1_PIN_VALUE);"
+    assert begin_block.index("configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE") < begin_block.index(
+        "configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE"
     )
     relay_off_block = fire_source.split("void NixoFireClient::relayOff()", 1)[1].split(
         "void NixoFireClient::updateFireSequence",
@@ -333,7 +335,9 @@ def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
     assert "lastFireStartMs" not in source
     assert "beginCooldown(millis());" in stop_block
     assert '#include "common/relay_pin_utils.h"' in source
-    assert "battlebang::configureRelayPinOffWithLevel(pin, RELAY_OFF);" in source
+    assert "void configureRelayPinOff(int pin)" not in source
+    assert "battlebang::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);" in source
+    assert "battlebang::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);" in source
     assert "stopFireSequence(\"mqtt\")" in source
     assert 'doc["enabled"].is<bool>()' in source
     assert 'const bool enabled = doc["enabled"].as<bool>();' in source
