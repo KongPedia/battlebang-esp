@@ -38,6 +38,12 @@ def clean_string_value(value: str) -> str:
     return text
 
 
+def clean_optional_string_value(value: object | None) -> str:
+    if value is None:
+        return ""
+    return clean_string_value(str(value))
+
+
 def detect_robot_id() -> str:
     for env_name in ("GO2_ID", "ROBOT_ID", "ESP_ROBOT_ID", "BATTLEBANG_ROBOT_ID"):
         env_override = os.environ.get(env_name, "").strip()
@@ -62,11 +68,15 @@ def c_string(value: str) -> str:
     return f'\\"{escaped}\\"'
 
 
-def relay_variant_name() -> str:
+def relay_variant_name(robot_entry: dict | None = None) -> str:
     for env_name in ("GO2_NIXO_RELAY_VARIANT", "NIXO_RELAY_VARIANT"):
         env_value = clean_string_value(os.environ.get(env_name, ""))
         if env_value:
             return env_value
+
+    entry_value = clean_optional_string_value((robot_entry or {}).get("nixo_variant"))
+    if entry_value:
+        return entry_value
 
     option_value = clean_string_value(project_option("custom_nixo_variant"))
     return option_value or "relay_1ch"
@@ -272,7 +282,7 @@ if not entry.get("configured", False):
     print(f"{LOG_PREFIX} Set configured=true in {CONFIG_PATH} before building it.")
     Exit(1)
 
-variant_name = relay_variant_name()
+variant_name = relay_variant_name(entry)
 relay_variant = load_relay_variant(variant_name)
 profile = deep_merge(deep_merge(config.get("defaults", {}), relay_variant), entry)
 defines = [("BATTLEBANG_BUILD_ROBOT_ID", c_string(robot_id))]
@@ -296,5 +306,7 @@ print(
         f"nixo_variant={variant_name} "
         f"nixo_relay1={profile.get('nixo_relay1_pin', 'default')} "
         f"nixo_relay2={profile.get('nixo_relay2_pin', 'default')} "
+        f"nixo_relay_on={profile.get('nixo_relay_on_level', 'default')} "
+        f"nixo_relay_off={profile.get('nixo_relay_off_level', 'default')} "
         f"nixo_delay1_ms={profile.get('nixo_relay_delay1_ms', 'default')}"
     )

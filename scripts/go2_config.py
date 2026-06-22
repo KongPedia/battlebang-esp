@@ -74,8 +74,6 @@ def deep_merge(base: dict, override: dict) -> dict:
 def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> None:
     string_profile_macros = {
         "mqtt_topic_prefix": "BATTLEBANG_BUILD_MQTT_TOPIC_PREFIX",
-        "nixo_id": "BATTLEBANG_BUILD_NIXO_ID",
-        "nixo_mqtt_topic_prefix": "BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX",
     }
     int_profile_macros = {
         "hit_cooldown_ms": "BATTLEBANG_BUILD_HIT_COOLDOWN_MS",
@@ -84,9 +82,6 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "led_pin": "BATTLEBANG_BUILD_LED_PIN",
         "num_leds": "BATTLEBANG_BUILD_NUM_LEDS",
         "led_brightness": "BATTLEBANG_BUILD_LED_BRIGHTNESS",
-        "ring_led_pin": "BATTLEBANG_BUILD_RING_LED_PIN",
-        "ring_num_leds": "BATTLEBANG_BUILD_RING_NUM_LEDS",
-        "ring_led_brightness": "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
         "piezo_ao_pin": "BATTLEBANG_BUILD_PIEZO_AO_PIN",
@@ -94,10 +89,6 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "piezo_ao_rearm_raw": "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW",
         "piezo_ao_capture_window_ms": "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS",
         "piezo_ao_debug_period_ms": "BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS",
-        "nixo_fire_default_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS",
-        "nixo_fire_min_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_MIN_DURATION_MS",
-        "nixo_fire_max_duration_ms": "BATTLEBANG_BUILD_NIXO_FIRE_MAX_DURATION_MS",
-        "nixo_fire_cooldown_ms": "BATTLEBANG_BUILD_NIXO_FIRE_COOLDOWN_MS",
     }
 
     for json_key, macro_name in string_profile_macros.items():
@@ -123,11 +114,6 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
             ("ESP_MQTT_TOPIC_PREFIX", "BATTLEBANG_MQTT_TOPIC_PREFIX"),
             "BATTLEBANG_BUILD_MQTT_TOPIC_PREFIX",
         ),
-        (("NIXO_ID", "BATTLEBANG_NIXO_ID"), "BATTLEBANG_BUILD_NIXO_ID"),
-        (
-            ("NIXO_MQTT_TOPIC_PREFIX", "BATTLEBANG_NIXO_MQTT_TOPIC_PREFIX"),
-            "BATTLEBANG_BUILD_NIXO_MQTT_TOPIC_PREFIX",
-        ),
     ]
     int_env_macros = [
         (("ESP_MQTT_PORT", "BATTLEBANG_MQTT_PORT"), "BATTLEBANG_BUILD_MQTT_PORT"),
@@ -140,9 +126,6 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_LED_PIN",), "BATTLEBANG_BUILD_LED_PIN"),
         (("BATTLEBANG_NUM_LEDS",), "BATTLEBANG_BUILD_NUM_LEDS"),
         (("BATTLEBANG_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_LED_BRIGHTNESS"),
-        (("BATTLEBANG_RING_LED_PIN",), "BATTLEBANG_BUILD_RING_LED_PIN"),
-        (("BATTLEBANG_RING_NUM_LEDS",), "BATTLEBANG_BUILD_RING_NUM_LEDS"),
-        (("BATTLEBANG_RING_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
         (("BATTLEBANG_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_PIEZO_AO_PIN"),
@@ -150,19 +133,6 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_PIEZO_AO_REARM_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW"),
         (("BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS",), "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS"),
         (("BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS",), "BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS"),
-        (
-            ("NIXO_FIRE_DEFAULT_DURATION_MS", "BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS"),
-            "BATTLEBANG_BUILD_NIXO_FIRE_DEFAULT_DURATION_MS",
-        ),
-        (
-            ("NIXO_FIRE_MIN_DURATION_MS", "BATTLEBANG_NIXO_FIRE_MIN_DURATION_MS"),
-            "BATTLEBANG_BUILD_NIXO_FIRE_MIN_DURATION_MS",
-        ),
-        (
-            ("NIXO_FIRE_MAX_DURATION_MS", "BATTLEBANG_NIXO_FIRE_MAX_DURATION_MS"),
-            "BATTLEBANG_BUILD_NIXO_FIRE_MAX_DURATION_MS",
-        ),
-        (("NIXO_FIRE_COOLDOWN_MS", "BATTLEBANG_NIXO_FIRE_COOLDOWN_MS"), "BATTLEBANG_BUILD_NIXO_FIRE_COOLDOWN_MS"),
     ]
 
     for env_names, macro_name in string_env_macros:
@@ -225,8 +195,5 @@ print(
         f"led_pin={profile.get('led_pin', 'default')} "
         f"num_leds={profile.get('num_leds', 'default')} "
         f"led_brightness={profile.get('led_brightness', 'default')} "
-        f"ring_led_pin={profile.get('ring_led_pin', 'default')} "
-        f"ring_num_leds={profile.get('ring_num_leds', 'default')} "
-        f"nixo_cooldown_ms={profile.get('nixo_fire_cooldown_ms', 'default')} "
         f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')}"
     )

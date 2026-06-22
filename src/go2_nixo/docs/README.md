@@ -14,10 +14,10 @@ src/go2_nixo/
 ├─ build_config.h                   # 핀, MQTT topic, build-time macro
 ├─ robots.json                      # Go2별 non-secret profile
 ├─ local_secrets.example.h          # gitignore local secret template
-├─ ring_led/                        # bar_display=HP bar, ring_display=Nixo fire/cooldown ring
+├─ ring_led/                        # bar_display=HP bar, ring_display=Nixo fire-state ring
 ├─ mqtt/                            # MQTT hit candidate / heartbeat / display command
 └─ nixo/                            # MQTT Nixo fire command / relay-only sequence
 ```
 
-피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 `hit=true` 이벤트를 보내고 legacy `ring_display` 명령을 HP bar LED로 렌더링만 합니다. 기존 ring LED는 Nixo fire/cooldown 표시 전용입니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다.
+피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 `hit=true` 이벤트를 보내고 legacy `ring_display` 명령을 HP bar LED로 렌더링만 합니다. 기존 ring LED는 Nixo fire 상태 표시 전용입니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다.
 이 integrated fallback에서는 Nixo/game blaster fire도 같은 firmware가 `battlebang/nixo/{nixo_id}/command`를 구독해서 처리합니다.

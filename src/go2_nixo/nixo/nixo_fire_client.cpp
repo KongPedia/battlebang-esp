@@ -1,5 +1,7 @@
 #include "go2_nixo/nixo/nixo_fire_client.h"
 
+#include "common/relay_pin_utils.h"
+
 namespace go2 {
 
 NixoFireClient* NixoFireClient::instance_ = nullptr;
@@ -9,13 +11,9 @@ void NixoFireClient::begin() {
   snprintf(clientId_, sizeof(clientId_), "battlebang-nixo-%s", NIXO_ID_VALUE);
 
   if (NIXO_RELAY2_ENABLED_VALUE) {
-    digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+    battlebang::configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   }
-  digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
-  pinMode(NIXO_RELAY1_PIN_VALUE, OUTPUT);
-  if (NIXO_RELAY2_ENABLED_VALUE) {
-    pinMode(NIXO_RELAY2_PIN_VALUE, OUTPUT);
-  }
+  battlebang::configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
   relayOff();
 
   mqttClient_.setServer(MQTT_HOST, MQTT_PORT);
@@ -198,6 +196,10 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
 }
 
 void NixoFireClient::beginCooldown(uint32_t now) {
+  if (NIXO_FIRE_COOLDOWN_MS == 0) {
+    cooldownStartedMs_ = 0;
+    return;
+  }
   cooldownStartedMs_ = now;
   Serial.printf("[FIRE] cooldown start duration_ms=%lu\n", (unsigned long)NIXO_FIRE_COOLDOWN_MS);
 }

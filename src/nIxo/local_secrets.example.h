@@ -24,9 +24,10 @@
 #define NIXO_CLEAR_RETAINED_COMMAND_ON_CONNECT 1
 
 // Duration bounds for Command Center/Nexus fire requests.
-#define NIXO_FIRE_DEFAULT_DURATION_MS 1500
+#define NIXO_FIRE_DEFAULT_DURATION_MS 3000
 #define NIXO_FIRE_MIN_DURATION_MS 100
 #define NIXO_FIRE_MAX_DURATION_MS 10000
+#define NIXO_FIRE_COOLDOWN_MS 1500
 
 // Default/legacy 1-channel Go2-mounted Nixo wiring matches the pre-MQTT Bluetooth smoke sketch:
 // GPIO23, active-HIGH, single relay channel. PlatformIO variant profiles can override these

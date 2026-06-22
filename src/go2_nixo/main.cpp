@@ -14,7 +14,7 @@ using namespace go2;
 //   hit_candidate events. Command Center owns final accept/reject, scoring,
 //   down state, and legacy-named ring_display commands rendered on the HP bar.
 // - Nixo fire is handled on the same ESP through MQTT relay commands, and
-//   the original ring LED renders local Nixo firing/cooldown state.
+//   the original ring LED is green while ready, red while firing, and shows cooldown fill.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
@@ -360,9 +360,9 @@ void loop() {
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   nixoFire.tick(now);
   ringDisplay.setCooldownState(nixoFire.isFiring(),
-                                       nixoFire.cooldownRemainingMs(now),
-                                       nixoFire.cooldownDurationMs(),
-                                       nixoFire.fireInhibited());
+                               nixoFire.cooldownRemainingMs(now),
+                               nixoFire.cooldownDurationMs(),
+                               nixoFire.fireInhibited());
   pollCommands();
   barDisplay.tick(now);
   ringDisplay.tick(now);

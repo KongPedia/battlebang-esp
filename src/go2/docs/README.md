@@ -13,9 +13,8 @@ src/go2/
 ├─ build_config.h                   # 핀, MQTT topic, build-time macro
 ├─ robots.json                      # Go2별 non-secret profile
 ├─ local_secrets.example.h          # gitignore local secret template
-├─ display/                         # bar_display=HP bar, ring_display=Nixo fire/cooldown ring
+├─ display/                         # bar_display=HP bar renderer
 └─ mqtt/                            # MQTT hit candidate / heartbeat / display command
 ```
 
-피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 piezo AO ADC threshold를 넘은 입력만 `hit_candidate(hit=true, peak, threshold)`로 보내고 legacy `ring_display` 명령을 HP bar LED로 렌더링만 합니다. 기존 ring LED는 Nixo fire/cooldown 표시 전용입니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다.
-발사/릴레이/서보 제어는 Go2 피격 ESP에서 제거했고 `src/nIxo/` 펌웨어가 담당합니다.
+피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 piezo AO ADC threshold를 넘은 입력만 `hit_candidate(hit=true, peak, threshold)`로 보내고 legacy `ring_display` 명령을 HP bar LED로 렌더링만 합니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다. 발사/릴레이/서보/쿨다운 링 표시는 Go2 피격 ESP 책임이 아닙니다.

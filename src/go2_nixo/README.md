@@ -180,10 +180,10 @@ pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 
 ```bash
 pio run -e esp32dev_go2_nixo_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_nixo_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_nixo_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX  # go2_06 profile uses 2ch active-low relay pins
 pio run -e esp32dev_go2_nixo_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
 
-# 2ch는 env 이름에 _2ch_를 넣습니다.
+# 명시적으로 2ch variant를 선택해도 됩니다.
 pio run -e esp32dev_go2_nixo_2ch_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
@@ -221,7 +221,7 @@ pio run -e esp32dev_go2_nixo_go2_03
   "sequence": 1,
   "hit": true,
   "peak": 2140,
-  "threshold": 400,
+  "threshold": 200,
   "firmware_ts_ms": 12345,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -234,7 +234,7 @@ pio run -e esp32dev_go2_nixo_go2_03
     "client_id": "battlebang-hit-go2_03-go2_nixo-948C",
     "hit_source": "piezo_ao_adc_threshold",
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 400
+    "adc_threshold_raw": 200
   }
 }
 ```
@@ -275,7 +275,7 @@ Go2별 non-secret profile입니다.
     "ring_led_brightness": 80,
     "t1_do_pin": 27,
     "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 400,
+    "piezo_ao_threshold_raw": 200,
     "piezo_ao_rearm_raw": 100,
     "piezo_ao_capture_window_ms": 30,
     "piezo_ao_debug_period_ms": 100,
@@ -285,16 +285,24 @@ Go2별 non-secret profile입니다.
     "nixo_relay_on_level": 1,
     "nixo_relay_off_level": 0,
     "nixo_relay_delay1_ms": 800,
-    "nixo_fire_default_duration_ms": 1500,
+    "nixo_fire_default_duration_ms": 3000,
     "nixo_fire_min_duration_ms": 100,
     "nixo_fire_max_duration_ms": 10000,
-    "nixo_fire_cooldown_ms": 10000,
+    "nixo_fire_cooldown_ms": 1500,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "robots": {
     "go2_03": { "configured": true },
     "go2_05": { "configured": true },
-    "go2_06": { "configured": true },
+    "go2_06": {
+      "configured": true,
+      "nixo_variant": "relay_2ch",
+      "nixo_relay1_pin": 22,
+      "nixo_relay2_pin": 23,
+      "nixo_relay_on_level": 0,
+      "nixo_relay_off_level": 1,
+      "nixo_relay_delay1_ms": 150
+    },
     "go2_07": { "configured": true }
   }
 }
@@ -334,7 +342,7 @@ MQTT 연결이 없거나 publish가 실패하면 ESP는 valid hit event를 RAM q
 - queue가 꽉 차면 오래된 hit부터 버리고 최신 hit를 보관합니다.
 - 리셋 명령(`reset_hit_state=true` 또는 로컬 `2`)은 센서 latch와 queue를 같이 비웁니다.
 - Command Center/MQTT가 내려주는 `ring_display`가 없으면 ESP는 로컬 점수 계산 없이 full idle HP bar를 표시합니다.
-- 기존 ring LED는 HP/hit/down 표시를 하지 않고 Nixo cooldown 전용입니다. Ready는 green full, firing은 red full, fire 종료 후 10초 cooldown 동안 off에서 시작해 1초마다 ring의 1/10씩 green으로 채웁니다.
+- 기존 ring LED는 HP/hit/down 표시를 하지 않고 Nixo fire 상태만 표시합니다. Ready는 green full, firing은 red full이며, 발사 종료 후 설정된 1.5초 cooldown을 green fill animation으로 표시합니다.
 
 주의:
 

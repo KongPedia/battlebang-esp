@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 #include "build_config.h"
+#include "common/relay_pin_utils.h"
 
 // Standalone Nixo ESP firmware for the 2-ESP split.
 // Control path is server/Command Center -> MQTT only.
@@ -51,7 +52,7 @@ enum FireState : uint8_t {
 
 FireState fireState = FIRE_IDLE;
 uint32_t fireTimerMs = 0;
-uint32_t lastFireStartMs = 0;
+uint32_t cooldownStartedMs = 0;
 uint32_t activeFireDurationMs = DEFAULT_FIRE_DURATION_MS;
 
 static bool isPlaceholder(const char* value, const char* placeholder) {
@@ -93,6 +94,22 @@ static uint32_t clampFireDuration(uint32_t durationMs) {
   return constrain(durationMs, MIN_FIRE_DURATION_MS, MAX_FIRE_DURATION_MS);
 }
 
+static uint32_t cooldownRemainingMs(uint32_t now) {
+  if (cooldownStartedMs == 0) return 0;
+  uint32_t elapsed = now - cooldownStartedMs;
+  if (elapsed >= FIRE_COOLDOWN_MS) return 0;
+  return FIRE_COOLDOWN_MS - elapsed;
+}
+
+static void beginCooldown(uint32_t now) {
+  if (FIRE_COOLDOWN_MS == 0) {
+    cooldownStartedMs = 0;
+    return;
+  }
+  cooldownStartedMs = now;
+  Serial.printf("[FIRE] cooldown start duration_ms=%lu\n", (unsigned long)FIRE_COOLDOWN_MS);
+}
+
 static void relayOff() {
   if (RELAY2_ENABLED) {
     digitalWrite(RELAY2_PIN, RELAY_OFF);
@@ -104,6 +121,9 @@ static void stopFireSequence(const char* source = "mqtt") {
   bool wasFiring = isFiring();
   relayOff();
   fireState = FIRE_IDLE;
+  if (wasFiring) {
+    beginCooldown(millis());
+  }
   Serial.printf("[FIRE] stop source=%s%s\n", source, wasFiring ? "" : " already_idle=true");
 }
 
@@ -114,13 +134,12 @@ static bool startFireSequence(uint32_t durationMs = DEFAULT_FIRE_DURATION_MS, co
     Serial.printf("[FIRE] ignored source=%s reason=already_firing state=%s\n", source, fireStateName());
     return false;
   }
-  if (lastFireStartMs != 0 && now - lastFireStartMs < FIRE_COOLDOWN_MS) {
-    uint32_t remainingMs = FIRE_COOLDOWN_MS - (now - lastFireStartMs);
+  uint32_t remainingMs = cooldownRemainingMs(now);
+  if (remainingMs > 0) {
     Serial.printf("[FIRE] ignored source=%s reason=cooldown remaining_ms=%lu\n", source, (unsigned long)remainingMs);
     return false;
   }
 
-  lastFireStartMs = now;
   activeFireDurationMs = clampFireDuration(durationMs);
   fireState = FIRE_PREFIRE_DELAY;
   fireTimerMs = now;
@@ -164,6 +183,7 @@ static void updateFireSequence(uint32_t now) {
                         RELAY_OFF,
                         digitalRead(RELAY1_PIN));
           Serial.println("[RELAY] ALL OFF / FIRE done");
+          beginCooldown(now);
         }
         return;
       }
@@ -196,6 +216,7 @@ static void updateFireSequence(uint32_t now) {
                       RELAY_OFF,
                       digitalRead(RELAY1_PIN));
         Serial.println("[RELAY] ALL OFF / FIRE done");
+        beginCooldown(now);
       }
       return;
   }
@@ -360,13 +381,9 @@ void setup() {
   delay(200);
 
   if (RELAY2_ENABLED) {
-    digitalWrite(RELAY2_PIN, RELAY_OFF);
+    battlebang::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);
   }
-  digitalWrite(RELAY1_PIN, RELAY_OFF);
-  pinMode(RELAY1_PIN, OUTPUT);
-  if (RELAY2_ENABLED) {
-    pinMode(RELAY2_PIN, OUTPUT);
-  }
+  battlebang::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);
   relayOff();
 
   Serial.println("[MODE] standalone Nixo relay ESP: server/MQTT command only; USB serial is log-only");
