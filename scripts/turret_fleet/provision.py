@@ -189,6 +189,7 @@ def build_config(
 
     fire_default_ms = int(env_first(env, "TURRET_FLEET_FIRE_DEFAULT_HOLD_MS", default="500") or "500")
     fire_run_us = int(env_first(env, "TURRET_FLEET_FIRE_ESC_RUN_US", default="1700") or "1700")
+    fire_relay_profile = env_first(env, "TURRET_FLEET_FIRE_RELAY_PROFILE", default="").strip()
     fire_relay_active_low = parse_bool(env_first(env, "TURRET_FLEET_FIRE_RELAY_ACTIVE_LOW", default="true"), default=True)
     fire_relay_ch1_active_low = parse_bool(
         env_first(env, "TURRET_FLEET_FIRE_RELAY_CH1_ACTIVE_LOW", default=str(fire_relay_active_low).lower()),
@@ -296,6 +297,7 @@ def build_config(
             "min_hold_ms": 100,
             "max_hold_ms": 60000,
             "relay_step_delay_ms": int(env_first(env, "TURRET_FLEET_FIRE_RELAY_STEP_DELAY_MS", default="250") or "250"),
+            "relay_profile": fire_relay_profile,
             "relay_active_low": fire_relay_active_low,
             "relay_ch1_active_low": fire_relay_ch1_active_low,
             "relay_ch2_active_low": fire_relay_ch2_active_low,

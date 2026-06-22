@@ -3458,6 +3458,7 @@ void TurretControl::appendStatus(JsonObject doc) const {
   fire["relay_ch1_active_low_config"] = config_.fireRelayCh1ActiveLow;
   fire["relay_ch2_active_low_config"] = config_.fireRelayCh2ActiveLow;
   fire["relay_ch3_active_low_config"] = config_.fireRelayCh3ActiveLow;
+  fire["relay_profile_config"] = config_.fireRelayProfile;
   fire["esc_attached"] = escAttached_;
   fire["esc_command_us"] = escLastCommandUs_;
   fire["relay_outputs_attached"] = relayOutputsAttached_;

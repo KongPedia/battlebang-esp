@@ -60,6 +60,45 @@ bool isValidMqttTargetUnit(const String& unit) {
          normalized == "cm" || normalized == "centimeter" || normalized == "centimeters";
 }
 
+String normalizedRelayProfile(String profile) {
+  profile.trim();
+  profile.toLowerCase();
+  return profile;
+}
+
+bool applyRelayProfile(String profile, RuntimeConfig& config, String& error) {
+  profile = normalizedRelayProfile(profile);
+  if (profile.length() == 0) return true;
+
+  if (profile == "active_low" || profile == "two_channel_active_low") {
+    config.fireRelayProfile = profile;
+    config.fireRelayActiveLow = true;
+    config.fireRelayCh1ActiveLow = true;
+    config.fireRelayCh2ActiveLow = true;
+    config.fireRelayCh3ActiveLow = true;
+    return true;
+  }
+  if (profile == "single_channel_ch3_active_high") {
+    config.fireRelayProfile = profile;
+    config.fireRelayActiveLow = true;
+    config.fireRelayCh1ActiveLow = true;
+    config.fireRelayCh2ActiveLow = true;
+    config.fireRelayCh3ActiveLow = false;
+    return true;
+  }
+  if (profile == "active_high") {
+    config.fireRelayProfile = profile;
+    config.fireRelayActiveLow = false;
+    config.fireRelayCh1ActiveLow = false;
+    config.fireRelayCh2ActiveLow = false;
+    config.fireRelayCh3ActiveLow = false;
+    return true;
+  }
+
+  error = "fire.relay_profile must be active_low, active_high, two_channel_active_low, or single_channel_ch3_active_high";
+  return false;
+}
+
 bool isKnownPatternPresetId(const char* id) {
   if (id == nullptr || id[0] == '\0') return false;
   return strcmp(id, "lane_sweep") == 0 ||
@@ -305,6 +344,11 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
       next.fireRelayCh1ActiveLow = activeLow;
       next.fireRelayCh2ActiveLow = activeLow;
       next.fireRelayCh3ActiveLow = activeLow;
+    }
+    if (fire["relay_profile"].is<const char*>()) {
+      if (!applyRelayProfile(getStringOr(fire["relay_profile"], ""), next, error)) {
+        return false;
+      }
     }
     if (fire["relay_ch1_active_low"].is<bool>()) {
       next.fireRelayCh1ActiveLow = fire["relay_ch1_active_low"].as<bool>();
@@ -603,6 +647,7 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   fire["relay_ch1_active_low"] = config.fireRelayCh1ActiveLow;
   fire["relay_ch2_active_low"] = config.fireRelayCh2ActiveLow;
   fire["relay_ch3_active_low"] = config.fireRelayCh3ActiveLow;
+  fire["relay_profile"] = config.fireRelayProfile;
 
   JsonObject motion = doc.createNestedObject("motion");
   motion["yaw_stop_us"] = config.yawStopUs;
@@ -713,6 +758,13 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.fireMaxHoldMs = prefs.getUInt("fire_max", config.fireMaxHoldMs);
   config.fireRelayStepDelayMs = prefs.getUInt("fire_step", config.fireRelayStepDelayMs);
   config.fireRelayActiveLow = prefs.getBool("fire_rel_al", config.fireRelayActiveLow);
+  config.fireRelayProfile = prefs.getString("fire_profile", config.fireRelayProfile);
+  String relayProfileError;
+  if (!applyRelayProfile(config.fireRelayProfile, config, relayProfileError)) {
+    Serial.print("[fleet][config] ignoring invalid NVS relay_profile: ");
+    Serial.println(relayProfileError);
+    config.fireRelayProfile = "";
+  }
   config.fireRelayCh1ActiveLow = prefs.getBool("fire_r1_al", config.fireRelayCh1ActiveLow);
   config.fireRelayCh2ActiveLow = prefs.getBool("fire_r2_al", config.fireRelayCh2ActiveLow);
   config.fireRelayCh3ActiveLow = prefs.getBool("fire_r3_al", config.fireRelayCh3ActiveLow);
@@ -805,6 +857,7 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putBool("fire_r1_al", config.fireRelayCh1ActiveLow) > 0;
   ok &= prefs.putBool("fire_r2_al", config.fireRelayCh2ActiveLow) > 0;
   ok &= prefs.putBool("fire_r3_al", config.fireRelayCh3ActiveLow) > 0;
+  ok &= prefs.putString("fire_profile", config.fireRelayProfile) >= 0;
   ok &= prefs.putFloat("dead_pitch", config.deadPitchDeg) > 0;
   ok &= prefs.putFloat("idle_ymin", config.idleYawMinDeg) > 0;
   ok &= prefs.putFloat("idle_ymax", config.idleYawMaxDeg) > 0;
