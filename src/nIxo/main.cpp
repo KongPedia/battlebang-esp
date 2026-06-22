@@ -93,6 +93,14 @@ static uint32_t clampFireDuration(uint32_t durationMs) {
   return constrain(durationMs, MIN_FIRE_DURATION_MS, MAX_FIRE_DURATION_MS);
 }
 
+static void configureRelayPinOff(int pin) {
+  if (pin < 0) return;
+  pinMode(pin, RELAY_OFF == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);
+  digitalWrite(pin, RELAY_OFF);
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, RELAY_OFF);
+}
+
 static void relayOff() {
   if (RELAY2_ENABLED) {
     digitalWrite(RELAY2_PIN, RELAY_OFF);
@@ -360,13 +368,9 @@ void setup() {
   delay(200);
 
   if (RELAY2_ENABLED) {
-    digitalWrite(RELAY2_PIN, RELAY_OFF);
+    configureRelayPinOff(RELAY2_PIN);
   }
-  digitalWrite(RELAY1_PIN, RELAY_OFF);
-  pinMode(RELAY1_PIN, OUTPUT);
-  if (RELAY2_ENABLED) {
-    pinMode(RELAY2_PIN, OUTPUT);
-  }
+  configureRelayPinOff(RELAY1_PIN);
   relayOff();
 
   Serial.println("[MODE] standalone Nixo relay ESP: server/MQTT command only; USB serial is log-only");

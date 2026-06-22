@@ -180,10 +180,10 @@ pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 
 ```bash
 pio run -e esp32dev_go2_nixo_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_nixo_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
+pio run -e esp32dev_go2_nixo_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX  # go2_06 profile uses 2ch active-low relay pins
 pio run -e esp32dev_go2_nixo_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
 
-# 2ch는 env 이름에 _2ch_를 넣습니다.
+# 명시적으로 2ch variant를 선택해도 됩니다.
 pio run -e esp32dev_go2_nixo_2ch_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
 ```
 
@@ -294,7 +294,15 @@ Go2별 non-secret profile입니다.
   "robots": {
     "go2_03": { "configured": true },
     "go2_05": { "configured": true },
-    "go2_06": { "configured": true },
+    "go2_06": {
+      "configured": true,
+      "nixo_variant": "relay_2ch",
+      "nixo_relay1_pin": 22,
+      "nixo_relay2_pin": 23,
+      "nixo_relay_on_level": 0,
+      "nixo_relay_off_level": 1,
+      "nixo_relay_delay1_ms": 150
+    },
     "go2_07": { "configured": true }
   }
 }

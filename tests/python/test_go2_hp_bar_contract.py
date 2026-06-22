@@ -89,6 +89,18 @@ def test_go2_nixo_defaults_keep_fire_ring_and_one_second_cooldown_fallback() -> 
     assert defaults["nixo_fire_cooldown_ms"] == 1000, firmware
 
 
+def test_go2_06_default_integrated_nixo_profile_is_two_channel_active_low() -> None:
+    firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
+    profile = json.loads(robots_json.read_text())["robots"]["go2_06"]
+    assert profile["configured"] is True, firmware
+    assert profile["nixo_variant"] == "relay_2ch", firmware
+    assert profile["nixo_relay1_pin"] == 22, firmware
+    assert profile["nixo_relay2_pin"] == 23, firmware
+    assert profile["nixo_relay_on_level"] == 0, firmware
+    assert profile["nixo_relay_off_level"] == 1, firmware
+    assert profile["nixo_relay_delay1_ms"] == 150, firmware
+
+
 def test_hp_bar_renderer_uses_bar_led_layout() -> None:
     for firmware, bar_cpp, _build_config, _robots_json in HP_BAR_FIRMWARES:
         source = bar_cpp.read_text()
@@ -270,6 +282,7 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
 
     assert "def load_relay_variant" in config_script
     assert '"GO2_NIXO_RELAY_VARIANT"' in config_script
+    assert '"nixo_variant"' in config_script
     assert '"custom_nixo_variant"' in config_script
     assert '"nixo_relay_delay1_ms": "BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS"' in config_script
     assert "#define BATTLEBANG_NIXO_RELAY1_PIN 23" in build_config
@@ -279,9 +292,11 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert "#define BATTLEBANG_NIXO_RELAY_DELAY1_MS 800" in build_config
     assert "static constexpr uint32_t NIXO_RELAY_DELAY1_MS =\n    BATTLEBANG_NIXO_RELAY_DELAY1_MS;" in build_config
 
+    assert "void NixoFireClient::configureRelayPinOff(int pin)" in fire_source
+    assert "pinMode(pin, NIXO_RELAY_OFF_LEVEL_VALUE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);" in fire_source
     begin_block = fire_source.split("void NixoFireClient::begin()", 1)[1].split("mqttClient_.setServer", 1)[0]
-    assert begin_block.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < begin_block.index(
-        "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
+    assert begin_block.index("configureRelayPinOff(NIXO_RELAY2_PIN_VALUE);") < begin_block.index(
+        "configureRelayPinOff(NIXO_RELAY1_PIN_VALUE);"
     )
     relay_off_block = fire_source.split("void NixoFireClient::relayOff()", 1)[1].split(
         "void NixoFireClient::updateFireSequence",
