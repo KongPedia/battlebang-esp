@@ -226,12 +226,11 @@ def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
     assert "board_build.partitions = min_spiffs.csv" in pio
 
 
-def test_hit_target_ota_has_separate_app_hardware_manifest_and_workflow() -> None:
+def test_hit_target_source_remains_legacy_with_ota_contract_but_no_ci_workflow() -> None:
     firmware = read("src/hit_target/app/firmware_info.h")
     manifest = read("src/hit_target/ota/ota_manifest.cpp")
     http_ota = read("src/hit_target/ota/http_ota.cpp")
     main = read("src/hit_target/main.cpp")
-    workflow = read(".github/workflows/hit-target-firmware.yml")
 
     assert 'BB_HIT_TARGET_APP_NAME "battlebang-hit-target"' in firmware
     assert 'BB_HIT_TARGET_HARDWARE "esp32dev-hit-target-ring-v1"' in firmware
@@ -248,19 +247,7 @@ def test_hit_target_ota_has_separate_app_hardware_manifest_and_workflow() -> Non
     assert "target.prepareForOta();" in main
     assert "writeOtaRebootMarker(true)" in main
 
-    assert "name: Hit Target Firmware" in workflow
-    assert "pull_request:" not in workflow
-    assert 'GITHUB_EVENT_NAME" == "pull_request"' not in workflow
-    assert "pio run -e esp32dev_hit_target" in workflow
-    assert "src/hit_target/app/version_autogen.h" in workflow
-    assert "battlebang-hit-target-${{ steps.version.outputs.version }}.bin" in workflow
-    assert "hit-target-manifest.json" in workflow
-    assert '--app "battlebang-hit-target"' in workflow
-    assert '--hardware "esp32dev-hit-target-ring-v1"' in workflow
-    assert "hit-target-v${{ steps.version.outputs.version }}" in workflow
-    assert 'STABLE_TAG="hit-target-latest"' in workflow
-    assert '--latest=false' in workflow
-    assert 'releases/download/hit-target-latest/hit-target-manifest.json' in workflow
+    assert not (ROOT / ".github/workflows/hit-target-firmware.yml").exists()
     manifest_script = read("scripts/firmware/make_release_manifest.py")
     assert "Create a BattleBang firmware release manifest." in manifest_script
     assert "--app" in manifest_script
@@ -449,14 +436,15 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
     }
 
 
-def test_hit_target_github_action_is_scoped_to_hit_target_folder_changes() -> None:
-    workflow = read(".github/workflows/hit-target-firmware.yml")
+def test_hit_target_github_action_removed_while_boss_target_action_is_scoped() -> None:
+    assert not (ROOT / ".github/workflows/hit-target-firmware.yml").exists()
+    workflow = read(".github/workflows/boss-target-firmware.yml")
 
     assert "Folder-scoped trigger" in workflow
-    assert '"src/hit_target/**"' in workflow
-    assert '"scripts/hit_target/**"' in workflow
-    assert '"scripts/hit_target_config.py"' in workflow
+    assert '"src/boss_target/**"' in workflow
+    assert '"scripts/boss_target/**"' in workflow
     assert '"scripts/firmware/make_release_manifest.py"' in workflow
+    assert '"src/hit_target/**"' not in workflow
     assert '"src/turret_fleet/**"' not in workflow
     assert '"src/go2_nixo/**"' not in workflow
     assert "platformio.ini remains included" in workflow

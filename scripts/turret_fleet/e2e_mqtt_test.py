@@ -113,10 +113,32 @@ class MqttSession:
         self.packet_id += 1
         variable = packet_id.to_bytes(2, "big")
         payload = mqtt_string(topic) + bytes([0])
+        deadline = time.time() + self.timeout_s
         self.sock.sendall(bytes([0x82]) + encode_remaining_length(len(variable) + len(payload)) + variable + payload)
-        packet_type, body = self.read_packet(deadline=time.time() + self.timeout_s)
-        if packet_type != 0x90 or len(body) < 3 or body[-1] == 0x80:
-            raise E2EError(f"MQTT subscribe failed for {topic}: packet_type={packet_type} body={body!r}")
+        last_packet_type: int | None = None
+        last_body = b""
+        while time.time() < deadline:
+            packet_type, body = self.read_packet(deadline=deadline)
+            if packet_type is None:
+                continue
+            if packet_type == 0xD0 or (packet_type & 0xF0) == 0x30:
+                # Busy live brokers can deliver retained/heartbeat publishes for
+                # earlier subscriptions before the SUBACK for this one.  QoS 0
+                # status publishes need no response, so keep waiting for SUBACK.
+                continue
+            last_packet_type = packet_type
+            last_body = body
+            if packet_type != 0x90:
+                continue
+            if len(body) < 3:
+                break
+            ack_packet_id = int.from_bytes(body[:2], "big")
+            if ack_packet_id != packet_id:
+                continue
+            if body[-1] == 0x80:
+                break
+            return
+        raise E2EError(f"MQTT subscribe failed for {topic}: packet_type={last_packet_type} body={last_body!r}")
 
     def publish_json(self, topic: str, payload: dict[str, Any]) -> None:
         if self.sock is None:

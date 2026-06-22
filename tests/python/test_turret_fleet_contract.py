@@ -918,6 +918,145 @@ def test_fleet_e2e_mqtt_harness_covers_modes_and_readable_patterns() -> None:
     assert module.sign_changes([2.0, -2.0, 2.0]) == 2
 
 
+def test_repeat_lane_sweep_defaults_to_random_one_at_a_time_turrets_1_3_4() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
+            "--dry-run",
+            "--random-seed",
+            "7",
+            "--root",
+            "battlebang",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    output = result.stdout
+    assert "turrets=turret_1,turret_3,turret_4" in output
+    assert "order=random" in output
+    assert "parallel_loop=disabled" in output
+    assert "sequential round=1 order=turret_4,turret_1,turret_3" in output
+    assert "parallel turret=" not in output
+    for turret_id in ["turret_1", "turret_3", "turret_4"]:
+        assert f"topic=battlebang/turrets/{turret_id}/command" in output
+    first_payload_line = next(line for line in output.splitlines() if "turret=turret_4 " in line)
+    payload = json.loads(first_payload_line.split("payload=", 1)[1])
+    assert payload["ttl_ms"] == 3000
+    assert payload["pattern_instance_id"] == f"lane_sweep-{payload['command_id']}"
+    assert payload["params"] == {"return_to": "wait_command"}
+
+
+def test_repeat_lane_sweep_can_stage_boss_target_start_before_immediate_turret_patterns() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"),
+            "--dry-run",
+            "--root",
+            "battlebang",
+            "--boss-id",
+            "boss_target_6809477249D0",
+            "--count",
+            "1",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    output = result.stdout
+    assert "boss=boss_target_6809477249D0" in output
+    assert "dry-run boss opening:" in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"reset"} wait_ready<=10s' in output
+    assert 'topic=battlebang/boss_targets/boss_target_6809477249D0/command payload={"command":"start"} start_intro=0s' in output
+    assert 'payload={"command":"home"' not in output
+    assert "pattern starts immediately" in output
+    assert "dry-run boss defeat handling:" in output
+    assert 'if boss hp<=0 topic=battlebang/turrets/turret_1/command payload={"command":"dead","command_id":"boss-dead-turret_1-<ms>"}' in output
+    assert output.index('payload={"command":"reset"}') < output.index('payload={"command":"start"}')
+    assert output.index('payload={"command":"start"}') < output.index("pattern starts immediately")
+    assert output.index("dry-run boss opening:") < output.index("dry-run normal cycle:")
+
+
+def test_repeat_lane_sweep_publishes_turret_dead_when_boss_hp_zero() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/repeat_lane_sweep_live.py"
+    spec = importlib.util.spec_from_file_location("repeat_lane_sweep_dead_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.published: list[tuple[str, dict[str, object]]] = []
+
+        def publish_json(self, topic: str, payload: dict[str, object]) -> None:
+            self.published.append((topic, payload))
+
+    client = FakeClient()
+    monitor = module.StatusMonitor(
+        root="battlebang",
+        turrets=["turret_1", "turret_3", "turret_4"],
+        boss_id="boss_target_6809477249D0",
+    )
+    monitor.latest_boss = {
+        "mode": "DEFEATED",
+        "life_state": "dead",
+        "destroyed": True,
+        "hp_remaining": 0,
+        "hp_max": 10,
+    }
+
+    assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
+    assert [topic for topic, _payload in client.published] == [
+        "battlebang/turrets/turret_1/command",
+        "battlebang/turrets/turret_3/command",
+        "battlebang/turrets/turret_4/command",
+    ]
+    for turret_id, (_topic, payload) in zip(["turret_1", "turret_3", "turret_4"], client.published):
+        assert payload["command"] == "dead"
+        assert str(payload["command_id"]).startswith(f"boss-dead-{turret_id}-")
+
+    assert module.publish_turret_dead_commands_if_boss_destroyed(client, monitor, root="battlebang") is True
+    assert len(client.published) == 3
+
+
+def test_turret_fleet_mqtt_subscribe_tolerates_live_status_before_suback() -> None:
+    import importlib.util
+
+    script_path = ROOT / "scripts/turret_fleet/e2e_mqtt_test.py"
+    spec = importlib.util.spec_from_file_location("e2e_mqtt_subscribe_test", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.sent: list[bytes] = []
+
+        def sendall(self, data: bytes) -> None:
+            self.sent.append(data)
+
+    publish_body = b"\x00#battlebang/turrets/turret_1/status{}"
+    packets = [(0x30, publish_body), (0x90, b"\x00\x01\x00")]
+    session = module.MqttSession(host="unused", port=1883, timeout_s=1.0)
+    session.sock = FakeSocket()
+    session.read_packet = lambda *, deadline: packets.pop(0) if packets else (None, b"")
+
+    session.subscribe("battlebang/boss_targets/boss_target_6809477249D0/status")
+
+    assert session.sock.sent[0].startswith(b"\x82")
+    assert packets == []
+
+
 def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
     import importlib.util
 

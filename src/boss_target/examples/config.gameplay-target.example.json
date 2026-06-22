@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "config_version": 3,
+  "gameplay": {
+    "hp_max": 10,
+    "damage_per_hit": 1,
+    "phase_count": 3,
+    "start_resets_hp": true,
+    "target_duration_ms": 2500,
+    "hit_cooldown_ms": 300,
+    "digital_isr_debounce_us": 20000
+  },
+  "target": {
+    "count": 4,
+    "ring_num_leds": 120,
+    "active_color": "#FF0000",
+    "hit_flash_color": "#FFFFFF"
+  },
+  "hp_bar": {
+    "num_leds": 300,
+    "brightness": 255,
+    "max_ma": 12000,
+    "palette": ["#00FF00", "#FFFF00", "#FF0000"],
+    "dead_blink_ms": 300
+  }
+}
