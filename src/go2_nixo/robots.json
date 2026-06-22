@@ -37,13 +37,7 @@
       "configured": true
     },
     "go2_06": {
-      "configured": true,
-      "nixo_variant": "relay_2ch",
-      "nixo_relay1_pin": 22,
-      "nixo_relay2_pin": 23,
-      "nixo_relay_on_level": 0,
-      "nixo_relay_off_level": 1,
-      "nixo_relay_delay1_ms": 150
+      "configured": true
     },
     "go2_07": {
       "configured": true

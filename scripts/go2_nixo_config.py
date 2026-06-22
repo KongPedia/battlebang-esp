@@ -38,6 +38,12 @@ def clean_string_value(value: str) -> str:
     return text
 
 
+def clean_optional_string_value(value: object | None) -> str:
+    if value is None:
+        return ""
+    return clean_string_value(str(value))
+
+
 def detect_robot_id() -> str:
     for env_name in ("GO2_ID", "ROBOT_ID", "ESP_ROBOT_ID", "BATTLEBANG_ROBOT_ID"):
         env_override = os.environ.get(env_name, "").strip()
@@ -68,7 +74,7 @@ def relay_variant_name(robot_entry: dict | None = None) -> str:
         if env_value:
             return env_value
 
-    entry_value = clean_string_value(str((robot_entry or {}).get("nixo_variant", "")))
+    entry_value = clean_optional_string_value((robot_entry or {}).get("nixo_variant"))
     if entry_value:
         return entry_value
 

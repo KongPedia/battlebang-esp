@@ -89,16 +89,20 @@ def test_go2_nixo_defaults_keep_fire_ring_and_one_point_five_second_cooldown_fal
     assert defaults["nixo_fire_cooldown_ms"] == 1500, firmware
 
 
-def test_go2_06_default_integrated_nixo_profile_is_two_channel_active_low() -> None:
+def test_go2_06_profile_keeps_relay_hardware_in_variant_configs() -> None:
     firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
     profile = json.loads(robots_json.read_text())["robots"]["go2_06"]
     assert profile["configured"] is True, firmware
-    assert profile["nixo_variant"] == "relay_2ch", firmware
-    assert profile["nixo_relay1_pin"] == 22, firmware
-    assert profile["nixo_relay2_pin"] == 23, firmware
-    assert profile["nixo_relay_on_level"] == 0, firmware
-    assert profile["nixo_relay_off_level"] == 1, firmware
-    assert profile["nixo_relay_delay1_ms"] == 150, firmware
+
+    relay_keys = {
+        "nixo_variant",
+        "nixo_relay1_pin",
+        "nixo_relay2_pin",
+        "nixo_relay_on_level",
+        "nixo_relay_off_level",
+        "nixo_relay_delay1_ms",
+    }
+    assert relay_keys.isdisjoint(profile), firmware
 
 
 def test_hp_bar_renderer_uses_bar_led_layout() -> None:
@@ -284,6 +288,8 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert '"GO2_NIXO_RELAY_VARIANT"' in config_script
     assert '"nixo_variant"' in config_script
     assert '"custom_nixo_variant"' in config_script
+    assert "def clean_optional_string_value" in config_script
+    assert 'clean_optional_string_value((robot_entry or {}).get("nixo_variant"))' in config_script
     assert '"nixo_relay_delay1_ms": "BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS"' in config_script
     assert "#define BATTLEBANG_NIXO_RELAY1_PIN 23" in build_config
     assert "#define BATTLEBANG_NIXO_RELAY2_PIN -1" in build_config
@@ -315,12 +321,17 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     )
 
 
-def test_standalone_nixo_uses_one_point_five_second_local_cooldown_fallback() -> None:
+def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
     source = (ROOT / "src/nIxo/main.cpp").read_text()
     build_config = (ROOT / "src/nIxo/build_config.h").read_text()
     stop_block = source.split("static void stopFireSequence", 1)[1].split("static bool startFireSequence", 1)[0]
-    assert "lastFireStartMs = now;" in source
-    assert "lastFireStartMs = 0;" not in stop_block
+    assert "uint32_t cooldownStartedMs = 0;" in source
+    assert "static uint32_t cooldownRemainingMs(uint32_t now)" in source
+    assert "uint32_t elapsed = now - cooldownStartedMs;" in source
+    assert "static void beginCooldown(uint32_t now)" in source
+    assert "uint32_t remainingMs = cooldownRemainingMs(now);" in source
+    assert "lastFireStartMs" not in source
+    assert "beginCooldown(millis());" in stop_block
     assert "stopFireSequence(\"mqtt\")" in source
     assert 'doc["enabled"].is<bool>()' in source
     assert 'const bool enabled = doc["enabled"].as<bool>();' in source
@@ -330,3 +341,4 @@ def test_standalone_nixo_uses_one_point_five_second_local_cooldown_fallback() ->
     assert "#define NIXO_RELAY_ON_LEVEL HIGH" in build_config
     assert "#define NIXO_FIRE_DEFAULT_DURATION_MS 3000" in build_config
     assert "#define NIXO_FIRE_COOLDOWN_MS 1500" in build_config
+    assert source.count("beginCooldown(now);") == 2
