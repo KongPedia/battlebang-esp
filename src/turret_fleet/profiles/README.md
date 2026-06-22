@@ -39,3 +39,16 @@ Resulting poses:
 Each file uses the same verified safe motion envelope currently tuned on
 `turret_2`: local yaw `-55..35`, pitch `-45..70`, home `0,0`, dead pitch `65`.
 Adjust these via MQTT config patches only after physical calibration evidence.
+
+## Relay polarity profiles
+
+The same `esp32dev_turret_fleet` firmware supports the current mixed relay
+hardware through NVS-backed fire config.  USB provisioning or MQTT config saves
+these fields per turret:
+
+- `turret_1`, `turret_2`, `turret_3`: one-channel fire relay on `GPIO23` / CH3, active-HIGH (`relay_ch3_active_low=false`).
+- `turret_4`: two-channel relay, active-LOW on the flywheel/channel path (`GPIO22` / CH2) and chain/fire path (`GPIO23` / CH3).
+
+Keep CH2 active-LOW for the BLDC/flywheel path.  Only invert CH3 on the
+one-channel relay turrets; otherwise the fire motor can remain energized after
+the fire sequence completes.

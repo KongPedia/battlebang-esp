@@ -74,7 +74,11 @@
     "default_hold_ms": 500,
     "min_hold_ms": 100,
     "max_hold_ms": 60000,
-    "relay_step_delay_ms": 250
+    "relay_step_delay_ms": 250,
+    "relay_active_low": true,
+    "relay_ch1_active_low": true,
+    "relay_ch2_active_low": true,
+    "relay_ch3_active_low": false
   },
   "network": {
     "auto_start": true,
