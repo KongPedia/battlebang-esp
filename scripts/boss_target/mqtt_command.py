@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "boss_target" / ".env.boss_target"
+DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "boss_target" / ".env.boss_target"
 
 
 class BossTargetMqttError(RuntimeError):
@@ -175,12 +175,21 @@ def command_payload(args: argparse.Namespace) -> dict[str, Any]:
         if args.target_index is not None:
             doc["target_index"] = args.target_index
         return doc
+    if args.action == "led-test":
+        return {
+            "command": "led_test",
+            "color": args.color,
+            "duration_ms": args.duration_ms,
+            "hp_only": args.hp_only,
+        }
+    if args.action == "led-test-off":
+        return {"command": "led_test_off"}
     return {"command": args.action.replace("-", "_")}
 
 
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Publish boss_target MQTT commands/config/OTA payloads without external MQTT deps.")
-    parser.add_argument("action", choices=("start", "reset", "status", "simulate-hit", "config", "ota", "all-ota"))
+    parser.add_argument("action", choices=("start", "reset", "status", "simulate-hit", "led-test", "led-test-off", "config", "ota", "all-ota"))
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument("--host", help="MQTT broker host; default/env BOSS_TARGET_MQTT_HOST")
     parser.add_argument("--port", type=int, help="MQTT broker port; default/env BOSS_TARGET_MQTT_PORT or 1883")
@@ -189,6 +198,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--password", help="MQTT password; default/env BOSS_TARGET_MQTT_PASSWORD")
     parser.add_argument("--boss-id", help="boss target id; default/env BOSS_TARGET_BOSS_ID or BOSS_TARGET_TARGET_ID")
     parser.add_argument("--target-index", type=int, help="simulate-hit target index; omit to hit active target")
+    parser.add_argument("--color", default="#FFFFFF", help="led-test color as #RRGGBB; default #FFFFFF")
+    parser.add_argument("--duration-ms", type=int, default=30000, help="led-test duration in milliseconds")
+    parser.add_argument("--hp-only", action=argparse.BooleanOptionalAction, default=True, help="led-test only HP bar by default")
     parser.add_argument("--payload", help="raw JSON payload for config/ota actions")
     parser.add_argument("--json-file", type=Path, help="JSON payload file for config/ota actions")
     parser.add_argument("--retain", action="store_true")

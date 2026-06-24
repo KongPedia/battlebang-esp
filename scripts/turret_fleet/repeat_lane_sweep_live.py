@@ -551,7 +551,7 @@ def run_boss_opening(client: MqttSession, monitor: StatusMonitor, args: argparse
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Random one-at-a-time live-fire lane_sweep director for turret_1 through turret_4.")
-    parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="default: src/turret_fleet/.env.turret_fleet")
+    parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="default: firmware/turret_fleet/.env.turret_fleet")
     parser.add_argument("--host", help="MQTT broker host; default from env file")
     parser.add_argument("--port", type=int, help="MQTT broker port; default 1883")
     parser.add_argument("--root", help="MQTT root; default battlebang")

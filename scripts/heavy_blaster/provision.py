@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "heavy-blaster" / ".env.heavy-blaster"
+DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "heavy_blaster" / ".env.heavy-blaster"
+SERIAL_BOOT_SETTLE_S = 4.0
+SERIAL_WRITE_CHUNK_BYTES = 96
+SERIAL_WRITE_CHUNK_DELAY_S = 0.02
 DEFAULT_LATEST_MANIFEST_URL = (
     "https://github.com/KongPedia/battlebang-esp/releases/download/"
     "heavy-blaster-latest/heavy-blaster-manifest.json"
@@ -118,6 +121,7 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         "schema": 1,
         "config_version": config_version,
         "configured": True,
+        "device_id": env_first(env, "HEAVY_BLASTER_DEVICE_ID", default=""),
         "debug_allow_local_control": env_bool(env, "HEAVY_BLASTER_DEBUG_ALLOW_LOCAL_CONTROL", False),
         "unlock": {
             "required_slots": env_int(env, "HEAVY_BLASTER_REQUIRED_SLOTS", 4),
@@ -179,8 +183,11 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
     }
 
     set_if_present(doc, "blaster_id", env_first(env, "HEAVY_BLASTER_BLASTER_ID"))
+    if not doc["device_id"]:
+        doc["device_id"] = doc.get("blaster_id") or ""
     set_if_present(doc, "display_name", env_first(env, "HEAVY_BLASTER_DISPLAY_NAME", "HEAVY_BLASTER_NAME"))
     set_if_present(doc, "group", env_first(env, "HEAVY_BLASTER_GROUP"))
+    set_if_present(doc, "stage_id", env_first(env, "HEAVY_BLASTER_STAGE_ID"))
     set_if_present(doc, "location", env_first(env, "HEAVY_BLASTER_LOCATION"))
     return doc
 
@@ -201,10 +208,13 @@ def write_serial(port: str, baud: int, command: str, wait_s: float) -> None:
         raise HeavyBlasterProvisionError("pyserial is required; use ./.venv-pio/bin/python or install pyserial") from exc
 
     with serial.Serial(port, baudrate=baud, timeout=wait_s) as ser:  # type: ignore[attr-defined]
-        time.sleep(0.2)
+        time.sleep(SERIAL_BOOT_SETTLE_S)
         ser.reset_input_buffer()
-        ser.write(command.encode("utf-8") + b"\n")
-        ser.flush()
+        encoded = command.encode("utf-8") + b"\n"
+        for start in range(0, len(encoded), SERIAL_WRITE_CHUNK_BYTES):
+            ser.write(encoded[start : start + SERIAL_WRITE_CHUNK_BYTES])
+            ser.flush()
+            time.sleep(SERIAL_WRITE_CHUNK_DELAY_S)
         deadline = time.time() + wait_s
         while time.time() < deadline:
             line = ser.readline()
@@ -213,8 +223,8 @@ def write_serial(port: str, baud: int, command: str, wait_s: float) -> None:
 
 
 def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Provision a BattleBang heavy-blaster from src/heavy-blaster/.env.heavy-blaster.")
-    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="default: src/heavy-blaster/.env.heavy-blaster")
+    parser = argparse.ArgumentParser(description="Provision a BattleBang heavy-blaster from firmware/heavy_blaster/.env.heavy-blaster.")
+    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="default: firmware/heavy_blaster/.env.heavy-blaster")
     parser.add_argument("--serial-port", help="ESP32 serial port; default/env HEAVY_BLASTER_SERIAL_PORT")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--wait-s", type=float, default=2.0, help="seconds to read serial response after writing")

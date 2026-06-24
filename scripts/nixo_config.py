@@ -1,8 +1,8 @@
 """Inject optional Nixo PlatformIO build macros from shell environment.
 
 Examples:
-  pio run -e esp32dev_nixo_go2_05
-  NIXO_ID=nixo_go2_05 NIXO_WIFI_SSID=... NIXO_MQTT_HOST=... pio run -e esp32dev_nixo_go2_05
+  pio run -e esp32dev_nixo
+  NIXO_ID=nixo_go2_05 NIXO_WIFI_SSID=... NIXO_MQTT_HOST=... pio run -e esp32dev_nixo_2ch
 """
 
 from __future__ import annotations
@@ -35,21 +35,11 @@ def clean_string_value(value: str) -> str:
     return text
 
 
-def detect_go2_id() -> str:
-    for env_name in ("GO2_ID", "ROBOT_ID", "ESP_ROBOT_ID", "BATTLEBANG_ROBOT_ID"):
-        env_override = os.environ.get(env_name, "").strip()
-        if env_override:
-            return clean_string_value(env_override)
-
-    option_value = clean_string_value(project_option("custom_robot_id"))
-    if option_value:
-        return option_value
-
-    match = re.search(r"(go2_\d+)$", PIO_ENV)
-    if match:
-        return match.group(1)
-
-    return "go2_03"
+def default_nixo_id() -> str:
+    robot_id = clean_string_value(os.environ.get("NIXO_PARENT_ROBOT_ID", ""))
+    if robot_id:
+        return f"nixo_{robot_id}"
+    return "nixo"
 
 
 def c_string(value: str) -> str:
@@ -138,7 +128,7 @@ int_env_macros = {
 }
 
 defines_map: dict[str, str] = {}
-go2_id = detect_go2_id()
+nixo_id_default = default_nixo_id()
 variant_name = relay_variant_name()
 variant = load_relay_variant(variant_name)
 
@@ -157,7 +147,7 @@ if "relay_off_level" in variant:
 
 nixo_id_env = clean_string_value(os.environ.get("NIXO_ID", ""))
 if not nixo_id_env:
-    defines_map["NIXO_BUILD_ID"] = c_string(f"nixo_{go2_id}")
+    defines_map["NIXO_BUILD_ID"] = c_string(nixo_id_default)
 
 for env_name, macro_name in string_env_macros.items():
     value = os.environ.get(env_name)
@@ -185,7 +175,7 @@ if defines:
     env.Append(CPPDEFINES=defines)
 
 print(
-    f"[nixo_config] {PIO_ENV}: go2_id={go2_id} nixo_id=nixo_{go2_id} "
+    f"[nixo_config] {PIO_ENV}: nixo_id={defines_map.get('NIXO_BUILD_ID', 'env/local_secrets')} "
     f"relay_variant={variant_name} relay1={defines_map.get('NIXO_BUILD_RELAY1_PIN')} "
     f"relay2={defines_map.get('NIXO_BUILD_RELAY2_PIN')} "
     "MQTT identity/secrets loaded from src/nIxo/local_secrets.h and env overrides"

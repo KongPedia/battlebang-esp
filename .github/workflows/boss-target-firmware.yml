@@ -9,9 +9,13 @@ on:
     paths:
       - ".github/workflows/boss-target-firmware.yml"
       - "platformio.ini"
-      - "src/boss_target/**"
+      - "firmware/boss_target/**"
       - "scripts/boss_target/**"
       - "scripts/firmware/make_release_manifest.py"
+      - "lib/bb_esp_core/**"
+      - "lib/bb_esp_net/**"
+      - "lib/bb_esp_nvs/**"
+      - "lib/bb_esp_ota/**"
   workflow_dispatch:
     inputs:
       version:
@@ -94,7 +98,7 @@ jobs:
       - name: Generate firmware version header
         shell: bash
         run: |
-          cat > src/boss_target/app/version_autogen.h <<EOF_VERSION
+          cat > firmware/boss_target/app/version_autogen.h <<EOF_VERSION
           #pragma once
           #define BB_BOSS_TARGET_VERSION "${{ steps.version.outputs.version }}"
           #define BB_BOSS_TARGET_BUILD ${{ steps.version.outputs.build }}

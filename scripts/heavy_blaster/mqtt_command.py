@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "heavy-blaster" / ".env.heavy-blaster"
+DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "heavy_blaster" / ".env.heavy-blaster"
 
 
 class HeavyBlasterMqttError(RuntimeError):
@@ -213,7 +213,7 @@ def command_payload(args: argparse.Namespace) -> dict[str, Any]:
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Publish heavy-blaster MQTT commands/config/OTA payloads without external MQTT deps.")
     parser.add_argument("action", choices=("status", "reset", "set-slot", "set-slots", "unlock", "config", "ota", "all-ota"))
-    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="default: firmware/heavy_blaster/.env.heavy-blaster")
     parser.add_argument("--host", help="MQTT broker host; default/env HEAVY_BLASTER_MQTT_HOST")
     parser.add_argument("--port", type=int, help="MQTT broker port; default/env HEAVY_BLASTER_MQTT_PORT or 1883")
     parser.add_argument("--root", help="MQTT root; default/env HEAVY_BLASTER_MQTT_ROOT or battlebang")

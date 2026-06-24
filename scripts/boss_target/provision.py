@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "boss_target" / ".env.boss_target"
+DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "boss_target" / ".env.boss_target"
 DEFAULT_LATEST_MANIFEST_URL = (
     "https://github.com/KongPedia/battlebang-esp/releases/download/"
     "boss-target-latest/boss-target-manifest.json"
@@ -127,6 +127,7 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         "schema": 1,
         "config_version": config_version,
         "configured": True,
+        "device_id": env_first(env, "BOSS_TARGET_DEVICE_ID", default=""),
         "debug_allow_simulate_hit": env_bool(env, "BOSS_TARGET_DEBUG_ALLOW_SIMULATE_HIT", False),
         "gameplay": {
             "hp_max": env_int(env, "BOSS_TARGET_HP_MAX", 10),
@@ -153,7 +154,7 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
         "hardware_profile": {
             "max_targets": env_int(env, "BOSS_TARGET_MAX_TARGETS", 4),
             "ring_pins": split_csv_ints(env_first(env, "BOSS_TARGET_RING_PINS"), 4, "BOSS_TARGET_RING_PINS", [23, 21, 18, 17]),
-            "piezo_do_pins": split_csv_ints(env_first(env, "BOSS_TARGET_PIEZO_DO_PINS"), 4, "BOSS_TARGET_PIEZO_DO_PINS", [34, 35, 32, 33]),
+            "piezo_do_pins": split_csv_ints(env_first(env, "BOSS_TARGET_PIEZO_DO_PINS"), 4, "BOSS_TARGET_PIEZO_DO_PINS", [34, 27, 32, 33]),
             "hp_bar_pin": env_int(env, "BOSS_TARGET_HP_BAR_PIN", 12),
             "led_type": env_first(env, "BOSS_TARGET_LED_TYPE", default="WS2811"),
             "color_order": env_first(env, "BOSS_TARGET_COLOR_ORDER", default="RGB"),
@@ -185,8 +186,11 @@ def build_provision_config(env: dict[str, str]) -> dict[str, Any]:
 
     set_if_present(doc, "boss_id", env_first(env, "BOSS_TARGET_BOSS_ID"))
     set_if_present(doc, "target_id", env_first(env, "BOSS_TARGET_TARGET_ID"))
+    if not doc["device_id"]:
+        doc["device_id"] = doc.get("boss_id") or doc.get("target_id") or ""
     set_if_present(doc, "display_name", env_first(env, "BOSS_TARGET_DISPLAY_NAME", "BOSS_TARGET_NAME"))
     set_if_present(doc, "group", env_first(env, "BOSS_TARGET_GROUP"))
+    set_if_present(doc, "stage_id", env_first(env, "BOSS_TARGET_STAGE_ID"))
     set_if_present(doc, "location", env_first(env, "BOSS_TARGET_LOCATION"))
     return doc
 
@@ -219,8 +223,8 @@ def write_serial(port: str, baud: int, command: str, wait_s: float) -> None:
 
 
 def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Provision a BattleBang boss_target from src/boss_target/.env.boss_target.")
-    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="default: src/boss_target/.env.boss_target")
+    parser = argparse.ArgumentParser(description="Provision a BattleBang boss_target from firmware/boss_target/.env.boss_target.")
+    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="default: firmware/boss_target/.env.boss_target")
     parser.add_argument("--serial-port", help="ESP32 serial port; default/env BOSS_TARGET_SERIAL_PORT")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--wait-s", type=float, default=2.0, help="seconds to read serial response after writing")

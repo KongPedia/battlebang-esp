@@ -7,8 +7,13 @@ on:
     paths:
       - ".github/workflows/turret-fleet-firmware.yml"
       - "platformio.ini"
-      - "src/turret_fleet/**"
+      - "firmware/turret_fleet/**"
       - "scripts/turret_fleet/**"
+      - "scripts/firmware/make_release_manifest.py"
+      - "lib/bb_esp_core/**"
+      - "lib/bb_esp_net/**"
+      - "lib/bb_esp_nvs/**"
+      - "lib/bb_esp_ota/**"
   workflow_dispatch:
     inputs:
       version:
@@ -91,7 +96,7 @@ jobs:
       - name: Generate firmware version header
         shell: bash
         run: |
-          cat > src/turret_fleet/app/version_autogen.h <<EOF_VERSION
+          cat > firmware/turret_fleet/app/version_autogen.h <<EOF_VERSION
           #pragma once
           #define BB_TURRET_FLEET_VERSION "${{ steps.version.outputs.version }}"
           #define BB_TURRET_FLEET_BUILD ${{ steps.version.outputs.build }}
