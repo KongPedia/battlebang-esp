@@ -1,0 +1,11 @@
+{
+  "name": "bb_esp_ota",
+  "version": "0.1.0",
+  "description": "BattleBang ESP OTA manifest validation, HTTP update, and reboot-marker helpers.",
+  "keywords": ["battlebang", "esp32", "ota", "firmware"],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "dependencies": [
+    {"name": "bblanchon/ArduinoJson", "version": "^6.21.5"}
+  ]
+}

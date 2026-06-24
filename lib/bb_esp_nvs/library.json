@@ -1,0 +1,24 @@
+{
+  "name": "bb_esp_nvs",
+  "version": "0.1.0",
+  "description": "BattleBang ESP NVS/Preferences helpers for common runtime config fields.",
+  "keywords": [
+    "battlebang",
+    "esp32",
+    "firmware",
+    "nvs",
+    "preferences",
+    "config"
+  ],
+  "frameworks": [
+    "arduino"
+  ],
+  "platforms": [
+    "espressif32"
+  ],
+  "dependencies": [
+    {
+      "name": "bb_esp_core"
+    }
+  ]
+}

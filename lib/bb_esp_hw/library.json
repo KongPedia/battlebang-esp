@@ -1,0 +1,8 @@
+{
+  "name": "bb_esp_hw",
+  "version": "0.1.0",
+  "description": "BattleBang ESP safe hardware helpers for GPIO and relay handling.",
+  "keywords": ["battlebang", "esp32", "hardware", "relay"],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}
