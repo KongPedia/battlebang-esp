@@ -4,12 +4,12 @@ This document is the compact handoff/context source for BTB-721 `turret_fleet` w
 
 ## Goal
 
-`src/turret_fleet` is the replacement ESP32 firmware path for operating multiple physical turrets without rebuilding per turret after first install.
+`firmware/turret_fleet` is the replacement ESP32 firmware path for operating multiple physical turrets without rebuilding per turret after first install.
 
 - First install is still USB serial because blank ESP32 devices have no Wi-Fi credentials.
 - After USB install, the ESP stores `turret_id`, pose, Wi-Fi, MQTT, calibration, motion/fire, and OTA policy in NVS.
 - After provisioning, Command Center can update config and trigger commands over MQTT without USB reflashing.
-- `src/turret` remains as the existing/legacy turret firmware reference; new fleet work happens in `src/turret_fleet`.
+- `src/turret` remains as the existing/legacy turret firmware reference; new fleet work happens in `firmware/turret_fleet`.
 
 ## Boot behavior
 
@@ -107,8 +107,8 @@ after the turret has reached local home.
 
 Provisioning reads the module-local env file:
 
-- Default env file: `src/turret_fleet/.env.turret_fleet`
-- Example file: `src/turret_fleet/.env.turret_fleet.example`
+- Default env file: `firmware/turret_fleet/.env.turret_fleet`
+- Example file: `firmware/turret_fleet/.env.turret_fleet.example`
 - Local env files are gitignored; do not commit real Wi-Fi/MQTT secrets.
 
 Current expected first-install defaults:

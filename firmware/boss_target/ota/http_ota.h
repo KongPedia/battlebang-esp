@@ -1,16 +1,13 @@
 #pragma once
 
-#include <Arduino.h>
+#include <bb_esp_ota/http_ota.h>
 
 #include "ota_manifest.h"
 
 namespace battlebang {
 namespace boss_target {
 
-struct OtaResult {
-  bool ok = false;
-  String message;
-};
+using OtaResult = battlebang::esp::ota::OtaResult;
 
 bool fetchHttpText(const String& url, size_t maxBytes, String& body, String& error);
 OtaResult runHttpOta(const OtaManifest& manifest);

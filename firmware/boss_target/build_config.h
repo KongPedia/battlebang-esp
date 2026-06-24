@@ -33,7 +33,7 @@ static constexpr int RING4_PIN = 17;
 static constexpr int RING_PINS[kMaxTargets] = {RING1_PIN, RING2_PIN, RING3_PIN, RING4_PIN};
 
 static constexpr int PIEZO1_AO_PIN = 34;
-static constexpr int PIEZO2_AO_PIN = 35;
+static constexpr int PIEZO2_AO_PIN = 27;
 static constexpr int PIEZO3_AO_PIN = 32;
 static constexpr int PIEZO4_AO_PIN = 33;
 static constexpr int PIEZO_AO_PINS[kMaxTargets] = {PIEZO1_AO_PIN, PIEZO2_AO_PIN, PIEZO3_AO_PIN, PIEZO4_AO_PIN};
@@ -65,6 +65,8 @@ static constexpr uint32_t HIT_FLASH_MS = 1000;
 static constexpr uint32_t HIT_FLASH_BLINK_MS = 125;
 static constexpr uint32_t DEAD_BLINK_MS = 300;
 
+static constexpr uint8_t HP_BAR_IDLE_WHITE_PERCENT = 30;
+static constexpr uint8_t HP_BAR_IDLE_WHITE_VALUE = 77;  // round(255 * 30%).
 static constexpr uint32_t HP_GREEN = 0x00FF00;
 static constexpr uint32_t HP_YELLOW = 0xFFFF00;
 static constexpr uint32_t HP_RED = 0xFF0000;

@@ -2,9 +2,9 @@
 
 namespace go2 {
 
-void BarDisplay::begin() {
+void BarDisplay::begin(uint16_t brightness) {
   FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>(leds_, HP_BAR_NUM_LEDS);
-  FastLED.setBrightness(HP_BAR_LED_BRIGHTNESS);
+  setBrightness(brightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(LED_MAX_VOLTS, LED_MAX_MA);
   dirty_ = true;
 }
@@ -27,6 +27,12 @@ void BarDisplay::tick(uint32_t now) {
 }
 
 void BarDisplay::markDirty() {
+  dirty_ = true;
+}
+
+void BarDisplay::setBrightness(uint16_t brightness) {
+  if (brightness > 255) brightness = 255;
+  FastLED.setBrightness(static_cast<uint8_t>(brightness));
   dirty_ = true;
 }
 

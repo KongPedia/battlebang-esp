@@ -154,6 +154,10 @@ void printStatus(const char* reason) {
   doc["reason"] = reason;
   doc["device_id"] = config.deviceId;
   doc["turret_id"] = config.turretId;
+  doc["group"] = config.group;
+  doc["stage_id"] = config.stageId;
+  doc["floor"] = config.floor;
+  doc["side"] = config.side;
   doc["configured"] = config.configured;
   doc["firmware_app"] = BB_TURRET_FLEET_APP_NAME;
   doc["firmware_version"] = BB_TURRET_FLEET_VERSION;
@@ -277,7 +281,7 @@ bool checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterA
   Serial.print("[fleet][ota] accepted ");
   Serial.println(otaManifestSummary(manifest));
   publishMqttStatusIfConnected("ota_downloading");
-  OtaResult result = runHttpOta(manifest);
+  OtaResult result = battlebang::turret_fleet::runHttpOta(manifest);
   Serial.print("[fleet][ota] result ok=");
   Serial.print(result.ok ? "yes" : "no");
   Serial.print(" message=");

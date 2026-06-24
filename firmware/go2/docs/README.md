@@ -1,20 +1,21 @@
-# Go2 ESP 문서 인덱스
+# Go2 ESP document index
 
-Go2 등에 장착되는 ESP32 피격/LED 보드용 문서입니다. 터렛 펌웨어처럼 Go2도 `src/go2/` 아래에 빌드 설정, 펌웨어 진입점, 기능 모듈, 문서를 모아둡니다.
+Go2 hit/LED ESP docs live under `firmware/go2/docs/`.
 
-- `build-upload-workflow.md`: 로컬 secrets 생성, robot id 선택, 빌드/업로드 흐름
-- `mqtt-hit-contract.md`: Command Center와 주고받는 MQTT topic/payload 계약
+- `build-upload-workflow.md`: generic image build/upload and NVS provisioning flow
+- `mqtt-hit-contract.md`: Command Center MQTT topic/payload contract
 
-주요 코드 위치:
+Key code locations:
 
 ```text
-src/go2/
+firmware/go2/
 ├─ main.cpp                         # setup/loop runtime orchestration
-├─ build_config.h                   # 핀, MQTT topic, build-time macro
-├─ robots.json                      # Go2별 non-secret profile
-├─ local_secrets.example.h          # gitignore local secret template
-├─ display/                         # bar_display=HP bar renderer
-└─ mqtt/                            # MQTT hit candidate / heartbeat / display command
+├─ build_config.h                   # build fallback constants, no per-robot identity
+├─ hardware_profile.json            # non-secret hardware fallback profile
+├─ .env.go2.example                 # NVS provisioning template
+├─ config/                          # runtime config + NVS bridge
+├─ display/                         # HP bar renderer
+└─ mqtt/                            # hit candidate / heartbeat / display/config/OTA topics
 ```
 
-피격 scoring/down 판정은 Command Center가 소유합니다. ESP는 piezo AO ADC threshold를 넘은 입력만 `hit_candidate(hit=true, peak, threshold)`로 보내고 legacy `ring_display` 명령을 HP bar LED로 렌더링만 합니다. MQTT publish 실패 시에는 hit를 RAM queue에 보관했다가 재연결 후 재전송합니다. 발사/릴레이/서보/쿨다운 링 표시는 Go2 피격 ESP 책임이 아닙니다.
+Piezo threshold/rearm/capture/debug, hit cooldown, offline queue, LED brightness, identity, stage, Wi-Fi, MQTT and OTA policy are runtime NVS config. GPIO pins and LED physical capacity stay build-time hardware profile values.

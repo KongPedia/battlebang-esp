@@ -1,6 +1,6 @@
 # Hit Target firmware
 
-`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from `src/go2_nixo/` because this standalone target owns its local tutorial HP/effect loop instead of delegating HP/down state to the Go2 Command Center MQTT path. Device identity is not numbered; each ESP32 derives `target_id` at boot from its eFuse MAC address, for example `hit_target_AABBCCDDEEFF`.
+`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from `firmware/go2_nixo/` because this standalone target owns its local tutorial HP/effect loop instead of delegating HP/down state to the Go2 Command Center MQTT path. Device identity is not numbered; each ESP32 derives `target_id` at boot from its eFuse MAC address, for example `hit_target_AABBCCDDEEFF`.
 
 ## UX implemented
 

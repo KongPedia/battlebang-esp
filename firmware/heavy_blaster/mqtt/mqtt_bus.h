@@ -5,9 +5,9 @@
 #include <WiFiClient.h>
 #include <vector>
 
-#include "heavy-blaster/blaster/heavy_blaster_controller.h"
-#include "heavy-blaster/config/runtime_config.h"
-#include "heavy-blaster/net/wifi_manager.h"
+#include "heavy_blaster/blaster/heavy_blaster_controller.h"
+#include "heavy_blaster/config/runtime_config.h"
+#include "heavy_blaster/net/wifi_manager.h"
 
 namespace battlebang {
 namespace heavy_blaster {

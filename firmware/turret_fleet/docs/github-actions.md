@@ -18,7 +18,7 @@ A push to `main` automatically runs the workflow when one of these paths changes
 ```yaml
 .github/workflows/turret-fleet-firmware.yml
 platformio.ini
-src/turret_fleet/**
+firmware/turret_fleet/**
 scripts/turret_fleet/**
 ```
 

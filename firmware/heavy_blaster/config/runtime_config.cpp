@@ -1,9 +1,10 @@
 #include "runtime_config.h"
 
 #include <ArduinoJson.h>
-#include <Preferences.h>
+#include <bb_esp_core/config/common_runtime_config.h>
+#include <bb_esp_nvs/common_runtime_config_store.h>
 
-#include "heavy-blaster/app/firmware_info.h"
+#include "heavy_blaster/app/firmware_info.h"
 
 namespace battlebang {
 namespace heavy_blaster {
@@ -16,6 +17,102 @@ constexpr uint32_t kMaxPreEffectMs = 60000;
 constexpr uint32_t kMaxFadeOutMs = 60000;
 constexpr uint16_t kMinBlinkBpm = 1;
 constexpr uint16_t kMaxBlinkBpm = 240;
+
+const char* kConfigNamespace = "heavy_blaster";
+
+battlebang::esp::nvs::CommonRuntimeConfigKeys commonNvsKeys() {
+  battlebang::esp::nvs::CommonRuntimeConfigKeys keys;
+  keys.schema = "schema";
+  keys.configVersion = "cfg_ver";
+  keys.configured = "configured";
+  keys.deviceId = "device_id";
+  keys.group = "group";
+  keys.stageId = "stage_id";
+  keys.location = "location";
+  keys.wifiSsid = "wifi_ssid";
+  keys.wifiPassword = "wifi_pass";
+  keys.networkAutoStart = "net_auto";
+  keys.networkStartDelayMs = "net_delay";
+  keys.mqttHost = "mqtt_host";
+  keys.mqttPort = "mqtt_port";
+  keys.mqttUsername = "mqtt_user";
+  keys.mqttPassword = "mqtt_pass";
+  keys.mqttRoot = "mqtt_root";
+  keys.otaCommandCenterControlled = "ota_cc";
+  keys.otaAutoCheckEnabled = "ota_auto";
+  keys.otaChannel = "ota_chan";
+  keys.otaDesiredBuild = "ota_build";
+  keys.otaPublicManifestUrl = "ota_pub";
+  keys.otaLocalMirrorUrl = "ota_mirror";
+  keys.otaCheckIntervalS = "ota_int";
+  keys.otaApplyOnlyInSafeState = "ota_safe";
+  return keys;
+}
+
+battlebang::esp::nvs::CommonRuntimeConfigSavePolicy commonNvsSavePolicy() {
+  battlebang::esp::nvs::CommonRuntimeConfigSavePolicy policy;
+  policy.requireMqttRoot = true;
+  policy.requireOtaChannel = true;
+  policy.requireOtaPublicManifestUrl = false;
+  return policy;
+}
+
+battlebang::esp::config::CommonRuntimeConfig toCommonRuntimeConfig(const RuntimeConfig& config) {
+  battlebang::esp::config::CommonRuntimeConfig common;
+  common.schema = config.schema;
+  common.configVersion = config.configVersion;
+  common.configured = config.configured;
+  common.deviceId = config.deviceId;
+  common.group = config.group;
+  common.stageId = config.stageId;
+  common.location = config.location;
+  common.wifiSsid = config.wifiSsid;
+  common.wifiPassword = config.wifiPassword;
+  common.networkAutoStart = config.networkAutoStart;
+  common.networkStartDelayMs = config.networkStartDelayMs;
+  common.mqttHost = config.mqttHost;
+  common.mqttPort = config.mqttPort;
+  common.mqttUsername = config.mqttUsername;
+  common.mqttPassword = config.mqttPassword;
+  common.mqttRoot = config.mqttRoot;
+  common.otaCommandCenterControlled = config.otaCommandCenterControlled;
+  common.otaAutoCheckEnabled = config.otaAutoCheckEnabled;
+  common.otaChannel = config.otaChannel;
+  common.otaDesiredBuild = config.otaDesiredBuild;
+  common.otaPublicManifestUrl = config.otaPublicManifestUrl;
+  common.otaLocalMirrorUrl = config.otaLocalMirrorUrl;
+  common.otaCheckIntervalS = config.otaCheckIntervalS;
+  common.otaApplyOnlyInSafeState = config.otaApplyOnlyInSafeState;
+  return common;
+}
+
+void applyCommonRuntimeConfig(RuntimeConfig& config,
+                              const battlebang::esp::config::CommonRuntimeConfig& common) {
+  config.schema = common.schema;
+  config.configVersion = common.configVersion;
+  config.configured = common.configured;
+  config.deviceId = common.deviceId;
+  config.group = common.group;
+  config.stageId = common.stageId;
+  config.location = common.location;
+  config.wifiSsid = common.wifiSsid;
+  config.wifiPassword = common.wifiPassword;
+  config.networkAutoStart = common.networkAutoStart;
+  config.networkStartDelayMs = common.networkStartDelayMs;
+  config.mqttHost = common.mqttHost;
+  config.mqttPort = common.mqttPort;
+  config.mqttUsername = common.mqttUsername;
+  config.mqttPassword = common.mqttPassword;
+  config.mqttRoot = common.mqttRoot;
+  config.otaCommandCenterControlled = common.otaCommandCenterControlled;
+  config.otaAutoCheckEnabled = common.otaAutoCheckEnabled;
+  config.otaChannel = common.otaChannel;
+  config.otaDesiredBuild = common.otaDesiredBuild;
+  config.otaPublicManifestUrl = common.otaPublicManifestUrl;
+  config.otaLocalMirrorUrl = common.otaLocalMirrorUrl;
+  config.otaCheckIntervalS = common.otaCheckIntervalS;
+  config.otaApplyOnlyInSafeState = common.otaApplyOnlyInSafeState;
+}
 
 String getStringOr(JsonVariantConst value, const String& fallback) {
   if (value.isNull()) return fallback;
@@ -97,6 +194,9 @@ void normalizeIdentity(RuntimeConfig& config) {
   config.deviceId.trim();
   config.blasterId.trim();
   config.displayName.trim();
+  config.group.trim();
+  config.stageId.trim();
+  config.location.trim();
   if (config.blasterId.length() == 0) config.blasterId = config.deviceId;
   if (config.displayName.length() == 0) config.displayName = config.blasterId;
 }
@@ -183,6 +283,7 @@ bool validateConfig(RuntimeConfig& config, String& error) {
     error = "display_name too long";
     return false;
   }
+  if (config.stageId.length() > 0 && !validateTopicSegment(config.stageId, "stage_id", error)) return false;
   if (config.led.slotCount < 1 || config.led.slotCount > kMaxSlots) {
     error = String("led.slot_count must be 1..") + kMaxSlots;
     return false;
@@ -228,6 +329,15 @@ bool validateConfig(RuntimeConfig& config, String& error) {
 }
 
 void copyConnectivityConfig(RuntimeConfig& dest, const RuntimeConfig& source) {
+  dest.configVersion = source.configVersion;
+  dest.configured = source.configured;
+  dest.deviceId = source.deviceId;
+  dest.blasterId = source.blasterId;
+  dest.displayName = source.displayName;
+  dest.group = source.group;
+  dest.stageId = source.stageId;
+  dest.location = source.location;
+  dest.debugAllowLocalControl = source.debugAllowLocalControl;
   dest.wifiSsid = source.wifiSsid;
   dest.wifiPassword = source.wifiPassword;
   dest.networkAutoStart = source.networkAutoStart;
@@ -288,6 +398,7 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
   next.displayName = getStringOr(doc["display_name"], next.displayName);
   next.displayName = getStringOr(doc["name"], next.displayName);
   next.group = getStringOr(doc["group"], next.group);
+  next.stageId = getStringOr(doc["stage_id"], next.stageId);
   next.location = getStringOr(doc["location"], next.location);
   next.debugAllowLocalControl = getBoolOr(doc["debug_allow_local_control"], next.debugAllowLocalControl);
 
@@ -377,6 +488,7 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   doc["device_mac"] = config.deviceMac;
   doc["display_name"] = config.displayName;
   doc["group"] = config.group;
+  doc["stage_id"] = config.stageId;
   doc["location"] = config.location;
   doc["debug_allow_local_control"] = config.debugAllowLocalControl;
 
@@ -466,21 +578,21 @@ bool hardwareProfileChanged(const RuntimeConfig& before, const RuntimeConfig& af
 }
 
 bool RuntimeConfigStore::load(RuntimeConfig& config) {
-  Preferences prefs;
-  if (!prefs.begin("heavy_blaster", true)) return false;
+  battlebang::esp::nvs::ScopedPreferences scopedPrefs;
+  if (!scopedPrefs.begin(kConfigNamespace, true)) return false;
+  Preferences& prefs = scopedPrefs.preferences();
   if (!prefs.getBool("has_cfg", false)) {
-    prefs.end();
+    scopedPrefs.end();
     return false;
   }
+
   RuntimeConfig loaded = config;
-  loaded.schema = prefs.getUShort("schema", loaded.schema);
-  loaded.configVersion = prefs.getUInt("cfg_ver", loaded.configVersion);
-  loaded.configured = prefs.getBool("configured", loaded.configured);
-  loaded.deviceId = prefs.getString("device_id", loaded.deviceId);
+  battlebang::esp::config::CommonRuntimeConfig common = toCommonRuntimeConfig(loaded);
+  battlebang::esp::nvs::loadCommonRuntimeConfig(prefs, common, commonNvsKeys());
+  applyCommonRuntimeConfig(loaded, common);
+
   loaded.blasterId = prefs.getString("blast_id", loaded.blasterId);
   loaded.displayName = prefs.getString("display", loaded.displayName);
-  loaded.group = prefs.getString("group", loaded.group);
-  loaded.location = prefs.getString("location", loaded.location);
   loaded.debugAllowLocalControl = prefs.getBool("dbg_local", loaded.debugAllowLocalControl);
   loaded.unlock.requiredSlots = prefs.getUChar("req_slots", loaded.unlock.requiredSlots);
   loaded.unlock.preEffectMs = prefs.getUInt("pre_ms", loaded.unlock.preEffectMs);
@@ -492,24 +604,7 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   loaded.led.activeColor = prefs.getUInt("active_c", loaded.led.activeColor);
   loaded.hardware.relayActiveLow = prefs.getBool("rel_low", loaded.hardware.relayActiveLow);
   loaded.hardware.relayProfile = prefs.getString("rel_prof", loaded.hardware.relayProfile);
-  loaded.wifiSsid = prefs.getString("wifi_ssid", loaded.wifiSsid);
-  loaded.wifiPassword = prefs.getString("wifi_pass", loaded.wifiPassword);
-  loaded.networkAutoStart = prefs.getBool("net_auto", loaded.networkAutoStart);
-  loaded.networkStartDelayMs = prefs.getUInt("net_delay", loaded.networkStartDelayMs);
-  loaded.mqttHost = prefs.getString("mqtt_host", loaded.mqttHost);
-  loaded.mqttPort = prefs.getUShort("mqtt_port", loaded.mqttPort);
-  loaded.mqttUsername = prefs.getString("mqtt_user", loaded.mqttUsername);
-  loaded.mqttPassword = prefs.getString("mqtt_pass", loaded.mqttPassword);
-  loaded.mqttRoot = prefs.getString("mqtt_root", loaded.mqttRoot);
-  loaded.otaCommandCenterControlled = prefs.getBool("ota_cc", loaded.otaCommandCenterControlled);
-  loaded.otaAutoCheckEnabled = prefs.getBool("ota_auto", loaded.otaAutoCheckEnabled);
-  loaded.otaChannel = prefs.getString("ota_chan", loaded.otaChannel);
-  loaded.otaDesiredBuild = prefs.getUInt("ota_build", loaded.otaDesiredBuild);
-  loaded.otaPublicManifestUrl = prefs.getString("ota_pub", loaded.otaPublicManifestUrl);
-  loaded.otaLocalMirrorUrl = prefs.getString("ota_mirror", loaded.otaLocalMirrorUrl);
-  loaded.otaCheckIntervalS = prefs.getUInt("ota_int", loaded.otaCheckIntervalS);
-  loaded.otaApplyOnlyInSafeState = prefs.getBool("ota_safe", loaded.otaApplyOnlyInSafeState);
-  prefs.end();
+  scopedPrefs.end();
 
   String error;
   if (!validateConfig(loaded, error)) {
@@ -530,18 +625,16 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
 }
 
 bool RuntimeConfigStore::save(const RuntimeConfig& config) {
-  Preferences prefs;
-  if (!prefs.begin("heavy_blaster", false)) return false;
+  battlebang::esp::nvs::ScopedPreferences scopedPrefs;
+  if (!scopedPrefs.begin(kConfigNamespace, false)) return false;
+  Preferences& prefs = scopedPrefs.preferences();
+
   bool ok = true;
   ok &= prefs.putBool("has_cfg", true) > 0;
-  ok &= prefs.putUShort("schema", config.schema) > 0;
-  ok &= prefs.putUInt("cfg_ver", config.configVersion) > 0;
-  ok &= prefs.putBool("configured", config.configured) > 0;
-  ok &= prefs.putString("device_id", config.deviceId) >= 0;
+  ok &= battlebang::esp::nvs::saveCommonRuntimeConfig(
+      prefs, toCommonRuntimeConfig(config), commonNvsKeys(), commonNvsSavePolicy());
   ok &= prefs.putString("blast_id", config.blasterId) > 0;
   ok &= prefs.putString("display", config.displayName) >= 0;
-  ok &= prefs.putString("group", config.group) >= 0;
-  ok &= prefs.putString("location", config.location) >= 0;
   ok &= prefs.putBool("dbg_local", config.debugAllowLocalControl) > 0;
   ok &= prefs.putUChar("req_slots", config.unlock.requiredSlots) > 0;
   ok &= prefs.putUInt("pre_ms", config.unlock.preEffectMs) > 0;
@@ -553,34 +646,13 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putUInt("active_c", config.led.activeColor) > 0;
   ok &= prefs.putBool("rel_low", config.hardware.relayActiveLow) > 0;
   ok &= prefs.putString("rel_prof", config.hardware.relayProfile) > 0;
-  ok &= prefs.putString("wifi_ssid", config.wifiSsid) >= 0;
-  ok &= prefs.putString("wifi_pass", config.wifiPassword) >= 0;
-  ok &= prefs.putBool("net_auto", config.networkAutoStart) > 0;
-  ok &= prefs.putUInt("net_delay", config.networkStartDelayMs) >= 0;
-  ok &= prefs.putString("mqtt_host", config.mqttHost) >= 0;
-  ok &= prefs.putUShort("mqtt_port", config.mqttPort) > 0;
-  ok &= prefs.putString("mqtt_user", config.mqttUsername) >= 0;
-  ok &= prefs.putString("mqtt_pass", config.mqttPassword) >= 0;
-  ok &= prefs.putString("mqtt_root", config.mqttRoot) > 0;
-  ok &= prefs.putBool("ota_cc", config.otaCommandCenterControlled) > 0;
-  ok &= prefs.putBool("ota_auto", config.otaAutoCheckEnabled) > 0;
-  ok &= prefs.putString("ota_chan", config.otaChannel) > 0;
-  ok &= prefs.putUInt("ota_build", config.otaDesiredBuild) >= 0;
-  ok &= prefs.putString("ota_pub", config.otaPublicManifestUrl) >= 0;
-  ok &= prefs.putString("ota_mirror", config.otaLocalMirrorUrl) >= 0;
-  ok &= prefs.putUInt("ota_int", config.otaCheckIntervalS) > 0;
-  ok &= prefs.putBool("ota_safe", config.otaApplyOnlyInSafeState) > 0;
-  prefs.end();
   return ok;
 }
 
 bool RuntimeConfigStore::clear() {
-  Preferences prefs;
-  if (!prefs.begin("heavy_blaster", false)) return false;
-  bool ok = prefs.clear();
-  prefs.end();
-  return ok;
+  return battlebang::esp::nvs::clearNamespace(kConfigNamespace);
 }
+
 
 }  // namespace heavy_blaster
 }  // namespace battlebang

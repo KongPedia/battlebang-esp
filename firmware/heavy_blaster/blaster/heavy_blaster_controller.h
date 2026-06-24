@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 #include <FastLED.h>
 
-#include "heavy-blaster/build_config.h"
-#include "heavy-blaster/config/runtime_config.h"
+#include "heavy_blaster/build_config.h"
+#include "heavy_blaster/config/runtime_config.h"
 
 namespace battlebang {
 namespace heavy_blaster {

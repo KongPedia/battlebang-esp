@@ -15,14 +15,14 @@ Applies to all firmware folders under `src/**` unless a deeper `AGENTS.md` overr
 - Never commit real Wi-Fi passwords, MQTT passwords, Command Center IPs, local serial ports, or generated secret headers.
 - Real local env files are ignored. Use examples only in git:
   - `src/hit_target/.env.hit_target.example` -> local `src/hit_target/.env.hit_target`
-  - `src/boss_target/.env.boss_target.example` -> local `src/boss_target/.env.boss_target`
-  - `src/turret_fleet/.env.turret_fleet.example` -> local `src/turret_fleet/.env.turret_fleet`
+  - `firmware/boss_target/.env.boss_target.example` -> local `firmware/boss_target/.env.boss_target`
+  - `firmware/turret_fleet/.env.turret_fleet.example` -> local `firmware/turret_fleet/.env.turret_fleet`
   - `src/nIxo/local_secrets.example.h` -> local `src/nIxo/local_secrets.h`
 - If copying values between ignored env files for bench setup, do it without printing secrets in logs and do not stage the real env file.
 
 ## CI and OTA
 
-- Folder workflows should be path-filtered. Unrelated `src/<other-firmware>/**` changes must not trigger another firmware's build.
+- Folder workflows should be path-filtered. Unrelated `src/<other-firmware>/**` or `firmware/<other-firmware>/**` changes must not trigger another firmware's build.
 - `platformio.ini` is a shared build/dependency index, so workflow path filters may include it deliberately.
 - Do not use GitHub's repo-wide `/releases/latest/download/...` URL for device polling when multiple firmware families share one release repo. Use firmware-specific stable tags instead:
   - hit target: `/releases/download/hit-target-latest/hit-target-manifest.json`

@@ -4,7 +4,7 @@ Runtime config schema, validation, JSON serialization, and ESP32 NVS persistence
 
 Important fields:
 
-- `turret_id`, group/floor/side: unit identity after first USB provisioning.
+- `turret_id`, group/`stage_id`/floor/side: unit identity and stage-scoped Command Center routing after first USB provisioning.
 - `coordinate_frame.mqtt_target_unit`: MQTT target unit, normally meters.
 - `pose.x_cm/y_cm/z_cm`: turret position in the shared world frame.
 - `calibration.yaw_axis_offset_deg` / `pitch_axis_offset_deg`: local sensor zero correction.

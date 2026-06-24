@@ -1,7 +1,9 @@
 {
   "schema": 1,
   "config_version": 2,
+  "device_id": "boss_target_dev_01",
   "display_name": "Mini Boss Left",
   "group": "boss-stage",
+  "stage_id": "boss_stage_v1",
   "location": "stage-left"
 }

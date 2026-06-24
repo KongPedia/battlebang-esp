@@ -1,14 +1,17 @@
 #pragma once
 
 #include <Arduino.h>
+#include <bb_esp_net/wifi_manager.h>
 
-#include "heavy-blaster/config/runtime_config.h"
+#include "heavy_blaster/config/runtime_config.h"
 
 namespace battlebang {
 namespace heavy_blaster {
 
 class WifiManager {
  public:
+  WifiManager();
+
   void begin(const RuntimeConfig& config);
   void stop();
   void loop(const RuntimeConfig& config);
@@ -17,8 +20,9 @@ class WifiManager {
   int32_t rssi() const;
 
  private:
-  uint32_t lastAttemptMs_ = 0;
-  bool warnedMissingConfig_ = false;
+  battlebang::esp::net::WifiManager wifi_;
+
+  static battlebang::esp::net::WifiCredentials credentials(const RuntimeConfig& config);
 };
 
 }  // namespace heavy_blaster

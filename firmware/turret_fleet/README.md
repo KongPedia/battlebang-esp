@@ -43,7 +43,7 @@ fire/pattern state without boot-time fire.
 ## Folder layout
 
 ```text
-src/turret_fleet/
+firmware/turret_fleet/
   app/        firmware identity/version metadata
   config/     RuntimeConfig + NVS/Preferences storage
   control/    hardware executor for target/aim/idle/dead/fire and motion feedback
@@ -63,7 +63,7 @@ Recommended first install flow for the fleet firmware is dotenv-driven so the
 same command can be reused for `turret_2`, `turret_3`, etc.:
 
 ```bash
-cp src/turret_fleet/.env.turret_fleet.example src/turret_fleet/.env.turret_fleet
+cp firmware/turret_fleet/.env.turret_fleet.example firmware/turret_fleet/.env.turret_fleet
 # edit Wi-Fi/MQTT values; do not commit the file
 
 ./bin/turret fleet-upload 2
@@ -74,8 +74,8 @@ cp src/turret_fleet/.env.turret_fleet.example src/turret_fleet/.env.turret_fleet
 `fleet-upload` flashes the one generic `esp32dev_turret_fleet` image, then sends
 the selected turret's runtime config over USB serial. The ESP stores it in NVS,
 so future config changes can arrive via MQTT without per-turret rebuilds.
-By default the helper overlays `src/turret_fleet/profiles/<turret>.json` and
-`src/turret_fleet/pattern_presets/<turret>.json` onto the dotenv-derived
+By default the helper overlays `firmware/turret_fleet/profiles/<turret>.json` and
+`firmware/turret_fleet/pattern_presets/<turret>.json` onto the dotenv-derived
 Wi-Fi/MQTT secrets before provisioning.
 
 Manual equivalent after flashing the generic firmware:
@@ -121,12 +121,12 @@ See `docs/usage.md` for the full operator runbook, including OTA polling and
 post-OTA `initiate` behavior.
 
 After USB provisioning, Wi-Fi/MQTT starts automatically. You can send the same MQTT messages
-that Command Center will send. The helper reads `src/turret_fleet/.env.turret_fleet` for
+that Command Center will send. The helper reads `firmware/turret_fleet/.env.turret_fleet` for
 `TURRET_FLEET_MQTT_HOST`, port, and root. If the env file is absent, pass
 `--host "$MQTT_BROKER_HOST"`.
 
 `--host` is the MQTT broker/Command Center broker address, not the ESP device IP.
-Keep real lab broker IPs in `src/turret_fleet/.env.turret_fleet` or a local shell
+Keep real lab broker IPs in `firmware/turret_fleet/.env.turret_fleet` or a local shell
 variable:
 
 ```bash
@@ -144,14 +144,14 @@ export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
 # First persist the coordinates/timings in NVS through the normal config topic,
 # then pattern commands can stay high-level and omit points.
 ./bin/turret fleet-mqtt turret_2 config \
-  --profile-file src/turret_fleet/profiles/turret_2.json \
-  --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+  --profile-file firmware/turret_fleet/profiles/turret_2.json \
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_2.json
 ./bin/turret fleet-mqtt turret_2 pattern lane_sweep --frame-id boss_stage_v1
 ./bin/turret fleet-mqtt turret_2 pattern two_point_bounce --frame-id boss_stage_v1
 ./bin/turret fleet-mqtt turret_2 pattern telegraph_column --frame-id boss_stage_v1
 
 # telegraph_column picks one configured point at random by default. Override a
-# single run with --point-index, or patch src/turret_fleet/pattern_presets/*.json
+# single run with --point-index, or patch firmware/turret_fleet/pattern_presets/*.json
 # and resend the config command above to persist a new random candidate list.
 ./bin/turret fleet-mqtt turret_2 pattern telegraph_column \
   --frame-id boss_stage_v1 --point-index 1

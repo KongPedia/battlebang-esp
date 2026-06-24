@@ -3,7 +3,7 @@
 ## Non-negotiable constraint
 
 `src/turret/` remains untouched for current hardware testing. This new path lives
-under `src/turret_fleet/` and can evolve without breaking the active test firmware.
+under `firmware/turret_fleet/` and can evolve without breaking the active test firmware.
 
 ## Problem with the current approach
 
@@ -35,6 +35,7 @@ Command center config update
 |---|---|---|---|
 | Firmware code | GitHub release | HTTP binary after MQTT manifest | OTA partition |
 | `turret_id` | command center / provisioner | Serial or MQTT config | NVS |
+| `stage_id` | command center / provisioner | Serial or MQTT config | NVS |
 | Coordinates | command center / provisioner | Serial or MQTT config | NVS |
 | Calibration offsets | command center / provisioner | Serial or MQTT config | NVS |
 | Wi-Fi/MQTT settings | provisioner | Serial or device MQTT config | NVS |

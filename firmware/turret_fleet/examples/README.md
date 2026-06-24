@@ -15,9 +15,9 @@ Example command payloads, provisioning config, and OTA manifest payloads.
   move first, dwell, then fire.
 
 Runtime pattern preset config is intentionally stored outside `examples/` under
-`src/turret_fleet/pattern_presets/` to avoid mixing command examples with NVS
-configuration payloads. Publish `src/turret_fleet/pattern_presets/turret_2.json`
-with `./bin/turret fleet-mqtt turret_2 config --profile-file src/turret_fleet/profiles/turret_2.json --patterns-file ...`;
+`firmware/turret_fleet/pattern_presets/` to avoid mixing command examples with NVS
+configuration payloads. Publish `firmware/turret_fleet/pattern_presets/turret_2.json`
+with `./bin/turret fleet-mqtt turret_2 config --profile-file firmware/turret_fleet/profiles/turret_2.json --patterns-file ...`;
 high-level pattern commands can then omit `--point` and use the configured NVS
 preset.
 

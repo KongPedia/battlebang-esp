@@ -56,23 +56,34 @@
 .env.local
 .env.turret_fleet
 # Module-local ESP firmware env files (examples stay tracked).
-src/turret_fleet/.env.turret_fleet
+firmware/turret_fleet/.env.turret_fleet
 src/hit_target/.env.hit_target
 src/*/.env
 src/*/.env.local
 src/*/.env.*
 !src/*/.env*.example
+firmware/*/.env
+firmware/*/.env.local
+firmware/*/.env.*
+!firmware/*/.env*.example
 *.local
 src/local_secrets.h
+# Old operator-local Go2 files may remain after the firmware/go2 move.
 src/go2/local_secrets.h
 src/go2/upload_targets.toml
+firmware/go2/local_secrets.h
+firmware/go2/upload_targets.toml
+# Old operator-local Go2-Nixo upload maps may remain after the firmware/go2_nixo move.
 src/go2_nixo/upload_targets.toml
+firmware/go2_nixo/upload_targets.toml
 src/turret/local_secrets.h
 src/turret/upload_targets.toml
-# Legacy local-only Nixo secrets may exist on operator laptops after the
-# Nixo firmware path was folded into src/go2. Keep ignoring it.
+# Legacy local-only Nixo secrets may exist on operator laptops. Keep ignoring it.
 src/nIxo/local_secrets.h
+# Old operator-local Go2-Nixo files may remain after the firmware/go2_nixo move.
 src/go2_nixo/local_secrets.h
+firmware/go2_nixo/local_secrets.h
+firmware/boss_target/.env.boss_target
 
 .omx/
 .venv-pio/

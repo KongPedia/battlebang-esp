@@ -4,7 +4,7 @@
 #include <WiFi.h>
 
 #include "build_config.h"
-#include "common/relay_pin_utils.h"
+#include <bb_esp_hw/relay_pin_utils.h>
 
 // Standalone Nixo ESP firmware for the 2-ESP split.
 // Control path is server/Command Center -> MQTT only.
@@ -381,9 +381,9 @@ void setup() {
   delay(200);
 
   if (RELAY2_ENABLED) {
-    battlebang::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);
+    battlebang::esp::hw::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);
   }
-  battlebang::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);
+  battlebang::esp::hw::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);
   relayOff();
 
   Serial.println("[MODE] standalone Nixo relay ESP: server/MQTT command only; USB serial is log-only");

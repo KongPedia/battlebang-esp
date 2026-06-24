@@ -1,7 +1,7 @@
 #include "reboot_marker.h"
 
 #include <Arduino.h>
-#include <Preferences.h>
+#include <bb_esp_ota/reboot_marker.h>
 
 namespace battlebang {
 namespace turret_fleet {
@@ -13,22 +13,13 @@ const char* kOtaRebootMarkerKey = "ota_reboot";
 }  // namespace
 
 void writeOtaRebootMarker(bool active) {
-  Preferences prefs;
-  if (!prefs.begin(kSafetyPrefsNamespace, false)) {
+  if (!battlebang::esp::ota::writeRebootMarker(kSafetyPrefsNamespace, kOtaRebootMarkerKey, active)) {
     Serial.println("[fleet][ota] reboot marker NVS open failed");
-    return;
   }
-  prefs.putBool(kOtaRebootMarkerKey, active);
-  prefs.end();
 }
 
 bool consumeOtaRebootMarker() {
-  Preferences prefs;
-  if (!prefs.begin(kSafetyPrefsNamespace, false)) return false;
-  const bool active = prefs.getBool(kOtaRebootMarkerKey, false);
-  if (active) prefs.putBool(kOtaRebootMarkerKey, false);
-  prefs.end();
-  return active;
+  return battlebang::esp::ota::consumeRebootMarker(kSafetyPrefsNamespace, kOtaRebootMarkerKey);
 }
 
 }  // namespace turret_fleet

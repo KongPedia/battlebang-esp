@@ -1,6 +1,6 @@
 #include "reboot_marker.h"
 
-#include <Preferences.h>
+#include <bb_esp_ota/reboot_marker.h>
 
 namespace battlebang {
 namespace boss_target {
@@ -10,20 +10,11 @@ constexpr const char* kKey = "ota_reboot";
 }
 
 bool writeOtaRebootMarker(bool value) {
-  Preferences prefs;
-  if (!prefs.begin(kNamespace, false)) return false;
-  const bool ok = prefs.putBool(kKey, value) > 0;
-  prefs.end();
-  return ok;
+  return battlebang::esp::ota::writeRebootMarker(kNamespace, kKey, value);
 }
 
 bool consumeOtaRebootMarker() {
-  Preferences prefs;
-  if (!prefs.begin(kNamespace, false)) return false;
-  const bool value = prefs.getBool(kKey, false);
-  if (value) prefs.putBool(kKey, false);
-  prefs.end();
-  return value;
+  return battlebang::esp::ota::consumeRebootMarker(kNamespace, kKey);
 }
 
 }  // namespace boss_target

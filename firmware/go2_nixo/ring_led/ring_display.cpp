@@ -8,8 +8,9 @@ constexpr uint8_t RING_COOLDOWN_FILL_STEPS = 10;
 
 }
 
-void RingDisplay::begin() {
+void RingDisplay::begin(uint16_t brightness) {
   FastLED.addLeds<WS2811, RING_LED_PIN, RGB>(leds_, RING_NUM_LEDS);
+  setBrightness(brightness);
   dirty_ = true;
 }
 
@@ -20,6 +21,12 @@ void RingDisplay::tick(uint32_t now) {
 }
 
 void RingDisplay::markDirty() {
+  dirty_ = true;
+}
+
+void RingDisplay::setBrightness(uint16_t brightness) {
+  if (brightness > 255) brightness = 255;
+  brightness_ = brightness;
   dirty_ = true;
 }
 
@@ -174,7 +181,7 @@ void RingDisplay::renderCooldown(uint32_t now) {
 }
 
 CRGB RingDisplay::scaled(uint8_t r, uint8_t g, uint8_t b) const {
-  uint16_t scale = RING_LED_BRIGHTNESS;
+  uint16_t scale = brightness_;
   return CRGB((uint8_t)((uint16_t)r * scale / 255),
               (uint8_t)((uint16_t)g * scale / 255),
               (uint8_t)((uint16_t)b * scale / 255));

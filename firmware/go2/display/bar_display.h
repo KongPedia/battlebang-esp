@@ -9,9 +9,10 @@ namespace go2 {
 
 class BarDisplay {
  public:
-  void begin();
+  void begin(uint16_t brightness = HP_BAR_LED_BRIGHTNESS);
   void tick(uint32_t now);
   void markDirty();
+  void setBrightness(uint16_t brightness);
   void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
   void clearRemoteDisplay();
   bool remoteDisplayActive() const;

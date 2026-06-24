@@ -5,13 +5,13 @@ Ticket: BTB-721 `[Demo][Boss Turret] 4대 터렛 패턴 엔진 및 OTA 배포 �
 
 ## Decision
 
-`src/turret_fleet/`의 현재 scaffold는 실제 터렛 제어가 없는 safe stub이므로, 다음 구현에서는 **부분 수정이 아니라 삭제 후 재구성**한다.
+`firmware/turret_fleet/`의 현재 scaffold는 실제 터렛 제어가 없는 safe stub이므로, 다음 구현에서는 **부분 수정이 아니라 삭제 후 재구성**한다.
 단, 이미 검증된 `src/turret/`의 하드웨어 제어 핵심은 버리지 않고 새 fleet firmware의 기준 구현으로 옮긴다.
 
 핵심 방향:
 
 1. `src/turret/`는 현재 USB/PlatformIO 기반 검증용 active firmware로 유지한다.
-2. `src/turret_fleet/`는 새로 만든 generic OTA firmware가 된다.
+2. `firmware/turret_fleet/`는 새로 만든 generic OTA firmware가 된다.
 3. 처음 빈 ESP에는 Wi-Fi/MQTT가 없으므로 **최초 1회는 반드시 USB serial로 generic firmware를 올리고 serial config로 `turret_id`/Wi-Fi/MQTT/pose/calibration/OTA policy를 주입**한다.
 4. 시작 직후 자동 `idle`/sweep은 하지 않는다. 단, 설정된 터렛은 부팅 후 Wi-Fi/MQTT를 자동 연결하고, MQTT 연결이 확인되면 fire 없이 로컬 `motion.home`(기본 `yaw=0,pitch=0`)으로 HOME aim을 수행한다.
 5. 최초 provisioning 이후에는 로컬 개발과 현장 튜닝 모두 MQTT config/command/pattern/OTA로 검증한다. 터렛별 firmware 재빌드/USB 재배포를 정상 운영 경로로 쓰지 않는다.
@@ -23,14 +23,14 @@ Ticket: BTB-721 `[Demo][Boss Turret] 4대 터렛 패턴 엔진 및 OTA 배포 �
 
 | Area | Evidence | Plan implication |
 |---|---|---|
-| Current fleet control is stub | `src/turret_fleet/control/turret_control.cpp:6-28` only stores/apply config and leaves `loop()` empty. `src/turret_fleet/control/turret_control.cpp:30-52` only changes mode strings for `idle/dead/target/fire`. | Do not patch around this scaffold. Rebuild control modules from proven `src/turret` runtime. |
+| Current fleet control is stub | `firmware/turret_fleet/control/turret_control.cpp:6-28` only stores/apply config and leaves `loop()` empty. `firmware/turret_fleet/control/turret_control.cpp:30-52` only changes mode strings for `idle/dead/target/fire`. | Do not patch around this scaffold. Rebuild control modules from proven `src/turret` runtime. |
 | Current active turret has real hardware pins | `src/turret/runtime/state.inc:8-16` defines yaw/pitch ADC, servo pins, relay CH1/2/3, ESC pin. | New fleet firmware must preserve these defaults for current hardware revision. |
 | Relay/fire electrical behavior is already encoded | `src/turret/runtime/state.inc:18-22` defines active-low relay and fire hold limits. `src/turret/runtime/support.inc:50-101` implements relay safe-off/attach. `src/turret/runtime/control.inc:148-240` defines CH2 -> CH1 -> CH3 -> BLDC hold -> CH3 off -> CH1 off -> CH2 off sequence. | Port relay/ESC sequencing as a dedicated fire state machine, not ad hoc digital writes. |
 | PID and ADC mapping are proven enough to reuse | `src/turret/runtime/state.inc:46-59` defines PID gains/deadbands/min-drive/invert flags. `src/turret/runtime/support.inc:247-369` reads ADC, converts yaw/pitch, runs PID, and checks aim reached. | Fleet firmware should reuse the same algorithm first, then make gains/motion profile runtime-configurable. |
 | Current build-time per-turret config exists | `scripts/turret_config.py:81-123` maps motion profile JSON into macros. `scripts/turret_config.py:152-169` injects turret pose/calibration/motion defines. | Those fields become runtime config persisted in NVS, not per-device binaries. |
 | Current target command is aim-only | `src/turret/runtime/control.inc:246-309` computes target yaw/pitch and explicitly logs auto-fire disabled. `src/turret/runtime/network.inc:150-199` supports only `idle/dead/fire/target`. | Preserve aim-only `target`; add explicit `pattern` command for boss patterns and keep `fire` explicit inside pattern steps. |
 | Current firmware auto-enters idle | `src/turret/main.cpp:87-90` resets state then calls `enterIdleMode()`. `src/turret/runtime/control.inc:57-69` attaches servos and starts idle sweep behavior. | New fleet firmware must replace this boot behavior with `SAFE_WAIT_COMMAND` / `WAIT_COMMAND`. |
-| Current fleet already has OTA/config pieces | `src/turret_fleet/main.cpp:35-51` applies/persists serial config. `src/turret_fleet/config/runtime_config.cpp:153-201` persists config in Preferences. `src/turret_fleet/docs/mqtt-http-contract.md` documents config/status/OTA topics. | Reuse the concept/contract, but rebuild around real turret control and stronger auto-update policy. |
+| Current fleet already has OTA/config pieces | `firmware/turret_fleet/main.cpp:35-51` applies/persists serial config. `firmware/turret_fleet/config/runtime_config.cpp:153-201` persists config in Preferences. `firmware/turret_fleet/docs/mqtt-http-contract.md` documents config/status/OTA topics. | Reuse the concept/contract, but rebuild around real turret control and stronger auto-update policy. |
 | Current active deployment is per-unit USB/build-time | `platformio.ini:100-122` defines `esp32dev_turret_1` ... `esp32dev_turret_6`. `scripts/turret_config.py:152-169` injects ID/pose/calibration/motion macros. | Fleet must replace per-turret firmware builds with one generic binary plus serial/MQTT runtime config. |
 | Public release pipeline exists conceptually | `.github/workflows/turret-fleet-firmware.yml:74-128` builds fleet firmware and uploads release assets. `scripts/turret_fleet/make_release_manifest.py:18-50` writes manifest fields. | Keep public GitHub release artifacts, but align manifest identity with rebuilt firmware constants and Command Center rollout policy. |
 
@@ -122,27 +122,27 @@ ERROR
   - invalid config, sensor fault, relay/ESC fault, OTA failure, or watchdog fault
 ```
 
-## Files to Delete/Recreate in `src/turret_fleet/`
+## Files to Delete/Recreate in `firmware/turret_fleet/`
 
 During implementation, remove the current scaffold modules and recreate the directory around real control. The docs can be kept/rewritten, but code should not inherit stub control behavior.
 
 Delete/recreate candidates:
 
 ```text
-src/turret_fleet/app/*
-src/turret_fleet/config/*
-src/turret_fleet/control/*
-src/turret_fleet/mqtt/*
-src/turret_fleet/net/*
-src/turret_fleet/ota/*
-src/turret_fleet/examples/*
-src/turret_fleet/main.cpp
+firmware/turret_fleet/app/*
+firmware/turret_fleet/config/*
+firmware/turret_fleet/control/*
+firmware/turret_fleet/mqtt/*
+firmware/turret_fleet/net/*
+firmware/turret_fleet/ota/*
+firmware/turret_fleet/examples/*
+firmware/turret_fleet/main.cpp
 ```
 
 New target structure:
 
 ```text
-src/turret_fleet/
+firmware/turret_fleet/
   main.cpp
   app/
     firmware_info.h
@@ -479,7 +479,7 @@ Example commands:
 #    Serial line example: config {json}
 
 # 4. After reboot/network, tune config over MQTT without USB/rebuild
-mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/devices/esp32-001122334455/config -m @src/turret_fleet/examples/config.boss_turret.json
+mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/devices/esp32-001122334455/config -m @firmware/turret_fleet/examples/config.boss_turret.json
 
 # 5. Aim only
 mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m '{"command":"target","frame_id":"boss_stage_v1","target":{"x":1.2,"y":0.4,"z":0.7}}'
@@ -488,10 +488,10 @@ mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command 
 mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m '{"command":"fire","duration_ms":1000}'
 
 # 7. Run a pattern
-mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m @src/turret_fleet/examples/pattern.two_point_bounce.json
+mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m @firmware/turret_fleet/examples/pattern.two_point_bounce.json
 
 # 8. Command Center triggers OTA manifest/job over MQTT
-mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/ota -m @src/turret_fleet/examples/ota-manifest.example.json
+mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/ota -m @firmware/turret_fleet/examples/ota-manifest.example.json
 ```
 
 ## Implementation Phases
@@ -510,7 +510,7 @@ Acceptance:
 
 ### Phase 1 - Delete/recreate fleet skeleton
 
-- Remove current `src/turret_fleet` code modules that only stub control.
+- Remove current `firmware/turret_fleet` code modules that only stub control.
 - Recreate modules listed in the target structure.
 - Keep PlatformIO env `esp32dev_turret_fleet`.
 - Add firmware identity: app, hardware, semver, monotonic build.
@@ -560,7 +560,7 @@ Acceptance:
 - Implement topics for device config, turret config, command, pattern, OTA, and status.
 - Add retained/last-will strategy if broker supports it.
 - Add status heartbeat at 1-5 Hz during command/pattern/OTA, slower when idle/waiting.
-- Add example JSON payloads under `src/turret_fleet/examples/`.
+- Add example JSON payloads under `firmware/turret_fleet/examples/`.
 
 Acceptance:
 
@@ -685,7 +685,7 @@ Acceptance:
 
 ### Decision
 
-Rebuild `src/turret_fleet/` from scratch around the proven `src/turret/` hardware/PID/fire logic, while making identity/config/pattern/OTA runtime-driven through USB-first serial provisioning, MQTT, NVS, Command Center desired-state control, and public GitHub release OTA artifacts.
+Rebuild `firmware/turret_fleet/` from scratch around the proven `src/turret/` hardware/PID/fire logic, while making identity/config/pattern/OTA runtime-driven through USB-first serial provisioning, MQTT, NVS, Command Center desired-state control, and public GitHub release OTA artifacts.
 
 ### Drivers
 
@@ -696,7 +696,7 @@ Rebuild `src/turret_fleet/` from scratch around the proven `src/turret/` hardwar
 
 ### Alternatives considered
 
-1. **Keep patching current `src/turret_fleet` scaffold**
+1. **Keep patching current `firmware/turret_fleet` scaffold**
    Rejected: control is a stub and would encourage a half-real architecture.
 2. **Keep using only `src/turret` per-device builds**
    Rejected: not scalable for OTA/config/pattern iteration and four-turret boss deployment.
@@ -705,7 +705,7 @@ Rebuild `src/turret_fleet/` from scratch around the proven `src/turret/` hardwar
 
 ### Consequences
 
-- There will be one deliberate rewrite of `src/turret_fleet`.
+- There will be one deliberate rewrite of `firmware/turret_fleet`.
 - `src/turret` remains the comparison oracle until fleet reaches hardware parity.
 - USB serial remains mandatory only for first install/recovery; normal operation moves to MQTT config and OTA.
 - Command Center needs matching config/pattern/OTA desired-state and convergence support.

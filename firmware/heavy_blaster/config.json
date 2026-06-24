@@ -51,7 +51,7 @@
     "device_status": "battlebang/devices/{device_id}/status"
   },
   "notes": [
-    "Hyphenated product surfaces are intentional: src/heavy-blaster and MQTT heavy-blasters.",
+    "Hyphenated product surfaces are intentional: firmware/heavy_blaster and MQTT heavy-blasters.",
     "C++ namespace, PlatformIO env, and shell variables remain underscore-safe as heavy_blaster / HEAVY_BLASTER_*.",
     "Command Center owns slot progress; the ESP owns local relay safe-off and unlock rendering.",
     "Relay polarity is explicit and defaults to active-HIGH for the prototype branch wiring."

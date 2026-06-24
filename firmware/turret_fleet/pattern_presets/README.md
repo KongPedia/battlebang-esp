@@ -4,24 +4,24 @@ Runtime-editable pattern preset JSON lives here so command payload examples stay
 separate from stored turret configuration. `turret_1.json` through
 `turret_4.json` currently share the same readable boss-attack presets; each
 ESP solves the shared world points from its own pose in
-`src/turret_fleet/profiles/<turret>.json`.
+`firmware/turret_fleet/profiles/<turret>.json`.
 
 Apply a preset file over MQTT:
 
 ```bash
-TURRET_FLEET_ENV_FILE=src/turret_fleet/.env.turret_fleet \
+TURRET_FLEET_ENV_FILE=firmware/turret_fleet/.env.turret_fleet \
   ./bin/turret fleet-mqtt turret_2 config \
-  --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_2.json
 ```
 
 Apply both the turret runtime config and pattern presets over MQTT so the ESP
 saves them to NVS:
 
 ```bash
-TURRET_FLEET_ENV_FILE=src/turret_fleet/.env.turret_fleet \
+TURRET_FLEET_ENV_FILE=firmware/turret_fleet/.env.turret_fleet \
   ./bin/turret fleet-mqtt turret_2 config \
-  --profile-file src/turret_fleet/profiles/turret_2.json \
-  --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+  --profile-file firmware/turret_fleet/profiles/turret_2.json \
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_2.json
 ```
 
 The presets use stage coordinates in meters with left/right on the `y` axis and

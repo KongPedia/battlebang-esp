@@ -28,6 +28,8 @@ class BossTargetController {
   void reset(const char* source);
   void start(const char* source, bool resetHp = true);
   void simulateHit(const char* source, int targetIndex = -1);
+  void ledTest(const char* source, uint32_t rgb, uint32_t durationMs, bool hpOnly = true);
+  void stopLedTest(const char* source);
   void prepareForOta();
   void recoverFromFailedOta(const char* source);
   bool isSafeForOta() const;
@@ -69,6 +71,9 @@ class BossTargetController {
   void fillRing(uint8_t index, const CRGB& color);
   void setHpBarGroup(uint16_t group0Based, const CRGB& color);
   void setHpBarAll(const CRGB& color);
+  void setHpBarLinear(const CRGB& color);
+  void renderIdleHpBar();
+  void renderLedTest(uint32_t now);
   void renderStartIntro(uint32_t now);
   void renderTargets(uint32_t now);
   void renderHpBar(uint32_t now);
@@ -94,6 +99,9 @@ class BossTargetController {
   bool otaPrepared_ = false;
   bool pinsConfigured_ = false;
   bool targetTransitionPending_ = false;
+  bool ledTestHpOnly_ = true;
+  uint32_t ledTestUntilMs_ = 0;
+  CRGB ledTestColor_ = CRGB::White;
 
   int lastHitTargetIndex_ = -1;
   int lastWrongTargetIndex_ = -1;

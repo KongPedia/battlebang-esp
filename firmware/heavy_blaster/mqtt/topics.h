@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <vector>
 
-#include "heavy-blaster/config/runtime_config.h"
+#include "heavy_blaster/config/runtime_config.h"
 
 namespace battlebang {
 namespace heavy_blaster {

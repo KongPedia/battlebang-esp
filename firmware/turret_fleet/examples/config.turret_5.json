@@ -4,6 +4,7 @@
   "config_version": 1,
   "turret_id": "boss_1f_left",
   "group": "boss",
+  "stage_id": "boss_stage_v1",
   "floor": 1,
   "side": "left",
   "coordinate_frame": {

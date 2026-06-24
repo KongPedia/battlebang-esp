@@ -1,9 +1,13 @@
 #include "mqtt_bus.h"
 
 #include <ArduinoJson.h>
+#include <Esp.h>
+#include <bb_esp_ota/http_ota.h>
+#include <bb_esp_ota/ota_manifest.h>
+#include <bb_esp_ota/reboot_marker.h>
 
-#include "heavy-blaster/app/firmware_info.h"
-#include "heavy-blaster/mqtt/topics.h"
+#include "heavy_blaster/app/firmware_info.h"
+#include "heavy_blaster/mqtt/topics.h"
 
 namespace battlebang {
 namespace heavy_blaster {
@@ -13,6 +17,20 @@ constexpr unsigned long kMqttRetryMs = 5000;
 constexpr unsigned long kStatusIntervalMs = 5000;
 constexpr unsigned long kStatusChangeCheckMs = 200;
 constexpr size_t kStatusDocCapacity = 4096;
+constexpr const char* kOtaRebootNamespace = "bb_heavy_blaster";
+constexpr const char* kOtaRebootKey = "ota_reboot";
+
+battlebang::esp::app::FirmwareIdentity firmwareIdentity() {
+  battlebang::esp::app::FirmwareIdentity identity;
+  identity.app = BB_HEAVY_BLASTER_APP_NAME;
+  identity.hardware = BB_HEAVY_BLASTER_HARDWARE;
+  identity.version = BB_HEAVY_BLASTER_VERSION;
+  identity.build = BB_HEAVY_BLASTER_BUILD;
+  identity.gitSha = BB_HEAVY_BLASTER_GIT_SHA;
+  identity.releaseRepo = BB_HEAVY_BLASTER_RELEASE_REPO;
+  identity.latestManifestUrl = BB_HEAVY_BLASTER_LATEST_MANIFEST_URL;
+  return identity;
+}
 }  // namespace
 
 void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManager& wifi, HeavyBlasterController& blaster) {
@@ -286,9 +304,47 @@ void MqttBus::handleCommandPayload(const char* topic, const char* payload) {
   publishStatus("command_rejected");
 }
 
-void MqttBus::handleOtaPayload(const char*) {
-  Serial.println("[heavy-blaster][ota] OTA manifest handling is not wired in this scaffold yet");
-  publishStatus("ota_unsupported");
+void MqttBus::handleOtaPayload(const char* payload) {
+  battlebang::esp::ota::OtaManifest manifest;
+  String error;
+  if (!battlebang::esp::ota::parseManifestJson(payload, manifest, error)) {
+    Serial.print("[heavy-blaster][ota] rejected manifest: ");
+    Serial.println(error);
+    publishStatus("ota_manifest_rejected");
+    return;
+  }
+
+  String reason;
+  if (!battlebang::esp::ota::shouldApplyManifest(manifest, firmwareIdentity(), reason)) {
+    Serial.print("[heavy-blaster][ota] skipped: ");
+    Serial.println(reason);
+    publishStatus("ota_skipped");
+    return;
+  }
+
+  if (config_->otaApplyOnlyInSafeState && blaster_ != nullptr && !blaster_->isSafeForOta()) {
+    Serial.println("[heavy-blaster][ota] deferred: blaster is not in a safe OTA state");
+    publishStatus("ota_deferred");
+    return;
+  }
+
+  Serial.print("[heavy-blaster][ota] accepted ");
+  Serial.println(battlebang::esp::ota::manifestSummary(manifest));
+  publishStatus("ota_downloading");
+  if (blaster_ != nullptr) blaster_->prepareForOta();
+  battlebang::esp::ota::OtaResult result = battlebang::esp::ota::runHttpOta(manifest);
+  Serial.print("[heavy-blaster][ota] result ok=");
+  Serial.print(result.ok ? "yes" : "no");
+  Serial.print(" message=");
+  Serial.println(result.message);
+  publishStatus(result.ok ? "ota_rebooting" : "ota_failed");
+  if (result.ok) {
+    battlebang::esp::ota::writeRebootMarker(kOtaRebootNamespace, kOtaRebootKey, true);
+    delay(500);
+    ESP.restart();
+  } else if (blaster_ != nullptr) {
+    blaster_->recoverFromFailedOta("mqtt_ota_failed");
+  }
 }
 
 }  // namespace heavy_blaster

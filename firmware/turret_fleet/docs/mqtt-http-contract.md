@@ -26,6 +26,7 @@ Payload:
   "config_version": 1,
   "turret_id": "boss_1f_left",
   "group": "boss",
+  "stage_id": "boss_stage_v1",
   "floor": 1,
   "side": "left",
   "coordinate_frame": {
@@ -238,7 +239,7 @@ export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
 ./bin/turret fleet-mqtt turret_2 idle
 ./bin/turret fleet-mqtt turret_2 dead
 ./bin/turret fleet-mqtt turret_2 config --yaw-axis-offset-deg 9
-./bin/turret fleet-mqtt turret_2 config --profile-file src/turret_fleet/profiles/turret_2.json --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+./bin/turret fleet-mqtt turret_2 config --profile-file firmware/turret_fleet/profiles/turret_2.json --patterns-file firmware/turret_fleet/pattern_presets/turret_2.json
 ./bin/turret fleet-mqtt turret_2 config --home-yaw-deg 0 --home-pitch-deg 0 --yaw-min-deg -75 --yaw-max-deg 75 --pitch-min-deg -75 --pitch-max-deg 75
 ./bin/turret fleet-mqtt turret_2 config --fire-default-hold-ms 500
 # direct fire starts immediately; it is not gated by any pre-arm flag or aim stability
@@ -367,6 +368,7 @@ Payload includes:
 {
   "type": "status",
   "device_id": "esp32-001122334455",
+  "stage_id": "boss_stage_v1",
   "turret_id": "boss_1f_left",
   "configured": true,
   "firmware_app": "battlebang-turret-fleet",

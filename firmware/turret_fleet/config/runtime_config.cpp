@@ -1,7 +1,9 @@
 #include "runtime_config.h"
 
 #include <ArduinoJson.h>
-#include <Preferences.h>
+#include <bb_esp_core/config/common_runtime_config.h>
+#include <bb_esp_core/mqtt/topic_utils.h>
+#include <bb_esp_nvs/common_runtime_config_store.h>
 #include <math.h>
 #include <string.h>
 
@@ -12,6 +14,97 @@ namespace turret_fleet {
 namespace {
 
 const char* kNamespace = "bb_fleet";
+
+battlebang::esp::nvs::CommonRuntimeConfigKeys commonNvsKeys() {
+  battlebang::esp::nvs::CommonRuntimeConfigKeys keys;
+  keys.schema = "schema";
+  keys.configVersion = "cfg_ver";
+  keys.configured = "configured";
+  keys.deviceId = "device_id";
+  keys.group = "group";
+  keys.stageId = "stage_id";
+  keys.wifiSsid = "wifi_ssid";
+  keys.wifiPassword = "wifi_pass";
+  keys.networkAutoStart = "net_auto";
+  keys.networkStartDelayMs = "net_delay";
+  keys.mqttHost = "mqtt_host";
+  keys.mqttPort = "mqtt_port";
+  keys.mqttUsername = "mqtt_user";
+  keys.mqttPassword = "mqtt_pass";
+  keys.mqttRoot = "mqtt_root";
+  keys.otaCommandCenterControlled = "ota_cc";
+  keys.otaAutoCheckEnabled = "ota_auto";
+  keys.otaChannel = "ota_channel";
+  keys.otaDesiredBuild = "ota_build";
+  keys.otaPublicManifestUrl = "ota_pub_url";
+  keys.otaLocalMirrorUrl = "ota_mir_url";
+  keys.otaCheckIntervalS = "ota_int_s";
+  keys.otaApplyOnlyInSafeState = "ota_safe";
+  return keys;
+}
+
+battlebang::esp::nvs::CommonRuntimeConfigSavePolicy commonNvsSavePolicy() {
+  battlebang::esp::nvs::CommonRuntimeConfigSavePolicy policy;
+  policy.requireMqttRoot = false;
+  policy.requireOtaChannel = false;
+  policy.requireOtaPublicManifestUrl = false;
+  return policy;
+}
+
+battlebang::esp::config::CommonRuntimeConfig toCommonRuntimeConfig(const RuntimeConfig& config) {
+  battlebang::esp::config::CommonRuntimeConfig common;
+  common.schema = config.schema;
+  common.configVersion = config.configVersion;
+  common.configured = config.configured;
+  common.deviceId = config.deviceId;
+  common.group = config.group;
+  common.stageId = config.stageId;
+  common.wifiSsid = config.wifiSsid;
+  common.wifiPassword = config.wifiPassword;
+  common.networkAutoStart = config.networkAutoStart;
+  common.networkStartDelayMs = config.networkStartDelayMs;
+  common.mqttHost = config.mqttHost;
+  common.mqttPort = config.mqttPort;
+  common.mqttUsername = config.mqttUsername;
+  common.mqttPassword = config.mqttPassword;
+  common.mqttRoot = config.mqttRoot;
+  common.otaCommandCenterControlled = config.otaCommandCenterControlled;
+  common.otaAutoCheckEnabled = config.otaAutoCheckEnabled;
+  common.otaChannel = config.otaChannel;
+  common.otaDesiredBuild = config.otaDesiredBuild;
+  common.otaPublicManifestUrl = config.otaPublicManifestUrl;
+  common.otaLocalMirrorUrl = config.otaLocalMirrorUrl;
+  common.otaCheckIntervalS = config.otaCheckIntervalS;
+  common.otaApplyOnlyInSafeState = config.otaApplyOnlyInSafeState;
+  return common;
+}
+
+void applyCommonRuntimeConfig(RuntimeConfig& config,
+                              const battlebang::esp::config::CommonRuntimeConfig& common) {
+  config.schema = common.schema;
+  config.configVersion = common.configVersion;
+  config.configured = common.configured;
+  config.deviceId = common.deviceId;
+  config.group = common.group;
+  config.stageId = common.stageId;
+  config.wifiSsid = common.wifiSsid;
+  config.wifiPassword = common.wifiPassword;
+  config.networkAutoStart = common.networkAutoStart;
+  config.networkStartDelayMs = common.networkStartDelayMs;
+  config.mqttHost = common.mqttHost;
+  config.mqttPort = common.mqttPort;
+  config.mqttUsername = common.mqttUsername;
+  config.mqttPassword = common.mqttPassword;
+  config.mqttRoot = common.mqttRoot;
+  config.otaCommandCenterControlled = common.otaCommandCenterControlled;
+  config.otaAutoCheckEnabled = common.otaAutoCheckEnabled;
+  config.otaChannel = common.otaChannel;
+  config.otaDesiredBuild = common.otaDesiredBuild;
+  config.otaPublicManifestUrl = common.otaPublicManifestUrl;
+  config.otaLocalMirrorUrl = common.otaLocalMirrorUrl;
+  config.otaCheckIntervalS = common.otaCheckIntervalS;
+  config.otaApplyOnlyInSafeState = common.otaApplyOnlyInSafeState;
+}
 const size_t kRuntimeConfigJsonCapacity = 8192;
 const size_t kPatternPresetsJsonMaxLen = 4096;
 const uint8_t kPatternPresetMaxPoints = 6;
@@ -284,8 +377,10 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
   next.schema = doc["schema"] | next.schema;
   next.configVersion = incomingVersion;
   next.configured = doc["configured"] | next.configured;
+  next.deviceId = getStringOr(doc["device_id"], next.deviceId);
   next.turretId = getStringOr(doc["turret_id"], next.turretId);
   next.group = getStringOr(doc["group"], next.group);
+  next.stageId = getStringOr(doc["stage_id"], next.stageId);
   next.floor = doc["floor"] | next.floor;
   next.side = getStringOr(doc["side"], next.side);
 
@@ -499,6 +594,14 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
     error = "configured=true requires turret_id";
     return false;
   }
+  if (!battlebang::esp::mqtt::isSafeTopicSegment(next.deviceId)) {
+    error = "device_id must use only A-Z, a-z, 0-9, '_', '-', or '.'";
+    return false;
+  }
+  if (next.configured && !battlebang::esp::mqtt::isSafeTopicSegment(next.turretId)) {
+    error = "turret_id must use only A-Z, a-z, 0-9, '_', '-', or '.'";
+    return false;
+  }
   if (next.frameId.length() == 0) {
     error = "coordinate_frame.frame_id must not be empty";
     return false;
@@ -582,14 +685,18 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
     error = "fire timing out of safe range";
     return false;
   }
+  next.group.trim();
+  next.stageId.trim();
+  next.side.trim();
+  if (next.stageId.length() > 0 && !battlebang::esp::mqtt::isSafeTopicSegment(next.stageId)) {
+    error = "stage_id must use only A-Z, a-z, 0-9, '_', '-', or '.'";
+    return false;
+  }
   if (next.networkStartDelayMs > 300000) {
     error = "network.start_delay_ms must be <= 300000";
     return false;
   }
-  if (next.mqttRoot.length() == 0) {
-    error = "mqtt.root must not be empty";
-    return false;
-  }
+  if (!battlebang::esp::mqtt::normalizeConfiguredRoot(next.mqttRoot, error)) return false;
   if (next.mqttPort == 0) {
     error = "mqtt.port must be > 0";
     return false;
@@ -609,6 +716,7 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
   doc["device_id"] = config.deviceId;
   doc["turret_id"] = config.turretId;
   doc["group"] = config.group;
+  doc["stage_id"] = config.stageId;
   doc["floor"] = config.floor;
   doc["side"] = config.side;
 
@@ -719,14 +827,15 @@ String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets) {
 }
 
 bool RuntimeConfigStore::load(RuntimeConfig& config) {
-  Preferences prefs;
-  if (!prefs.begin(kNamespace, true)) return false;
+  battlebang::esp::nvs::ScopedPreferences scopedPrefs;
+  if (!scopedPrefs.begin(kNamespace, true)) return false;
+  Preferences& prefs = scopedPrefs.preferences();
 
-  config.schema = prefs.getUShort("schema", config.schema);
-  config.configVersion = prefs.getUInt("cfg_ver", config.configVersion);
-  config.configured = prefs.getBool("configured", config.configured);
+  battlebang::esp::config::CommonRuntimeConfig common = toCommonRuntimeConfig(config);
+  battlebang::esp::nvs::loadCommonRuntimeConfig(prefs, common, commonNvsKeys());
+  applyCommonRuntimeConfig(config, common);
+
   config.turretId = prefs.getString("turret_id", config.turretId);
-  config.group = prefs.getString("group", config.group);
   config.floor = prefs.getInt("floor", config.floor);
   config.side = prefs.getString("side", config.side);
   config.frameId = prefs.getString("frame_id", config.frameId);
@@ -791,38 +900,19 @@ bool RuntimeConfigStore::load(RuntimeConfig& config) {
   config.axisDivergenceGuardMs = prefs.getUShort("axis_guard", config.axisDivergenceGuardMs);
   config.axisDivergenceMarginDeg = prefs.getFloat("axis_margin", config.axisDivergenceMarginDeg);
   config.commandEnvelopeRatio = prefs.getFloat("cmd_env", config.commandEnvelopeRatio);
-  config.wifiSsid = prefs.getString("wifi_ssid", config.wifiSsid);
-  config.wifiPassword = prefs.getString("wifi_pass", config.wifiPassword);
-  config.networkAutoStart = prefs.getBool("net_auto", config.networkAutoStart);
-  config.networkStartDelayMs = prefs.getUInt("net_delay", config.networkStartDelayMs);
-  config.mqttHost = prefs.getString("mqtt_host", config.mqttHost);
-  config.mqttPort = prefs.getUShort("mqtt_port", config.mqttPort);
-  config.mqttUsername = prefs.getString("mqtt_user", config.mqttUsername);
-  config.mqttPassword = prefs.getString("mqtt_pass", config.mqttPassword);
-  config.mqttRoot = prefs.getString("mqtt_root", config.mqttRoot);
   config.patternPresetsJson = prefs.getString("pattern_json", config.patternPresetsJson);
-  config.otaCommandCenterControlled = prefs.getBool("ota_cc", config.otaCommandCenterControlled);
-  config.otaAutoCheckEnabled = prefs.getBool("ota_auto", config.otaAutoCheckEnabled);
-  config.otaChannel = prefs.getString("ota_channel", config.otaChannel);
-  config.otaDesiredBuild = prefs.getUInt("ota_build", config.otaDesiredBuild);
-  config.otaPublicManifestUrl = prefs.getString("ota_pub_url", config.otaPublicManifestUrl);
-  config.otaLocalMirrorUrl = prefs.getString("ota_mir_url", config.otaLocalMirrorUrl);
-  config.otaCheckIntervalS = prefs.getUInt("ota_int_s", config.otaCheckIntervalS);
-  config.otaApplyOnlyInSafeState = prefs.getBool("ota_safe", config.otaApplyOnlyInSafeState);
-  prefs.end();
   return true;
 }
 
 bool RuntimeConfigStore::save(const RuntimeConfig& config) {
-  Preferences prefs;
-  if (!prefs.begin(kNamespace, false)) return false;
+  battlebang::esp::nvs::ScopedPreferences scopedPrefs;
+  if (!scopedPrefs.begin(kNamespace, false)) return false;
+  Preferences& prefs = scopedPrefs.preferences();
 
   bool ok = true;
-  ok &= prefs.putUShort("schema", config.schema) > 0;
-  ok &= prefs.putUInt("cfg_ver", config.configVersion) > 0;
-  ok &= prefs.putBool("configured", config.configured) > 0;
+  ok &= battlebang::esp::nvs::saveCommonRuntimeConfig(
+      prefs, toCommonRuntimeConfig(config), commonNvsKeys(), commonNvsSavePolicy());
   ok &= prefs.putString("turret_id", config.turretId) >= 0;
-  ok &= prefs.putString("group", config.group) >= 0;
   ok &= prefs.putInt("floor", config.floor) > 0;
   ok &= prefs.putString("side", config.side) >= 0;
   ok &= prefs.putString("frame_id", config.frameId) >= 0;
@@ -881,35 +971,14 @@ bool RuntimeConfigStore::save(const RuntimeConfig& config) {
   ok &= prefs.putUShort("axis_guard", config.axisDivergenceGuardMs) > 0;
   ok &= prefs.putFloat("axis_margin", config.axisDivergenceMarginDeg) > 0;
   ok &= prefs.putFloat("cmd_env", config.commandEnvelopeRatio) > 0;
-  ok &= prefs.putString("wifi_ssid", config.wifiSsid) >= 0;
-  ok &= prefs.putString("wifi_pass", config.wifiPassword) >= 0;
-  ok &= prefs.putBool("net_auto", config.networkAutoStart) > 0;
-  ok &= prefs.putUInt("net_delay", config.networkStartDelayMs) > 0;
-  ok &= prefs.putString("mqtt_host", config.mqttHost) >= 0;
-  ok &= prefs.putUShort("mqtt_port", config.mqttPort) > 0;
-  ok &= prefs.putString("mqtt_user", config.mqttUsername) >= 0;
-  ok &= prefs.putString("mqtt_pass", config.mqttPassword) >= 0;
-  ok &= prefs.putString("mqtt_root", config.mqttRoot) >= 0;
   ok &= prefs.putString("pattern_json", config.patternPresetsJson) >= 0;
-  ok &= prefs.putBool("ota_cc", config.otaCommandCenterControlled) > 0;
-  ok &= prefs.putBool("ota_auto", config.otaAutoCheckEnabled) > 0;
-  ok &= prefs.putString("ota_channel", config.otaChannel) >= 0;
-  ok &= prefs.putUInt("ota_build", config.otaDesiredBuild) > 0;
-  ok &= prefs.putString("ota_pub_url", config.otaPublicManifestUrl) >= 0;
-  ok &= prefs.putString("ota_mir_url", config.otaLocalMirrorUrl) >= 0;
-  ok &= prefs.putUInt("ota_int_s", config.otaCheckIntervalS) > 0;
-  ok &= prefs.putBool("ota_safe", config.otaApplyOnlyInSafeState) > 0;
-  prefs.end();
   return ok;
 }
 
 bool RuntimeConfigStore::clear() {
-  Preferences prefs;
-  if (!prefs.begin(kNamespace, false)) return false;
-  const bool ok = prefs.clear();
-  prefs.end();
-  return ok;
+  return battlebang::esp::nvs::clearNamespace(kNamespace);
 }
+
 
 }  // namespace turret_fleet
 }  // namespace battlebang

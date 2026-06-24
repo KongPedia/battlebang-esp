@@ -9,6 +9,8 @@
 #include "boss_target/ota/ota_manifest.h"
 #include "boss_target/ota/reboot_marker.h"
 
+#include <cstdlib>
+
 namespace battlebang {
 namespace boss_target {
 namespace {
@@ -17,6 +19,15 @@ constexpr unsigned long kMqttRetryMs = 5000;
 constexpr unsigned long kStatusIntervalMs = 5000;
 constexpr unsigned long kStatusChangeCheckMs = 200;
 constexpr size_t kStatusDocCapacity = 6144;
+
+uint32_t parseRgbOrDefault(const char* value, uint32_t fallback) {
+  if (value == nullptr || value[0] == '\0') return fallback;
+  if (value[0] == '#') ++value;
+  char* end = nullptr;
+  const unsigned long parsed = strtoul(value, &end, 16);
+  if (end == value || parsed > 0xFFFFFFUL) return fallback;
+  return static_cast<uint32_t>(parsed);
+}
 }  // namespace
 
 void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManager& wifi, BossTargetController& target) {
@@ -187,7 +198,8 @@ void MqttBus::handleConfigPayload(const char* payload) {
   const bool wifiChanged = next.wifiSsid != config_->wifiSsid || next.wifiPassword != config_->wifiPassword;
   const bool mqttChanged = next.mqttHost != config_->mqttHost || next.mqttPort != config_->mqttPort ||
                            next.mqttUsername != config_->mqttUsername || next.mqttPassword != config_->mqttPassword ||
-                           next.mqttRoot != config_->mqttRoot || next.bossId != config_->bossId;
+                           next.mqttRoot != config_->mqttRoot || next.deviceId != config_->deviceId ||
+                           next.bossId != config_->bossId;
   const bool resetState = gameplayConfigChanged(previous, next) || sensorPinsChanged(previous, next);
   *config_ = next;
   const bool saved = store_->save(*config_);
@@ -224,6 +236,19 @@ void MqttBus::handleCommandPayload(const char* topic, const char* payload) {
     const bool resetHp = doc["reset_hp"] | true;
     target_->start("mqtt", resetHp);
     publishStatus("command_start");
+    return;
+  }
+  if (strcmp(command, "led_test") == 0 || strcmp(command, "hp_bar_test") == 0) {
+    const char* color = doc["color"] | doc["rgb"] | "#FFFFFF";
+    const uint32_t durationMs = doc["duration_ms"] | 30000;
+    const bool hpOnly = doc["hp_only"] | true;
+    target_->ledTest("mqtt", parseRgbOrDefault(color, 0xFFFFFFUL), durationMs, hpOnly);
+    publishStatus("command_led_test");
+    return;
+  }
+  if (strcmp(command, "led_test_off") == 0 || strcmp(command, "hp_bar_test_off") == 0) {
+    target_->stopLedTest("mqtt");
+    publishStatus("command_led_test_off");
     return;
   }
   if (strcmp(command, "simulate_hit") == 0) {
@@ -267,7 +292,7 @@ void MqttBus::handleOtaPayload(const char* payload) {
   }
   publishStatus("ota_downloading");
   if (target_ != nullptr) target_->prepareForOta();
-  OtaResult result = runHttpOta(manifest);
+  OtaResult result = battlebang::boss_target::runHttpOta(manifest);
   publishStatus(result.ok ? "ota_rebooting" : "ota_failed");
   if (result.ok) {
     writeOtaRebootMarker(true);

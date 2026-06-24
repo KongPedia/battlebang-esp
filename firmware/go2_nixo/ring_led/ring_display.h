@@ -9,9 +9,10 @@ namespace go2 {
 
 class RingDisplay {
  public:
-  void begin();
+  void begin(uint16_t brightness = RING_LED_BRIGHTNESS);
   void tick(uint32_t now);
   void markDirty();
+  void setBrightness(uint16_t brightness);
   void startFire(uint32_t fireDurationMs, uint32_t cooldownMs, uint32_t now);
   void startCooldown(uint32_t durationMs, uint32_t now);
   void clearCooldown();
@@ -27,6 +28,7 @@ class RingDisplay {
   bool externalState_ = false;
   bool firing_ = false;
   bool inhibited_ = false;
+  uint16_t brightness_ = RING_LED_BRIGHTNESS;
   uint32_t firingStartedMs_ = 0;
   uint32_t fireDurationMs_ = NIXO_FIRE_DEFAULT_DURATION_MS;
   uint32_t pendingCooldownDurationMs_ = NIXO_FIRE_COOLDOWN_MS;

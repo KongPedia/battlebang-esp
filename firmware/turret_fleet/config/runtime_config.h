@@ -13,6 +13,7 @@ struct RuntimeConfig {
   String deviceId;
   String turretId;
   String group;
+  String stageId;
   int floor = 0;
   String side;
 

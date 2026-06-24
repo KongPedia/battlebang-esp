@@ -133,6 +133,10 @@ void MqttBus::publishStatus(const char* reason) {
   doc["reason"] = reason;
   doc["device_id"] = config_->deviceId;
   doc["turret_id"] = config_->turretId;
+  doc["group"] = config_->group;
+  doc["stage_id"] = config_->stageId;
+  doc["floor"] = config_->floor;
+  doc["side"] = config_->side;
   doc["configured"] = config_->configured;
   doc["firmware_app"] = BB_TURRET_FLEET_APP_NAME;
   doc["firmware_version"] = BB_TURRET_FLEET_VERSION;
@@ -209,6 +213,7 @@ void MqttBus::handleConfigPayload(const char* payload) {
                            next.mqttUsername != config_->mqttUsername ||
                            next.mqttPassword != config_->mqttPassword ||
                            next.mqttRoot != config_->mqttRoot ||
+                           next.deviceId != config_->deviceId ||
                            next.turretId != config_->turretId;
 
   *config_ = next;
@@ -258,7 +263,7 @@ void MqttBus::handleOtaPayload(const char* payload) {
   Serial.print("[fleet][ota] accepted ");
   Serial.println(otaManifestSummary(manifest));
   publishStatus("ota_downloading");
-  OtaResult result = runHttpOta(manifest);
+  OtaResult result = battlebang::turret_fleet::runHttpOta(manifest);
   Serial.print("[fleet][ota] result ok=");
   Serial.print(result.ok ? "yes" : "no");
   Serial.print(" message=");

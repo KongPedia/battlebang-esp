@@ -1,13 +1,11 @@
 #pragma once
 
-// Copy to src/go2/local_secrets.h and fill local lab values before flashing
-// the Go2 hit ESP firmware. Do not commit src/go2/local_secrets.h.
+// Optional bench fallback only. Prefer firmware/go2/.env.go2 +
+// scripts/go2/provision.py so identity, Wi-Fi, MQTT, OTA, and hit tuning are
+// written to ESP32 NVS and can change without rebuilding.
 //
-// Robot identity is normally selected by PlatformIO env/custom_robot_id
-// (for example: esp32dev_go2_go2_05) or GO2_ID. Keep it out of this file unless
-// you intentionally need a manual robot id override for generic esp32dev builds.
+// Do not commit firmware/go2/local_secrets.h.
 
-// #define ESP_ROBOT_ID "go2_05"
 #define ESP_WIFI_SSID "YOUR_WIFI_SSID"
 #define ESP_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 #define ESP_MQTT_HOST "COMMAND_CENTER_OR_BROKER_HOST"

@@ -13,6 +13,8 @@
 #include "boss_target/ota/reboot_marker.h"
 #include "boss_target/target/boss_target_controller.h"
 
+#include <cstdlib>
+
 using battlebang::boss_target::DeviceIdentity;
 using battlebang::boss_target::BossTargetController;
 using battlebang::boss_target::BossTargetEvent;
@@ -53,6 +55,15 @@ uint32_t lastAutoOtaCheckMs = 0;
 String serialLine;
 
 constexpr uint32_t SERIAL_STATUS_PERIOD_MS = 10000;
+
+uint32_t parseRgbOrDefault(const char* value, uint32_t fallback) {
+  if (value == nullptr || value[0] == '\0') return fallback;
+  if (value[0] == '#') ++value;
+  char* end = nullptr;
+  const unsigned long parsed = strtoul(value, &end, 16);
+  if (end == value || parsed > 0xFFFFFFUL) return fallback;
+  return static_cast<uint32_t>(parsed);
+}
 
 void publishMqttStatusIfConnected(const char* reason) {
   if (mqttStarted && mqtt.connected()) mqtt.publishStatus(reason);
@@ -204,7 +215,7 @@ void checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterA
   Serial.println(otaManifestSummary(manifest));
   publishMqttStatusIfConnected("ota_downloading");
   target.prepareForOta();
-  OtaResult result = runHttpOta(manifest);
+  OtaResult result = battlebang::boss_target::runHttpOta(manifest);
   Serial.print("[boss_target][ota] result ok=");
   Serial.print(result.ok ? "yes" : "no");
   Serial.print(" message=");
@@ -236,7 +247,8 @@ void applyAndPersistConfig(const char* json, const char* source) {
   const bool wifiChanged = next.wifiSsid != config.wifiSsid || next.wifiPassword != config.wifiPassword;
   const bool mqttChanged = next.mqttHost != config.mqttHost || next.mqttPort != config.mqttPort ||
                            next.mqttUsername != config.mqttUsername || next.mqttPassword != config.mqttPassword ||
-                           next.mqttRoot != config.mqttRoot || next.bossId != config.bossId;
+                           next.mqttRoot != config.mqttRoot || next.deviceId != config.deviceId ||
+                           next.bossId != config.bossId;
   const bool resetState = gameplayConfigChanged(previous, next) || sensorPinsChanged(previous, next);
   const bool hardwareChanged = ledHardwareChanged(previous, next);
   config = next;
@@ -261,7 +273,8 @@ void applyAndPersistConfig(const char* json, const char* source) {
 }
 
 void printHelp() {
-  Serial.println("[CMD] start, r/reset=READY LEDs-off reset, s/status/show-status=JSON status, h=debug simulate hit when enabled");
+  Serial.println("[CMD] start, r/reset=READY HP-bar idle reset, s/status/show-status=JSON status, h=debug simulate hit when enabled");
+  Serial.println("[CMD] led-test [#RRGGBB] [duration_ms], led-test-off");
   Serial.println("[CMD] show-config, config {json}, provision {json}, clear-config");
   Serial.println("[CMD] start-network, stop-network, check-ota [url], help");
   Serial.println("[MQTT] {root}/devices/{device_id}/status|config|ota");
@@ -311,6 +324,31 @@ void handleCommandLine(String line) {
   }
   if (lower == "s" || lower == "status" || lower == "show-status" || lower == "debug") {
     printStatusJson("serial_debug", "status", 0, "serial");
+    return;
+  }
+  if (lower == "led-test" || lower == "hp-bar-test" || lower.startsWith("led-test ") ||
+      lower.startsWith("hp-bar-test ")) {
+    const int firstSpace = line.indexOf(' ');
+    String args = firstSpace >= 0 ? line.substring(firstSpace + 1) : String("");
+    args.trim();
+    uint32_t rgb = 0xFFFFFFUL;
+    uint32_t durationMs = 30000;
+    if (args.length() > 0) {
+      const int secondSpace = args.indexOf(' ');
+      String color = secondSpace >= 0 ? args.substring(0, secondSpace) : args;
+      color.trim();
+      rgb = parseRgbOrDefault(color.c_str(), rgb);
+      if (secondSpace >= 0) {
+        String duration = args.substring(secondSpace + 1);
+        duration.trim();
+        if (duration.length() > 0) durationMs = static_cast<uint32_t>(duration.toInt());
+      }
+    }
+    target.ledTest("serial", rgb, durationMs, true);
+    return;
+  }
+  if (lower == "led-test-off" || lower == "hp-bar-test-off") {
+    target.stopLedTest("serial");
     return;
   }
   if (lower == "show-config") {

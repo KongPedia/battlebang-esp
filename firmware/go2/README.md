@@ -24,7 +24,7 @@ display/   bar_display=HP bar renderer
 mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 ```
 
-기본 핀맵 (`robots.json` defaults 기준):
+기본 핀맵 (`hardware_profile.json` defaults 기준):
 
 | Part | Pin | Role |
 | --- | --- | --- |
@@ -33,10 +33,10 @@ mqtt/      hit_candidate/heartbeat/ring_display MQTT 통신
 | Piezo DO debug readback | `GPIO27` | debug only |
 
 - ESP → Command Center
-  - `battlebang/hit/{go2_id}/events`
+  - `battlebang/hit/{robot_id}/events`
   - `hit_candidate`, `heartbeat`
 - Command Center → ESP
-  - `battlebang/hit/{go2_id}/ring_display/command`
+  - `battlebang/hit/{robot_id}/ring_display/command`
   - legacy `ring_display` payload를 HP bar display로 렌더링
 
 예를 들어 `go2_03`용으로 업로드하면 topic은 자동으로 아래처럼 잡힙니다.
@@ -64,40 +64,57 @@ cd battlebang-esp
 
 ---
 
-## 2. Local secrets 만들기
+## 2. Runtime `.env.go2` 만들기
 
-Wi-Fi / MQTT broker 주소는 git에 올리면 안 되므로 `local_secrets.h`에 따로 둡니다.
+Wi-Fi / MQTT broker 주소와 runtime device identity는 git에 올리면 안 되므로
+ignored 파일인 `firmware/go2/.env.go2`에 두고, serial provisioning으로 ESP32
+NVS에 저장합니다. `local_secrets.h`는 표준 경로에서 필요하지 않습니다.
 
 ```bash
-cp src/go2/local_secrets.example.h src/go2/local_secrets.h
+cp firmware/go2/.env.go2.example firmware/go2/.env.go2
 ```
 
-그 다음 `src/go2/local_secrets.h`를 열어서 수정합니다.
+그 다음 `firmware/go2/.env.go2`를 열어서 수정합니다.
 
-```cpp
-#define ESP_WIFI_SSID "YOUR_WIFI_SSID"
-#define ESP_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
-#define ESP_MQTT_HOST "COMMAND_CENTER_OR_BROKER_HOST"
-#define ESP_MQTT_PORT 1883
-#define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
-```
-
-예:
-
-```cpp
-#define ESP_WIFI_SSID "abcdefg"
-#define ESP_WIFI_PASSWORD "********"
-#define ESP_MQTT_HOST "COMMAND_CENTER_IP_OR_DNS"
-#define ESP_MQTT_PORT 1883
-#define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
+```dotenv
+GO2_ROBOT_ID=go2_dev_01
+GO2_STAGE_ID=dev_stage_01
+GO2_WIFI_SSID=YOUR_WIFI_SSID
+GO2_WIFI_PASSWORD=YOUR_WIFI_PASSWORD
+GO2_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS
+GO2_MQTT_PORT=1883
+GO2_MQTT_TOPIC_PREFIX=battlebang/hit
 ```
 
 주의:
 
-- `src/go2/local_secrets.h`는 `.gitignore` 대상입니다.
+- `firmware/go2/.env.go2`는 `.gitignore` 대상입니다.
 - 실제 Wi-Fi password는 커밋하지 않습니다.
-- 보통 `local_secrets.h`에는 `go2_03` 같은 robot id를 넣지 않습니다.
-- robot id는 업로드 명령의 `--target go2_03=...`로 정합니다.
+- robot id는 빌드 env가 아니라 NVS runtime config(`GO2_ROBOT_ID` / `robot_id`)로 정합니다.
+- `local_secrets.h`는 기본 빌드에서 읽지 않습니다. 정말 필요한 factory/legacy fallback만
+  `BATTLEBANG_ENABLE_LOCAL_SECRETS` 또는 `scripts/go2_flash.py flash --use-local-secrets`
+  로 명시적으로 켭니다.
+
+### NVS runtime provisioning
+
+표준화 경로에서는 Wi-Fi/MQTT/identity와 센서/표시 튜닝값을 펌웨어에 다시 빌드하지 않고 ESP32 NVS에 저장합니다. `hardware_profile.json` 값은 물리 배선/기본 튜닝 fallback으로만 사용하고, Wi-Fi/MQTT 값은 `.env.go2`에서 provision합니다.
+
+```bash
+# 전송 전 JSON 확인. password는 기본 출력에서 마스킹됩니다.
+.venv-pio/bin/python scripts/go2/provision.py --no-serial --print-json
+
+# ESP에 NVS provision payload 전송
+.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-XXXX
+
+# 저장된 config/status 확인 또는 초기화
+.venv-pio/bin/python scripts/go2/provision.py --command show-config --serial-port /dev/cu.usbserial-XXXX
+.venv-pio/bin/python scripts/go2/provision.py --command show-status --serial-port /dev/cu.usbserial-XXXX
+.venv-pio/bin/python scripts/go2/provision.py --command clear-config --serial-port /dev/cu.usbserial-XXXX
+```
+
+`provision`/`config` payload는 공통 `wifi`, `mqtt`, `ota` 필드와 Go2 domain 필드(`robot_id`, `hit_topic_prefix`, hit cooldown, offline queue, LED brightness, piezo threshold/rearm/capture/debug/rearm-stable)를 포함합니다.
+
+Go2 펌웨어는 이제 공통 `bb_esp_ota` HTTP OTA 엔진을 사용합니다. `show-status`와 MQTT device status에는 `ota_supported=true`, `ota_manifest_url`, `ota_channel`, `ota_desired_build`, `post_ota_reboot`가 포함됩니다. Serial/BT `check-ota [manifest-url]`, MQTT `{mqtt_root}/devices/{device_id}/ota`, 그리고 `ota.auto_check_enabled=true`일 때 자동 polling 경로가 모두 같은 manifest 검증/sha256/rollback-marker 흐름을 사용합니다.
 
 ---
 
@@ -129,7 +146,7 @@ COM3
 | `esp_06` | `go2_06` |
 | `esp_07` | `go2_07` |
 
-이 경우 `esp_03`에 올릴 펌웨어는 `go2_03`용으로 빌드해야 합니다.
+이 경우에도 `esp_03`에는 generic `esp32dev_go2` 이미지를 빌드/업로드하고, `GO2_ROBOT_ID=go2_03`으로 NVS provision합니다.
 
 ---
 
@@ -138,22 +155,23 @@ COM3
 `esp_03`이 `/dev/cu.usbserial-21130`으로 잡혔고, 이 ESP가 `go2_03`에 붙는다면:
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_03=/dev/cu.usbserial-21130
+./.venv-pio/bin/pio run -e esp32dev_go2 -t upload --upload-port /dev/cu.usbserial-21130
+GO2_ROBOT_ID=go2_03 ./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-21130
 ```
 
-업로드 없이 빌드만 확인하려면:
+업로드 없이 generic build만 확인하려면:
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_03 --build-only
+./.venv-pio/bin/pio run -e esp32dev_go2
 ```
 
-다른 Go2에 올릴 때는 target만 바꾸면 됩니다.
+다른 Go2에 올릴 때도 같은 generic image를 사용하고 provision payload의 `GO2_ROBOT_ID`/`GO2_STAGE_ID`만 바꿉니다. `--target go2_03=...`는 build env가 아니라 편의상 출력되는 runtime label입니다.
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_03=/dev/cu.usbserial-21130
-python3 scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-21130
-python3 scripts/go2_flash.py flash --target go2_06=/dev/cu.usbserial-21130
-python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
+./.venv-pio/bin/pio run -e esp32dev_go2 -t upload --upload-port /dev/cu.usbserial-21130
+GO2_ROBOT_ID=go2_03 ./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-21130
+# For another robot, reuse the same image and change GO2_ROBOT_ID/GO2_STAGE_ID
+# in firmware/go2/.env.go2 before re-running scripts/go2/provision.py.
 ```
 
 ---
@@ -202,9 +220,9 @@ python3 scripts/go2_flash.py flash --target go2_07=/dev/cu.usbserial-21130
 
 ## 7. 설정 파일 구조
 
-### `src/go2/robots.json`
+### `firmware/go2/hardware_profile.json`
 
-Go2별 non-secret profile입니다.
+커밋 가능한 non-secret hardware fallback profile입니다. Robot별 ID나 stage는 여기에 두지 않습니다.
 
 ```json
 {
@@ -223,28 +241,16 @@ Go2별 non-secret profile입니다.
     "piezo_ao_debug_period_ms": 100,
     "mqtt_topic_prefix": "battlebang/hit"
   },
-  "robots": {
-    "go2_03": { "configured": true },
-    "go2_05": { "configured": true },
-    "go2_06": { "configured": true },
-    "go2_07": { "configured": true }
-  }
+  "notes": "identity/stage/tuning overrides are provisioned into ESP32 NVS"
 }
 ```
 
-### `src/go2/local_secrets.h`
+### `firmware/go2/.env.go2` and legacy `local_secrets.h`
 
-Wi-Fi / MQTT broker secret입니다.
-
-```cpp
-#define ESP_WIFI_SSID "..."
-#define ESP_WIFI_PASSWORD "..."
-#define ESP_MQTT_HOST "..."
-#define ESP_MQTT_PORT 1883
-#define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
-```
-
-이 파일은 커밋하지 않습니다.
+`.env.go2`가 표준 serial provisioning 입력이며 gitignore 대상입니다. Active
+firmware는 기본적으로 `local_secrets.h`를 읽지 않습니다. 오래된 bench/factory
+workflow에서 build-time fallback이 꼭 필요할 때만 `BATTLEBANG_ENABLE_LOCAL_SECRETS`
+또는 `scripts/go2_flash.py flash --use-local-secrets`를 명시적으로 사용합니다.
 
 ---
 

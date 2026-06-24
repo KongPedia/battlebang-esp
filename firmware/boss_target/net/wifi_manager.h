@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <bb_esp_net/wifi_manager.h>
 
 #include "boss_target/config/runtime_config.h"
 
@@ -9,6 +10,8 @@ namespace boss_target {
 
 class WifiManager {
  public:
+  WifiManager();
+
   void begin(const RuntimeConfig& config);
   void stop();
   void loop(const RuntimeConfig& config);
@@ -17,8 +20,9 @@ class WifiManager {
   int32_t rssi() const;
 
  private:
-  unsigned long lastAttemptMs_ = 0;
-  bool warnedMissingConfig_ = false;
+  battlebang::esp::net::WifiManager wifi_;
+
+  static battlebang::esp::net::WifiCredentials credentials(const RuntimeConfig& config);
 };
 
 }  // namespace boss_target

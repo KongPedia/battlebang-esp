@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 
-#include "heavy-blaster/app/identity.h"
-#include "heavy-blaster/build_config.h"
+#include "heavy_blaster/app/identity.h"
+#include "heavy_blaster/build_config.h"
 
 namespace battlebang {
 namespace heavy_blaster {
@@ -46,6 +46,7 @@ struct RuntimeConfig {
   String displayName;
   String deviceMac;
   String group;
+  String stageId;
   String location;
   bool debugAllowLocalControl = false;
 

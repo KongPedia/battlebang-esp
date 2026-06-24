@@ -1,6 +1,6 @@
 # Turret Fleet Operator Usage
 
-This document is the practical operator contract for BTB-721 `src/turret_fleet`:
+This document is the practical operator contract for BTB-721 `firmware/turret_fleet`:
 first USB provisioning, MQTT commands/config, and OTA rollout.
 
 ## What was verified on `turret_2`
@@ -36,7 +36,7 @@ ESP32 devices have no Wi-Fi/MQTT config on first flash, so the first install is
 USB serial. Keep secrets in the module-local dotenv file:
 
 ```bash
-cp src/turret_fleet/.env.turret_fleet.example src/turret_fleet/.env.turret_fleet
+cp firmware/turret_fleet/.env.turret_fleet.example firmware/turret_fleet/.env.turret_fleet
 # edit Wi-Fi/MQTT values; do not commit this file
 ```
 
@@ -52,12 +52,12 @@ Upload one generic firmware image and inject per-turret runtime config into NVS:
 pattern preset file:
 
 ```text
-src/turret_fleet/profiles/turret_2.json
-src/turret_fleet/pattern_presets/turret_2.json
+firmware/turret_fleet/profiles/turret_2.json
+firmware/turret_fleet/pattern_presets/turret_2.json
 ```
 
 Wi-Fi and MQTT broker credentials still come from
-`src/turret_fleet/.env.turret_fleet`, so those secrets are not committed.
+`firmware/turret_fleet/.env.turret_fleet`, so those secrets are not committed.
 For the current four-turret boss layout, flash/provision each board with the
 same firmware and its own id:
 
@@ -122,7 +122,7 @@ battlebang/turrets/all/ota
 ```
 
 `./bin/turret fleet-mqtt ...` publishes to these topics. It reads
-`src/turret_fleet/.env.turret_fleet`; use `--host "$MQTT_BROKER_HOST"` if needed.
+`firmware/turret_fleet/.env.turret_fleet`; use `--host "$MQTT_BROKER_HOST"` if needed.
 The `--host` value is the MQTT broker/Command Center broker address, not the
 ESP's own Wi-Fi IP. Keep real lab IPs in your local gitignored env file or
 shell, not in committed docs:
@@ -178,7 +178,7 @@ Pattern commands are still per-turret MQTT payloads:
 ```bash
 mosquitto_pub -h "$MQTT_BROKER_HOST" \
   -t battlebang/turrets/boss_1f_left/command \
-  -m @src/turret_fleet/examples/pattern.two_point_bounce.json
+  -m @firmware/turret_fleet/examples/pattern.two_point_bounce.json
 ```
 
 For `turret_2`, keep the concrete coordinates in runtime config so Command
@@ -188,8 +188,8 @@ solver pitches downward:
 
 ```bash
 ./bin/turret fleet-mqtt turret_2 config \
-  --profile-file src/turret_fleet/profiles/turret_2.json \
-  --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+  --profile-file firmware/turret_fleet/profiles/turret_2.json \
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_2.json
 
 ./bin/turret fleet-mqtt turret_2 pattern lane_sweep --frame-id boss_stage_v1
 ./bin/turret fleet-mqtt turret_2 pattern two_point_bounce --frame-id boss_stage_v1
@@ -202,14 +202,14 @@ Use the matching file names for the other boards:
 
 ```bash
 ./bin/turret fleet-mqtt turret_1 config \
-  --profile-file src/turret_fleet/profiles/turret_1.json \
-  --patterns-file src/turret_fleet/pattern_presets/turret_1.json
+  --profile-file firmware/turret_fleet/profiles/turret_1.json \
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_1.json
 ./bin/turret fleet-mqtt turret_3 config \
-  --profile-file src/turret_fleet/profiles/turret_3.json \
-  --patterns-file src/turret_fleet/pattern_presets/turret_3.json
+  --profile-file firmware/turret_fleet/profiles/turret_3.json \
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_3.json
 ./bin/turret fleet-mqtt turret_4 config \
-  --profile-file src/turret_fleet/profiles/turret_4.json \
-  --patterns-file src/turret_fleet/pattern_presets/turret_4.json
+  --profile-file firmware/turret_fleet/profiles/turret_4.json \
+  --patterns-file firmware/turret_fleet/pattern_presets/turret_4.json
 ```
 
 The same command may still override configured points/timings for one-off

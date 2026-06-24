@@ -1,67 +1,59 @@
-# Go2 ESP 빌드 / 업로드 흐름
+# Go2 ESP build / upload / provision flow
 
-Go2 피격 ESP는 터렛과 동일하게 **장치별 non-secret profile + 로컬 secret + flash script** 구조로 빌드합니다.
+Go2 hit/LED firmware is now a **generic image + NVS runtime config** flow. Do not create per-robot PlatformIO envs. `go2_01`, `go2_02`, `go2_03` etc. are runtime `robot_id` values provisioned into ESP32 NVS.
 
-## 1. 로컬 secrets
+## 1. Hardware profile vs runtime config
 
-Go2 secrets는 터렛 secrets와 분리합니다.
+Commit-time hardware fallback lives in `firmware/go2/hardware_profile.json`:
 
-```bash
-cp src/go2/local_secrets.example.h src/go2/local_secrets.h
-```
+- HP bar LED pin/count/capacity
+- piezo AO/D0 pins
+- factory fallback piezo threshold/rearm/capture/debug defaults
+- MQTT topic prefix fallback
 
-`src/go2/local_secrets.h`에는 Wi-Fi / MQTT broker 정보를 넣고 커밋하지 않습니다.
+Runtime values are provisioned from `firmware/go2/.env.go2` via `scripts/go2/provision.py`:
 
-```cpp
-#define ESP_WIFI_SSID "..."
-#define ESP_WIFI_PASSWORD "..."
-#define ESP_MQTT_HOST "..."
-#define ESP_MQTT_PORT 1883
-#define ESP_MQTT_TOPIC_PREFIX "battlebang/hit"
-```
+- `GO2_ROBOT_ID`, `GO2_STAGE_ID`, `GO2_GROUP`, `GO2_LOCATION`
+- Wi-Fi/MQTT/OTA policy
+- `GO2_HIT_TOPIC_PREFIX`
+- hit tuning: cooldown, offline queue, LED brightness, piezo threshold/rearm/capture/debug/rearm-stable
 
-## 2. Robot profile
-
-커밋 가능한 non-secret 설정은 `src/go2/robots.json`에 둡니다.
-
-- `hit_cooldown_ms`
-- offline hit queue capacity / flush interval
-- HP bar LED pin/count/brightness (default GPIO18 / 84 / 120)
-- piezo AO ADC pin / threshold / rearm raw / capture window
-- piezo D0 pin은 hit 판정에 쓰지 않고 debug readback 용도
-- MQTT topic prefix
-
-ESP에는 스코어/down 기준을 넣지 않습니다. 해당 정책은 Command Center config가 소유합니다.
-
-## 3. 빌드만 검증
+## 2. Build generic image
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_05 --build-only
+./.venv-pio/bin/pio run -e esp32dev_go2
 ```
 
-## 4. USB 업로드
-
-먼저 포트를 확인합니다.
+## 3. Upload generic image
 
 ```bash
-python3 scripts/go2_flash.py list-ports
+./.venv-pio/bin/pio run -e esp32dev_go2 -t upload --upload-port /dev/cu.usbserial-xxxx
 ```
 
-업로드 예:
+## 4. Provision runtime config into NVS
 
 ```bash
-python3 scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-xxxx
+cp firmware/go2/.env.go2.example firmware/go2/.env.go2
+# Edit GO2_ROBOT_ID=go2_03, GO2_STAGE_ID=stage_1, Wi-Fi/MQTT/OTA/tuning.
+./.venv-pio/bin/python scripts/go2/provision.py --no-serial --print-json
+./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-xxxx
 ```
 
-## 5. PlatformIO 직접 사용
+## 5. Inspect/change config without reflashing
 
 ```bash
-pio run -e esp32dev_go2_go2_05
-pio run -e esp32dev_go2_go2_05 -t upload --upload-port /dev/cu.usbserial-xxxx
+./.venv-pio/bin/python scripts/go2/provision.py --command show-config --serial-port /dev/cu.usbserial-xxxx
+./.venv-pio/bin/python scripts/go2/provision.py --command show-status --serial-port /dev/cu.usbserial-xxxx
+./.venv-pio/bin/python scripts/go2/provision.py --command config --serial-port /dev/cu.usbserial-xxxx
+./.venv-pio/bin/python scripts/go2/provision.py --command clear-config --serial-port /dev/cu.usbserial-xxxx
 ```
 
-## 구조 메모
+## Structure notes
 
-- Go2 Arduino 진입점과 runtime 오케스트레이션은 `src/go2/main.cpp`입니다.
-- Go2 빌드 설정은 `src/go2/build_config.h`입니다.
-- 터렛 진입점 `src/turret/main.cpp`, 터렛 설정 `src/turret/build_config.h`와 같은 배치입니다.
+- Arduino entrypoint/runtime orchestration: `firmware/go2/main.cpp`
+- Build fallback constants: `firmware/go2/build_config.h`
+- NVS bridge: `firmware/go2/config/runtime_config.*`
+- MQTT/device-management bridge: `firmware/go2/mqtt/`
+- Host provisioning helper: `scripts/go2/provision.py`
+
+Scoring/down policy remains in Command Center. The ESP only publishes piezo AO `hit_candidate` events and renders Command Center display commands.

@@ -1,6 +1,6 @@
 # BattleBang Heavy Blaster ESP firmware
 
-`src/heavy-blaster/` is the standalone Heavy Blaster station firmware. The
+`firmware/heavy_blaster/` is the standalone Heavy Blaster station firmware. The
 folder name, MQTT collection, and OTA channel intentionally use hyphens
 (`heavy-blaster` / `heavy-blasters`). C++ namespaces, PlatformIO env names, and
 shell variables use underscore-safe identifiers (`heavy_blaster`,
@@ -65,7 +65,7 @@ ignored to avoid replaying retained or retried commands.
 
 Status includes:
 
-- `blaster_id`, `device_id`, `device_mac`, `display_name`
+- `blaster_id`, `device_id`, `device_mac`, `display_name`, `group`, `stage_id`, `location`
 - `mode`: `UNCONFIGURED`, `LOCKED`, `PARTIAL`, `UNLOCK_PRE_EFFECT`, `UNLOCKED`,
   or `OTA_PREPARED`
 - `slot_count`, `required_slots`, `slots_active`, `active_slot_count`
@@ -77,15 +77,15 @@ Status includes:
 Copy the example and fill local values without committing secrets:
 
 ```bash
-cp src/heavy-blaster/.env.heavy-blaster.example src/heavy-blaster/.env.heavy-blaster
-./.venv-pio/bin/python scripts/heavy-blaster/provision.py --print-json --no-serial
-./.venv-pio/bin/python scripts/heavy-blaster/provision.py --serial-port /dev/cu.usbserial-120
+cp firmware/heavy_blaster/.env.heavy-blaster.example firmware/heavy_blaster/.env.heavy-blaster
+./.venv-pio/bin/python scripts/heavy_blaster/provision.py --print-json --no-serial
+./.venv-pio/bin/python scripts/heavy_blaster/provision.py --serial-port /dev/cu.usbserial-120
 ```
 
 Publish a bench command without external MQTT dependencies:
 
 ```bash
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   set-slot --host 10.2.80.52 --blaster-id heavy-blaster-ABCDEF123456 \
   --slot-index 0 --active true
 ```
@@ -108,33 +108,33 @@ battlebang/heavy-blasters/heavy-blaster-489D31C0575C/command
 Quick status check:
 
 ```bash
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   status --host "$HOST" --blaster-id "$BLASTER_ID"
 ```
 
 Reset/lock the unit and force the relay OFF:
 
 ```bash
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   reset --host "$HOST" --blaster-id "$BLASTER_ID"
 ```
 
 Activate slots one at a time. Slot indexes are zero-based (`0..3`):
 
 ```bash
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   set-slot --host "$HOST" --blaster-id "$BLASTER_ID" \
   --slot-index 0 --active true
 
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   set-slot --host "$HOST" --blaster-id "$BLASTER_ID" \
   --slot-index 1 --active true
 
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   set-slot --host "$HOST" --blaster-id "$BLASTER_ID" \
   --slot-index 2 --active true
 
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   set-slot --host "$HOST" --blaster-id "$BLASTER_ID" \
   --slot-index 3 --active true
 ```
@@ -161,7 +161,7 @@ After all four slots are active, status should report:
 To activate all slots in one MQTT message:
 
 ```bash
-./.venv-pio/bin/python scripts/heavy-blaster/mqtt_command.py \
+./.venv-pio/bin/python scripts/heavy_blaster/mqtt_command.py \
   set-slots --host "$HOST" --blaster-id "$BLASTER_ID" \
   --slots true,true,true,true
 ```

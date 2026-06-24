@@ -373,6 +373,9 @@ void HeavyBlasterController::appendStatus(JsonObject obj) const {
   obj["device_id"] = config_.deviceId;
   obj["device_mac"] = config_.deviceMac;
   obj["display_name"] = config_.displayName;
+  obj["group"] = config_.group;
+  obj["stage_id"] = config_.stageId;
+  obj["location"] = config_.location;
   obj["name"] = config_.displayName;
   obj["configured"] = config_.configured;
   obj["config_version"] = config_.configVersion;

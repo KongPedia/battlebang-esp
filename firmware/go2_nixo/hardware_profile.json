@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "notes": "Per-Go2 integrated hit+Nixo ESP profiles. Secrets stay in gitignored src/go2_nixo/local_secrets.h or shell env, not in this file. Hit detection is piezo AO ADC threshold based: ESP publishes hit_candidate and Command Center owns final accept/scoring/down/display policy.",
+  "notes": "Generic integrated Go2+Nixo hardware profile. Device identity (go2_01/go2_02/...) plus hit/Nixo timing tuning are provisioned into NVS at runtime; relay pins/polarity/channel count are built in.",
   "defaults": {
     "hit_cooldown_ms": 0,
     "offline_hit_queue_capacity": 32,
@@ -28,19 +28,5 @@
     "nixo_fire_cooldown_ms": 1500,
     "mqtt_topic_prefix": "battlebang/hit",
     "nixo_relay_delay1_ms": 800
-  },
-  "robots": {
-    "go2_03": {
-      "configured": true
-    },
-    "go2_05": {
-      "configured": true
-    },
-    "go2_06": {
-      "configured": true
-    },
-    "go2_07": {
-      "configured": true
-    }
   }
 }

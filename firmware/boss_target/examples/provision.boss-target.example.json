@@ -3,9 +3,11 @@
   "schema": 1,
   "config_version": 1,
   "configured": true,
+  "device_id": "boss_target_dev_01",
   "boss_id": "boss_target_E465B89B51E8",
   "display_name": "Mini Boss Left",
   "group": "boss-stage",
+  "stage_id": "boss_stage_v1",
   "location": "stage-left",
   "debug_allow_simulate_hit": false,
   "gameplay": {
@@ -33,7 +35,7 @@
   "hardware_profile": {
     "max_targets": 4,
     "ring_pins": [23, 21, 18, 17],
-    "piezo_do_pins": [34, 35, 32, 33],
+    "piezo_do_pins": [34, 27, 32, 33],
     "hp_bar_pin": 12,
     "led_type": "WS2811",
     "color_order": "RGB"

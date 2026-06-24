@@ -1,52 +1,51 @@
 # BattleBang ESP32
 
-ESP32 펌웨어 저장소입니다. Go2-mounted ESP, 터렛 등 장치별 펌웨어를 PlatformIO env로 나누어 빌드합니다.
+ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에 두고, 공통 NVS/MQTT/OTA/Wi-Fi 유틸은 `lib/bb_esp_*` PlatformIO 라이브러리로 조립합니다.
 
-| PlatformIO env | Source entrypoint | Purpose |
-| --- | --- | --- |
-| `esp32dev`, `esp32dev_go2`, `esp32dev_go2_go2_*` | `src/go2/main.cpp` + `src/go2/display/**` + `src/go2/mqtt/**` | Go2-mounted hit/LED ESP: piezo AO ADC threshold + Command Center ring display |
-| `esp32dev_go2_nixo`, `esp32dev_go2_nixo_go2_*` | `src/go2_nixo/main.cpp` + `src/go2_nixo/**` | Optional one-ESP fallback: hit/ring LED + Nixo relay |
-| `esp32dev_nixo`, `esp32dev_nixo_1ch_go2_*`, `esp32dev_nixo_2ch_go2_*` | `src/nIxo/main.cpp` | Standalone Nixo/game blaster relay ESP |
-| `esp32dev_hit_target` | `src/hit_target/main.cpp` + `src/hit_target/**` | Generic standalone piezo + circular LED ring hit target firmware |
-| `esp32dev_turret_*` | `src/turret/main.cpp` | Turret MQTT firmware variants |
-| `esp32dev_turret_fleet` | `src/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware with MQTT config + OTA |
+| PlatformIO env | Source entrypoint | Purpose | Runtime config |
+| --- | --- | --- | --- |
+| `esp32dev_go2` | `firmware/go2/main.cpp` | Go2-mounted hit/LED ESP: piezo AO ADC threshold + Command Center HP bar display | NVS: identity, stage/group/location, Wi-Fi, MQTT, OTA, hit tuning |
+| `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/main.cpp` | Optional one-ESP fallback: hit/LED + Nixo relay | NVS: same as Go2 plus Nixo identity/topic and fire timing; relay pins/polarity/channel count stay build variant |
+| `esp32dev_boss_target` | `firmware/boss_target/main.cpp` | Boss target firmware | NVS/MQTT/OTA standard template |
+| `esp32dev_heavy_blaster` | `firmware/heavy_blaster/main.cpp` | Heavy blaster firmware | NVS/MQTT/OTA standard template |
+| `esp32dev_turret_fleet` | `firmware/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware | NVS: turret/device/stage identity, Wi-Fi, MQTT, motion/fire config, OTA |
+| `esp32dev_nixo`, `esp32dev_nixo_1ch`, `esp32dev_nixo_2ch` | `src/nIxo/main.cpp` | Retired standalone Nixo relay ESP kept for compatibility | Build-time relay variant |
+| `esp32dev_hit_target` | `src/hit_target/main.cpp` | Retired standalone circular hit-target firmware | Legacy/runtime config retained but not active path |
+| `esp32dev_turret_*` | `src/turret/main.cpp` | Legacy turret variants | Legacy |
 
-ESP32 firmware uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
+ESP32 uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
 
 ## Active Go2/Nixo firmware layout
 
-현재 4층 테스트 기준 Go2는 **2-ESP split**이 active입니다.
+현재 Go2는 **runtime-provisioned generic image** 방식입니다. `go2_01`, `go2_02`, `go2_03` 같은 robot id는 PlatformIO env 이름이 아니라 ESP32 NVS에 들어가는 사용자 지정 runtime identity입니다. 같은 `esp32dev_go2` 이미지를 굽고, 이후 serial/MQTT config로 `robot_id`, `device_id`, `stage_id` 등을 바꿉니다.
 
-- Go2 hit/LED ESP: `src/go2/`
+- Go2 hit/LED ESP: `firmware/go2/`
   - piezo **AO ADC threshold** 기반 `hit_candidate` publish
-  - Command Center가 내려준 `ring_display` 렌더링
-  - 빌드/업로드 env: `esp32dev_go2_go2_03`, `esp32dev_go2_go2_05`, `esp32dev_go2_go2_06`, `esp32dev_go2_go2_07`
-- Nixo/game blaster ESP: `src/nIxo/`
-  - Command Center가 MQTT로 publish한 `battlebang/nixo/{nixo_id}/command` fire 명령 수신
-  - 기본 1ch: GPIO23 relay-only fire sequence
-  - BTB-766 2ch: GPIO22 flywheel first, 0.15초 뒤 GPIO23 chain
-  - 빌드/업로드 env: `esp32dev_nixo_1ch_go2_*`, `esp32dev_nixo_2ch_go2_*` (`esp32dev_nixo_go2_*`는 1ch 호환 alias)
-- Optional one-ESP fallback/reference: `src/go2_nixo/`
-  - hit/ring/Nixo가 한 ESP에 통합된 경로
-  - 빌드/업로드 env: `esp32dev_go2_nixo_go2_03`, `esp32dev_go2_nixo_go2_05`, `esp32dev_go2_nixo_go2_06`, `esp32dev_go2_nixo_go2_07`
+  - Command Center `ring_display`/HP bar 렌더링
+  - 빌드/업로드 env: `esp32dev_go2`
+  - NVS 튜닝: `robot_id`, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, offline queue, LED brightness
+- Optional one-ESP fallback/reference: `firmware/go2_nixo/`
+  - hit/LED/Nixo relay가 한 ESP에 통합된 경로
+  - 빌드/업로드 env: `esp32dev_go2_nixo`(default 1ch), `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch`
+  - NVS 튜닝: Go2 hit 튜닝 + `nixo_id`, `nixo_command_topic_prefix`, ring brightness, Nixo fire duration/cooldown/prefire/relay delay
+  - relay pin/polarity/channel count는 안전상 build variant/hardware profile에 남깁니다.
+- Standalone Nixo `src/nIxo/`는 현재 active path가 아니며 compatibility env만 유지합니다.
 
-`esp32dev_go2_03` 같은 구형 env 이름은 의도적으로 제거했습니다. 잘못된 펌웨어를 굽는 것을 막기 위해 아래 canonical env만 사용합니다.
+Canonical upload/provision flow:
 
 ```bash
-# Go2 hit/LED ESP, go2_03
-pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
+# Go2 hit/LED generic image
+./.venv-pio/bin/pio run -e esp32dev_go2 -t upload --upload-port /dev/cu.usbserial-XXXX
+cp firmware/go2/.env.go2.example firmware/go2/.env.go2
+# edit GO2_ROBOT_ID=go2_03, GO2_STAGE_ID=stage_1, Wi-Fi/MQTT/OTA/tuning
+./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-XXXX
 
-# Nixo relay ESP, paired with go2_03
-pio run -e esp32dev_nixo_1ch_go2_03 -t upload --upload-port /dev/cu.usbserial-YYYY
-
-# Nixo 2ch relay ESP, paired with go2_05
-pio run -e esp32dev_nixo_2ch_go2_05 -t upload --upload-port /dev/cu.usbserial-YYYY
-
-# 필요할 때만: one-ESP integrated fallback
-pio run -e esp32dev_go2_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-ZZZZ
+# Optional integrated Go2+Nixo 2ch fallback
+./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
+cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
+# edit GO2_NIXO_ROBOT_ID=go2_03, GO2_NIXO_NIXO_ID=nixo_go2_03, GO2_NIXO_STAGE_ID=stage_1
+./.venv-pio/bin/python scripts/go2_nixo/provision.py --serial-port /dev/cu.usbserial-ZZZZ
 ```
-
----
 
 ## Go2 hit/LED ESP firmware summary
 
@@ -57,105 +56,76 @@ Go2 hit/LED ESP는 Command Center와 MQTT로 직접 통신합니다. 이 펌웨�
   - `heartbeat`
 - Command Center → ESP: `battlebang/hit/{robot_id}/ring_display/command`
   - `ring_display`
+- Device management: `battlebang/devices/{device_id}/status|config|ota`
 
 Go2 hit/LED 펌웨어 구조:
 
-- `src/go2/main.cpp`: Arduino `setup/loop` 진입점 및 Go2 hit/LED ESP runtime 오케스트레이션
-- `src/go2/build_config.h`: 핀, MQTT topic, 빌드 설정
-- `src/go2/robots.json`: Go2별 non-secret 프로필. `robot_id`, LED/센서 ADC threshold 등
-- `src/go2/local_secrets.h`: Wi-Fi/MQTT secret. **gitignore 대상**
-- `src/go2/display/`: Command Center `ring_display` 렌더링과 fallback LED 표시
-- `src/go2/mqtt/`: MQTT hit_candidate/heartbeat publish, ring_display subscribe
-- `src/go2/docs/`: Go2 hit/LED 빌드/통신 문서
+- `firmware/go2/main.cpp`: Arduino `setup/loop` 진입점 및 Go2 hit/LED ESP runtime 오케스트레이션
+- `firmware/go2/build_config.h`: hardware fallback defaults only; robot id is not selected at build time
+- `firmware/go2/hardware_profile.json`: non-secret build-time hardware defaults (pins, LED count/capacity, factory fallback threshold)
+- `firmware/go2/.env.go2.example`: serial provisioning defaults for NVS
+- `firmware/go2/config/`: runtime config bridge to common NVS/MQTT/OTA schema
+- `firmware/go2/display/`: Command Center `ring_display` 렌더링과 fallback LED 표시
+- `firmware/go2/mqtt/`: MQTT hit_candidate/heartbeat publish, ring_display subscribe, device config/OTA subscribe
+- `firmware/go2/docs/`: Go2 hit/LED 빌드/통신 문서
 
-Go2 hit/LED 기본 핀맵 (`src/go2/robots.json` defaults 기준):
+NVS로 바꾸는 값 기준:
 
-| Part | Pin |
-| --- | --- |
-| LED ring data | `GPIO4` |
-| Piezo AO | `GPIO34` |
-| Piezo D0 debug readback | `GPIO27` |
+- 자주 바뀌거나 현장 튜닝하는 값: `robot_id`, `device_id`, `group`, `stage_id`, `location`, Wi-Fi, MQTT, OTA policy, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, offline queue capacity/flush interval, LED brightness
+- build-time으로 남기는 값: 실제 GPIO pin, LED 물리 count/capacity, relay pin/polarity/channel count 같은 하드웨어 안전 envelope
 
-초기 설정:
+기본 핀맵 (`firmware/go2/hardware_profile.json` defaults 기준):
 
-```bash
-cp src/go2/local_secrets.example.h src/go2/local_secrets.h
-# src/go2/local_secrets.h 안의 Wi-Fi / MQTT broker 수정
-```
+| Part | Pin | Runtime? |
+| --- | --- | --- |
+| HP bar LED data | `GPIO18` | No, build hardware profile |
+| Piezo AO | `GPIO34` | No, build hardware profile |
+| Piezo D0 debug readback | `GPIO27` | No, build hardware profile |
+| Piezo threshold/rearm | defaults `200`/`150` raw | Yes, NVS tuning |
 
-### Go2 hit/LED 코드 굽는 명령어
-
-```bash
-# 1) ESP32 USB 포트 확인
-python3 scripts/go2_flash.py list-ports
-
-# 2) go2_03용 hit/LED 펌웨어 빌드
-pio run -e esp32dev_go2_go2_03
-
-# 3) go2_03용 hit/LED 펌웨어 업로드/flash
-pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
-
-# 4) 업로드 후 serial log 확인
-pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
-```
-
-다른 Go2에 굽는 경우 env만 바꿉니다.
+### Recommended build/upload: PlatformIO
 
 ```bash
-pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_go2_05 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_go2_06 -t upload --upload-port /dev/cu.usbserial-XXXX
-pio run -e esp32dev_go2_go2_07 -t upload --upload-port /dev/cu.usbserial-XXXX
+python3 -m venv .venv-pio
+./.venv-pio/bin/python -m pip install -U platformio pyserial
+
+# Build active firmware
+./.venv-pio/bin/pio run -e esp32dev_go2
+./.venv-pio/bin/pio run -e esp32dev_go2_nixo
+./.venv-pio/bin/pio run -e esp32dev_boss_target
+./.venv-pio/bin/pio run -e esp32dev_heavy_blaster
+./.venv-pio/bin/pio run -e esp32dev_turret_fleet
+
+# Upload + provision Go2 identity/config into NVS
+./.venv-pio/bin/pio run -e esp32dev_go2 -t upload --upload-port /dev/cu.usbserial-XXXX
+./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-XXXX
+
+# Serial monitor after upload.
+./.venv-pio/bin/pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 ```
 
-터렛 flash 스크립트와 같은 방식으로도 실행할 수 있습니다.
+For `turret_fleet`, prefer the repo-local PlatformIO venv and helper:
 
 ```bash
-python scripts/go2_flash.py show-config
-python scripts/go2_flash.py flash --target go2_05=/dev/cu.usbserial-21130
+./.venv-pio/bin/pio run -e esp32dev_turret_fleet
+./bin/turret fleet-upload 2 /dev/cu.usbserial-120
+
+# MQTT_BROKER_HOST is the Command Center/MQTT broker, not the ESP device IP.
+export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
+./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
+./bin/turret fleet-e2e turret_2 --host "$MQTT_BROKER_HOST" --allow-live-fire
 ```
 
-`local_secrets.h`를 쓰지 않고 shell env로도 주입할 수 있습니다.
-
-```bash
-GO2_ID=go2_05 \
-ESP_WIFI_SSID="YOUR_WIFI_SSID" \
-ESP_WIFI_PASSWORD="YOUR_WIFI_PASSWORD" \
-ESP_MQTT_HOST="<command-center-or-broker-ip>" \
-pio run -e esp32dev_go2
-```
-
-### Nixo relay ESP 기본값
-
-Nixo/game blaster fire는 별도 `src/nIxo` ESP가 같은 broker를 통해 처리합니다. 1ch default:
-
-- relay pin: `GPIO23`
-- relay polarity: active-HIGH (`HIGH` = fire/on, `LOW` = off)
-- second relay: disabled (`NIXO_RELAY2_PIN=-1`)
-- live mapping: `go2_03 -> nixo_go2_03`
-- MQTT topic: `battlebang/nixo/nixo_go2_03/command`
-
-BTB-766 2ch profile:
-
-- flywheel relay: `GPIO22`
-- chain relay: `GPIO23`
-- flywheel-to-chain delay: `150ms`
-- relay polarity: active-LOW (`LOW` = fire/on, `HIGH` = off)
-- build env example: `esp32dev_nixo_2ch_go2_05`
-
-```bash
-cp src/nIxo/local_secrets.example.h src/nIxo/local_secrets.h
-pio run -e esp32dev_nixo_2ch_go2_05 -t upload --upload-port /dev/cu.usbserial-YYYY
-```
+The fleet firmware is a single generic image. First provisioning over USB stores `turret_id`, `device_id`, `stage_id`, Wi-Fi, MQTT, pose, calibration, motion/fire, and OTA policy in ESP NVS. After that, Command Center can update config and command `target`, `idle`, `dead`, `home`, `recover`, and OTA jobs over MQTT without reflashing.
 
 ---
 
 ## Generic standalone hit target firmware
 
-`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from the Go2-mounted `src/go2/` hit/LED firmware and the optional integrated `src/go2_nixo/` fallback:
+`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from the Go2-mounted `firmware/go2/` hit/LED firmware and the optional integrated `firmware/go2_nixo/` fallback:
 
-- `src/go2/`: Go2-mounted hit/LED ESP, MQTT-controlled by Command Center, robot IDs come from `robots.json`.
-- `src/go2_nixo/`: optional one-ESP integrated fallback, MQTT-controlled by Command Center.
+- `firmware/go2/`: Go2-mounted hit/LED ESP, MQTT-controlled by Command Center, robot/device/stage identity comes from NVS provisioning.
+- `firmware/go2_nixo/`: optional one-ESP integrated fallback, MQTT-controlled by Command Center.
 - `src/hit_target/`: standalone/tutorial hit target, local HP/effect loop, `target_id` is derived at boot from the ESP32 eFuse MAC address (for example `hit_target_AABBCCDDEEFF`).
 
 Implemented local UX:
@@ -191,7 +161,7 @@ cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
 ./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
 ```
 
-`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `src/go2_nixo/**` or `src/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index. OTA polling uses firmware-specific stable release tags (`hit-target-latest`, `turret-fleet-latest`) instead of the repo-wide latest release URL.
+`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `firmware/go2_nixo/**` or `firmware/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index. OTA polling uses firmware-specific stable release tags (`hit-target-latest`, `turret-fleet-latest`) instead of the repo-wide latest release URL.
 
 Default pins are migrated from the wall-mounted target bench sketch and can be overridden while debugging hardware:
 
@@ -204,49 +174,6 @@ Default pins are migrated from the wall-mounted target bench sketch and can be o
 - FastLED hardware-profile fields (`led.pin`, `led.type`, `led.color_order`) remain build/profile-bound; remote config can tune gameplay/sensor/brightness/LED count up to the compiled capacity.
 
 See `src/hit_target/README.md` for serial commands, MQTT topics, OTA manifest rules, and `BATTLEBANG_HIT_TARGET_*` factory-default overrides.
-
----
-
-## Recommended build/upload: PlatformIO
-
-From this repo root:
-
-```bash
-# Build Go2 hit/LED ESP firmware.
-pio run -e esp32dev_go2_go2_05
-
-# Upload Go2 hit/LED firmware to a specific connected board.
-pio run -e esp32dev_go2_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
-
-# Upload paired Nixo relay firmware to the Nixo ESP.
-pio run -e esp32dev_nixo_go2_03 -t upload --upload-port /dev/cu.usbserial-1131
-
-# Serial monitor after upload.
-pio device monitor -p /dev/cu.usbserial-1130 -b 115200
-```
-
-For `turret_fleet`, prefer the repo-local PlatformIO venv and helper:
-
-```bash
-python3 -m venv .venv-pio
-./.venv-pio/bin/python -m pip install -U platformio pyserial
-
-./.venv-pio/bin/pio run -e esp32dev_turret_fleet
-./bin/turret fleet-upload 2 /dev/cu.usbserial-120
-
-# MQTT_BROKER_HOST is the Command Center/MQTT broker, not the ESP device IP.
-export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-e2e turret_2 --host "$MQTT_BROKER_HOST" --allow-live-fire
-```
-
-The fleet firmware is a single generic image. First provisioning over USB stores
-`turret_id`, Wi-Fi, MQTT, pose, calibration, motion/fire, and OTA policy in ESP
-NVS. After that, Command Center can update config and command `target`, `idle`,
-`dead`, `home`, `recover`, and OTA jobs over MQTT without reflashing.
-For `turret_1` through `turret_4`, `fleet-upload` automatically overlays the
-matching `src/turret_fleet/profiles/<turret>.json` and
-`src/turret_fleet/pattern_presets/<turret>.json` files before writing NVS.
 
 ---
 

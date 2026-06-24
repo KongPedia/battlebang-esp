@@ -2,19 +2,21 @@
 
 #include <Arduino.h>
 
-#if __has_include("local_secrets.h") && !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
+// Runtime Wi-Fi/MQTT/device identity is provisioned into NVS from
+// firmware/go2/.env.go2.  Do not compile local secrets into the firmware by
+// default; keep local_secrets.h as an explicit legacy/factory escape hatch only.
+#if defined(BATTLEBANG_ENABLE_LOCAL_SECRETS) && __has_include("local_secrets.h")
 #include "local_secrets.h"
-#elif __has_include("../local_secrets.h") &&                                   \
-                    !defined(BATTLEBANG_SKIP_LOCAL_SECRETS)
+#elif defined(BATTLEBANG_ENABLE_LOCAL_SECRETS) &&                              \
+    __has_include("../local_secrets.h")
 // Compatibility include path used by older local operator setups.
 #include "../local_secrets.h"
 #endif
 
-// Local secret aliases. The operator-facing local_secrets.h should use ESP_*
-// names; BATTLEBANG_* remains the internal firmware macro namespace.
-#if defined(ESP_ROBOT_ID) && !defined(BATTLEBANG_ROBOT_ID)
-#define BATTLEBANG_ROBOT_ID ESP_ROBOT_ID
-#endif
+// Optional legacy local secret aliases.  The operator-facing local_secrets.h
+// should use ESP_* names; BATTLEBANG_* remains the internal firmware macro
+// namespace.
+// Device identity is provisioned into NVS at runtime, not compiled into Go2 envs.
 
 #if defined(ESP_WIFI_SSID) && !defined(BATTLEBANG_WIFI_SSID)
 #define BATTLEBANG_WIFI_SSID ESP_WIFI_SSID
@@ -37,14 +39,8 @@
 #endif
 
 
-// Overrides injected by scripts/go2_config.py from PlatformIO profile/shell
-// env. These intentionally apply after local_secrets.h so explicit env/profile
-// builds win without editing the gitignored local file.
-#ifdef BATTLEBANG_BUILD_ROBOT_ID
-#undef BATTLEBANG_ROBOT_ID
-#define BATTLEBANG_ROBOT_ID BATTLEBANG_BUILD_ROBOT_ID
-#endif
-
+// Overrides injected by scripts/go2_config.py from PlatformIO hardware profile/shell
+// env. Runtime identity stays in NVS and is never injected by PlatformIO env.
 #ifdef BATTLEBANG_BUILD_WIFI_SSID
 #undef BATTLEBANG_WIFI_SSID
 #define BATTLEBANG_WIFI_SSID BATTLEBANG_BUILD_WIFI_SSID
@@ -143,7 +139,7 @@
 #endif
 
 #ifndef BATTLEBANG_ROBOT_ID
-#define BATTLEBANG_ROBOT_ID "go2_05"
+#define BATTLEBANG_ROBOT_ID ""
 #endif
 
 #ifndef BATTLEBANG_WIFI_SSID
@@ -214,7 +210,7 @@
 
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
 // BTB-770 sensitivity trial: lower threshold so off-center harness hits still
-// publish hit candidates. Tune per harness/target with robots.json or env.
+// publish hit candidates. Tune per hardware profile or env.
 #define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 200
 #endif
 
@@ -308,7 +304,7 @@ static constexpr const char *MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
-static constexpr uint16_t MQTT_BUFFER_SIZE = 768;
+static constexpr uint16_t MQTT_BUFFER_SIZE = 1536;
 
 inline const char *targetIdToSensorId(int targetId) {
   return (targetId == 1) ? "piezo_t1" : "piezo_t2";

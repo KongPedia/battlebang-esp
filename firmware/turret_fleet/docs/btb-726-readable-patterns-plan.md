@@ -4,7 +4,7 @@ Date: 2026-05-29
 Branch: `feature/BTB-726-readable-turret-patterns`
 Jira: https://kongpedia.atlassian.net/browse/BTB-726
 Related: BTB-721
-Scope: `src/turret_fleet/**`, `tests/python/test_turret_fleet_contract.py`, turret fleet docs/examples
+Scope: `firmware/turret_fleet/**`, `tests/python/test_turret_fleet_contract.py`, turret fleet docs/examples
 
 ## Requirements Summary
 
@@ -31,9 +31,9 @@ Non-player-facing calibration remains allowed as an operator utility (`calibrati
 
 ## Current Code Facts
 
-- Per-turret MQTT command topic already exists as `battlebang/turrets/{turret_id}/command` via `buildTopics()` in `src/turret_fleet/mqtt/topics.cpp:21-27` and subscription in `src/turret_fleet/mqtt/topics.cpp:31-40`.
-- `command: "pattern"` routes to `handlePatternCommand()` in `src/turret_fleet/control/turret_control.cpp`.
-- Pattern parsing/normalization/compilation now lives in `src/turret_fleet/control/patterns/pattern_plan.{h,cpp}` as a pure plan compiler.
+- Per-turret MQTT command topic already exists as `battlebang/turrets/{turret_id}/command` via `buildTopics()` in `firmware/turret_fleet/mqtt/topics.cpp:21-27` and subscription in `firmware/turret_fleet/mqtt/topics.cpp:31-40`.
+- `command: "pattern"` routes to `handlePatternCommand()` in `firmware/turret_fleet/control/turret_control.cpp`.
+- Pattern parsing/normalization/compilation now lives in `firmware/turret_fleet/control/patterns/pattern_plan.{h,cpp}` as a pure plan compiler.
 - `TurretControl` remains the hardware executor for motion, relay/ESC fire sequencing, interrupts, and status.
 - Status fields include `pattern_id`, `pattern_instance_id`, `pattern_state`, current step, loop counters, and `pattern_last_error`.
 - BTB-726 supersedes the earlier larger BTB-721 candidate list for player-facing attacks; `calibration_no_fire` remains operator-only.
@@ -101,8 +101,8 @@ Command Center can also persist those coordinates as runtime config under
 
 Files:
 - `tests/python/test_turret_fleet_contract.py`
-- `src/turret_fleet/docs/implementation-plan.md` or a new focused docs file
-- `src/turret_fleet/examples/pattern.*.json`
+- `firmware/turret_fleet/docs/implementation-plan.md` or a new focused docs file
+- `firmware/turret_fleet/examples/pattern.*.json`
 
 Test/contract additions:
 - Assert the docs/examples define exactly the three player-facing patterns.
@@ -113,8 +113,8 @@ Test/contract additions:
 ### 2. Add pattern model/state fields in `TurretControl`
 
 Files:
-- `src/turret_fleet/control/turret_control.h`
-- `src/turret_fleet/control/turret_control.cpp`
+- `firmware/turret_fleet/control/turret_control.h`
+- `firmware/turret_fleet/control/turret_control.cpp`
 
 Add a small internal state machine, avoiding new dependencies:
 
@@ -136,7 +136,7 @@ Keep it compact because `turret_control.cpp` is already large.
 ### 3. Replace first-point-only pattern handling with validation + compile
 
 Files:
-- `src/turret_fleet/control/turret_control.cpp:2418-2472`
+- `firmware/turret_fleet/control/turret_control.cpp:2418-2472`
 
 `handlePatternCommand()` should:
 - validate configured/frame/DEAD/fire lockout as it does now
@@ -152,7 +152,7 @@ Files:
 ### 4. Drive the pattern from the main control loop
 
 Files:
-- `src/turret_fleet/control/turret_control.cpp`
+- `firmware/turret_fleet/control/turret_control.cpp`
 
 Add `updatePattern()` and call it from `TurretControl::loop()` after current angle/PID/fire updates are in a safe order.
 
@@ -166,7 +166,7 @@ Rules:
 ### 5. Make interruption semantics explicit
 
 Files:
-- `src/turret_fleet/control/turret_control.cpp:2518-2559`
+- `firmware/turret_fleet/control/turret_control.cpp:2518-2559`
 
 - `hold` clears active pattern state and safe-offs fire.
 - `dead` clears active pattern state and safe-offs fire.
@@ -176,13 +176,13 @@ Files:
 ### 6. Status/docs/examples update
 
 Files:
-- `src/turret_fleet/docs/usage.md`
-- `src/turret_fleet/docs/mqtt-http-contract.md`
-- `src/turret_fleet/docs/implementation-plan.md`
-- `src/turret_fleet/examples/pattern.lane_sweep.json`
-- `src/turret_fleet/examples/pattern.two_point_bounce.json`
-- `src/turret_fleet/examples/pattern.telegraph_column.json`
-- `src/turret_fleet/pattern_presets/turret_2.json`
+- `firmware/turret_fleet/docs/usage.md`
+- `firmware/turret_fleet/docs/mqtt-http-contract.md`
+- `firmware/turret_fleet/docs/implementation-plan.md`
+- `firmware/turret_fleet/examples/pattern.lane_sweep.json`
+- `firmware/turret_fleet/examples/pattern.two_point_bounce.json`
+- `firmware/turret_fleet/examples/pattern.telegraph_column.json`
+- `firmware/turret_fleet/pattern_presets/turret_2.json`
 
 Document:
 - 4-turret layout assumptions: 1F/2F, left/right, about 1m horizontal spacing, forward-facing.

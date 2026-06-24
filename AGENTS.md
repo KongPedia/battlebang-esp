@@ -7,9 +7,9 @@ This repository contains ESP32 firmware and helper scripts for BattleBang device
 ## Secrets and local env
 
 - Never commit Wi-Fi passwords, MQTT passwords, or local serial target files.
-- Use `src/turret_fleet/.env.turret_fleet` for fleet provisioning/MQTT helper defaults; it is ignored.
+- Use `firmware/turret_fleet/.env.turret_fleet` for fleet provisioning/MQTT helper defaults; it is ignored.
 - Use `src/hit_target/.env.hit_target` for hit-target Wi-Fi/MQTT/Command Center/provisioning defaults; it is ignored.
-- Keep only examples tracked, e.g. `src/turret_fleet/.env.turret_fleet.example` and `src/hit_target/.env.hit_target.example`.
+- Keep only examples tracked, e.g. `firmware/turret_fleet/.env.turret_fleet.example` and `src/hit_target/.env.hit_target.example`.
 
 ## Python and PlatformIO environments
 
@@ -44,7 +44,7 @@ python3 -m py_compile scripts/turret_fleet/*.py scripts/hit_target/*.py tests/py
 ## Turret fleet operating model
 
 - `src/turret/` is the legacy/reference turret firmware.
-- `src/turret_fleet/` is the generic runtime-configured fleet firmware.
+- `firmware/turret_fleet/` is the generic runtime-configured fleet firmware.
 - Blank ESP32 devices still require first USB flashing/provisioning; after that, identity, Wi-Fi, MQTT, pose, calibration, motion, fire, and OTA policy are stored in NVS and can be changed via MQTT config.
 - MQTT target coordinates are meters by default (`coordinate_frame.mqtt_target_unit = "m"`); firmware converts to centimeters internally.
 - Direct `aim` uses local yaw/pitch degrees. `jog` uses PWM microseconds and is for bounded bench debugging only.

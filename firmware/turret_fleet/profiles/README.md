@@ -2,13 +2,13 @@
 
 These files are non-secret per-turret runtime profiles. They are safe to commit
 because Wi-Fi credentials and MQTT broker credentials still come from
-`src/turret_fleet/.env.turret_fleet` during USB provisioning, or remain unchanged
+`firmware/turret_fleet/.env.turret_fleet` during USB provisioning, or remain unchanged
 when a profile is published over MQTT.
 
 Why `profiles/` instead of `configs/`?
 
-- `src/turret_fleet/config/` is C++ firmware code for `RuntimeConfig` and NVS.
-- `src/turret_fleet/profiles/` is operator data: one JSON profile per physical turret.
+- `firmware/turret_fleet/config/` is C++ firmware code for `RuntimeConfig` and NVS.
+- `firmware/turret_fleet/profiles/` is operator data: one JSON profile per physical turret.
 
 ## Current boss-room layout assumption
 

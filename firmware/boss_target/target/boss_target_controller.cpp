@@ -77,6 +77,7 @@ void BossTargetController::reset(const char* source) {
   nextTargetSelectionMs_ = 0;
   deadBlinkOn_ = false;
   otaPrepared_ = false;
+  ledTestUntilMs_ = 0;
   hitEnabled_ = true;
   targetTransitionPending_ = false;
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
@@ -87,6 +88,7 @@ void BossTargetController::reset(const char* source) {
   clearPiezoEdges();
   mode_ = config_.configured ? Mode::READY : Mode::UNCONFIGURED;
   clearAllLeds();
+  renderIdleHpBar();
   FastLED.show();
   emit("reset", 255, 0, source, 0);
 }
@@ -105,6 +107,7 @@ void BossTargetController::start(const char* source, bool resetHp) {
   clearActiveTarget();
   for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) targetFlashUntilMs_[i] = 0;
   mode_ = Mode::INTRO;
+  ledTestUntilMs_ = 0;
   startIntroStartedMs_ = now;
   startIntroUntilMs_ = now + ::boss_target::START_INTRO_MS;
   otaPrepared_ = false;
@@ -127,9 +130,30 @@ void BossTargetController::simulateHit(const char* source, int targetIndex) {
   }
 }
 
+void BossTargetController::ledTest(const char* source, uint32_t rgb, uint32_t durationMs, bool hpOnly) {
+  ledTestColor_ = colorFromRgb(rgb);
+  ledTestHpOnly_ = hpOnly;
+  const uint32_t now = millis();
+  ledTestUntilMs_ = now + constrain(durationMs, static_cast<uint32_t>(1000), static_cast<uint32_t>(120000));
+  lastEvent_ = "led_test";
+  renderLedTest(now);
+  FastLED.show();
+  emit("led_test", 255, 0, source, 0);
+}
+
+void BossTargetController::stopLedTest(const char* source) {
+  ledTestUntilMs_ = 0;
+  lastEvent_ = "led_test_off";
+  clearAllLeds();
+  if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED) renderIdleHpBar();
+  FastLED.show();
+  emit("led_test_off", 255, 0, source, 0);
+}
+
 void BossTargetController::prepareForOta() {
   hitEnabled_ = false;
   otaPrepared_ = true;
+  ledTestUntilMs_ = 0;
   clearActiveTarget();
   clearAllLeds();
   FastLED.show();
@@ -375,6 +399,32 @@ void BossTargetController::setHpBarAll(const CRGB& color) {
   }
 }
 
+void BossTargetController::setHpBarLinear(const CRGB& color) {
+  const uint16_t count = hpLedCount();
+  for (uint16_t i = 0; i < count; ++i) hpBar_[i] = color;
+  for (uint16_t i = count; i < ::boss_target::MAX_HP_BAR_NUM_LEDS; ++i) hpBar_[i] = CRGB::Black;
+}
+
+void BossTargetController::renderIdleHpBar() {
+  fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
+  setHpBarAll(CRGB(::boss_target::HP_BAR_IDLE_WHITE_VALUE,
+                   ::boss_target::HP_BAR_IDLE_WHITE_VALUE,
+                   ::boss_target::HP_BAR_IDLE_WHITE_VALUE));
+}
+
+void BossTargetController::renderLedTest(uint32_t now) {
+  if (ledTestUntilMs_ != 0 && static_cast<int32_t>(ledTestUntilMs_ - now) <= 0) {
+    ledTestUntilMs_ = 0;
+    lastEvent_ = "led_test_done";
+    return;
+  }
+  for (uint8_t i = 0; i < ::boss_target::kMaxTargets; ++i) {
+    fillRing(i, ledTestHpOnly_ ? CRGB::Black : ledTestColor_);
+  }
+  fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
+  setHpBarLinear(ledTestColor_);
+}
+
 void BossTargetController::renderStartIntro(uint32_t now) {
   fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
   const uint32_t elapsed = now - startIntroStartedMs_;
@@ -423,7 +473,11 @@ void BossTargetController::renderTargets(uint32_t now) {
 
 void BossTargetController::renderHpBar(uint32_t now) {
   fill_solid(hpBar_, ::boss_target::MAX_HP_BAR_NUM_LEDS, CRGB::Black);
-  if (mode_ == Mode::INTRO || mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED || otaPrepared_) return;
+  if (mode_ == Mode::INTRO || otaPrepared_) return;
+  if (mode_ == Mode::READY || mode_ == Mode::UNCONFIGURED) {
+    renderIdleHpBar();
+    return;
+  }
   if (mode_ == Mode::DEFEATED) {
     if (now - lastDeadBlinkMs_ >= config_.hpBar.deadBlinkMs) {
       lastDeadBlinkMs_ = now;
@@ -450,6 +504,11 @@ void BossTargetController::clearAllLeds() {
 void BossTargetController::renderLeds(uint32_t now) {
   if (now - lastShowMs_ < ::boss_target::LED_SHOW_PERIOD_MS) return;
   lastShowMs_ = now;
+  if (ledTestUntilMs_ != 0) {
+    renderLedTest(now);
+    FastLED.show();
+    return;
+  }
   if (mode_ == Mode::INTRO) {
     renderStartIntro(now);
     FastLED.show();
@@ -507,6 +566,9 @@ void BossTargetController::appendStatus(JsonObject obj) const {
   obj["name"] = config_.displayName;
   obj["device_id"] = config_.deviceId;
   obj["device_mac"] = config_.deviceMac;
+  obj["group"] = config_.group;
+  obj["stage_id"] = config_.stageId;
+  obj["location"] = config_.location;
   obj["configured"] = config_.configured;
   obj["config_version"] = config_.configVersion;
   obj["mode"] = modeString();
@@ -531,6 +593,14 @@ void BossTargetController::appendStatus(JsonObject obj) const {
   obj["active_target_id"] = targetActiveForHits ? String("target_") + String(activeTarget_ + 1) : String("");
   obj["target_count"] = targetCount();
   obj["hardware_max_targets"] = ::boss_target::kMaxTargets;
+  obj["hp_bar_pin"] = config_.hardware.hpBarPin;
+  obj["hp_bar_num_leds"] = hpLedCount();
+  obj["hp_bar_brightness"] = config_.hpBar.brightness;
+  obj["hp_bar_max_ma"] = config_.hpBar.maxMa;
+  obj["led_type"] = config_.hardware.ledType;
+  obj["color_order"] = config_.hardware.colorOrder;
+  obj["led_test_active"] = ledTestUntilMs_ != 0 && static_cast<int32_t>(ledTestUntilMs_ - now) > 0;
+  obj["led_test_hp_only"] = ledTestHpOnly_;
   obj["target_duration_ms"] = config_.gameplay.targetDurationMs;
   obj["hit_cooldown_ms"] = config_.gameplay.hitCooldownMs;
   obj["digital_isr_debounce_us"] = config_.gameplay.digitalIsrDebounceUs;
