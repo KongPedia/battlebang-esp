@@ -161,7 +161,7 @@ cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
 ./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
 ```
 
-`src/hit_target/.env.hit_target` is gitignored; only `.env.hit_target.example` is tracked. GitHub Actions are path-filtered so unrelated `firmware/go2_nixo/**` or `firmware/turret_fleet/**` edits do not run the hit-target workflow. `platformio.ini` is still included because it is the shared PlatformIO env/dependency index. OTA polling uses firmware-specific stable release tags (`hit-target-latest`, `turret-fleet-latest`) instead of the repo-wide latest release URL.
+`src/hit_target/` is legacy/unused for the current active firmware plan. Active firmware OTA publishing is handled by the unified Firmware OTA Releases workflow with firmware-specific stable release tags instead of the repo-wide latest release URL.
 
 Default pins are migrated from the wall-mounted target bench sketch and can be overridden while debugging hardware:
 

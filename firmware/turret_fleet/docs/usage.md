@@ -373,7 +373,7 @@ Keep `ota.apply_only_in_safe_state=true` and watch `motion_state` during tuning.
 
 ### Build/release from GitHub Actions
 
-After PR merge to `main`, `.github/workflows/turret-fleet-firmware.yml` runs
+After PR merge to `main`, the unified `Firmware OTA Releases` workflow (`.github/workflows/boss-target-firmware.yml`) runs
 automatically when fleet firmware/workflow files change. The push build creates
 a public GitHub Release in this repo with:
 
@@ -384,7 +384,7 @@ a public GitHub Release in this repo with:
 Manual `workflow_dispatch` still exists for PR smoke tests or one-off builds:
 
 ```bash
-gh workflow run turret-fleet-firmware.yml \
+gh workflow run boss-target-firmware.yml \
   --repo KongPedia/battlebang-esp \
   --ref feature/BTB-721-turret-fleet-rebuild-plan \
   -f version=0.1.4-pr9-bootfix \

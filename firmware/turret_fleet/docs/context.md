@@ -473,7 +473,7 @@ Latest full MQTT/serial hardware suite after safe-envelope config (2026-05-29):
 
 - Public release repo is `KongPedia/battlebang-esp`; verified via `gh repo view` as PUBLIC on 2026-05-29.
 - Firmware default latest manifest URL is `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json`.
-- GitHub Actions workflow `.github/workflows/turret-fleet-firmware.yml` builds `esp32dev_turret_fleet` and publishes `manifest.json`, `.bin`, and `sha256.txt`. Same-repo release uses `GITHUB_TOKEN`; `PUBLIC_RELEASE_REPO_TOKEN` is only for cross-repo publishing.
+- GitHub Actions workflow the unified `Firmware OTA Releases` workflow (`.github/workflows/boss-target-firmware.yml`) builds `esp32dev_turret_fleet` and publishes `manifest.json`, `.bin`, and `sha256.txt`. Same-repo release uses `GITHUB_TOKEN`; `PUBLIC_RELEASE_REPO_TOKEN` is only for cross-repo publishing.
 - After merge to `main`, the workflow now auto-runs for fleet/workflow/platformio changes and creates `turret-fleet-v0.1.${GITHUB_RUN_NUMBER}-main`; manual `workflow_dispatch` remains for PR smoke tests.
 - Direct MQTT `/ota` manifest is immediate Command Center approval.
 - Automatic polling is disabled by default. Command Center enables it with `ota.auto_check_enabled=true` and `ota.desired_build=<build>`. With `ota.command_center_controlled=true`, polled manifest build must exactly match `desired_build`.

@@ -283,9 +283,9 @@ def test_boss_target_mqtt_topics_status_and_ota_are_firmware_specific() -> None:
     assert "manifest.app != identity.app" in common_manifest
     assert "manifest.hardware != identity.hardware" in common_manifest
     assert "manifest.build <= identity.build" in common_manifest
-    assert "pio run -e esp32dev_boss_target" in workflow
+    assert "esp32dev_boss_target" in workflow
     assert "boss-target-latest" in workflow
-    assert "boss-target-v${{ steps.version.outputs.version }}" in workflow
+    assert "boss-target-v" in workflow
     assert "[env:esp32dev_boss_target]" in pio
     assert "+<../firmware/boss_target/**>" in pio
     assert "board_build.partitions = min_spiffs.csv" in pio

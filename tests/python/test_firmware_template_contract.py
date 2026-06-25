@@ -178,27 +178,37 @@ def test_go2_standardization_checkpoint_is_locked_before_path_moves() -> None:
 
 
 def test_active_ota_release_workflows_publish_firmware_specific_stable_channels() -> None:
-    active_workflow = read(".github/workflows/active-firmware-ota.yml")
-    boss_workflow = read(".github/workflows/boss-target-firmware.yml")
-    turret_workflow = read(".github/workflows/turret-fleet-firmware.yml")
+    workflow = read(".github/workflows/boss-target-firmware.yml")
     firmware_readme = read("firmware/README.md")
 
+    assert not (ROOT / ".github/workflows/active-firmware-ota.yml").exists()
+    assert not (ROOT / ".github/workflows/turret-fleet-firmware.yml").exists()
+
     for expected in (
+        "Firmware OTA Releases",
+        "esp32dev_boss_target",
         "esp32dev_go2",
         "esp32dev_go2_nixo_1ch",
         "esp32dev_go2_nixo_2ch",
         "esp32dev_heavy_blaster",
+        "esp32dev_turret_fleet",
+        "boss-target-manifest.json",
         "go2-manifest.json",
         "go2-nixo-1ch-manifest.json",
         "go2-nixo-2ch-manifest.json",
         "heavy-blaster-manifest.json",
+        "manifest.json",
+        "boss-target-latest",
         "go2-latest",
         "go2-nixo-1ch-latest",
         "go2-nixo-2ch-latest",
         "heavy-blaster-latest",
+        "turret-fleet-latest",
+        "BB_BOSS_TARGET_VERSION",
         "BB_GO2_VERSION",
         "BB_GO2_NIXO_VERSION",
         "BB_HEAVY_BLASTER_VERSION",
+        "BB_TURRET_FLEET_VERSION",
         "scripts/firmware/make_release_manifest.py",
         "scripts/go2_config.py",
         "scripts/go2_nixo_config.py",
@@ -207,29 +217,32 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}",
         '"selected=" + ",".join(job["id"] for job in selected)',
     ):
-        assert expected in active_workflow
+        assert expected in workflow
 
     for host_only_script_path in (
         '"scripts/go2/**"',
         '"scripts/go2_runtime/**"',
+        '"scripts/boss_target/**"',
         '"scripts/go2_nixo/**"',
         '"scripts/heavy_blaster/**"',
+        '"scripts/turret_fleet/**"',
     ):
-        assert host_only_script_path not in active_workflow
+        assert host_only_script_path not in workflow
 
-    assert 'r"^firmware/go2/"' in active_workflow
-    assert 'r"^firmware/go2_nixo/"' in active_workflow
-    assert 'r"^firmware/heavy_blaster/"' in active_workflow
-    assert 'r"^lib/bb_esp_hw/"' in active_workflow
-    assert 'r"^lib/bb_esp_net/"' in active_workflow
+    assert 'r"^firmware/boss_target/"' in workflow
+    assert 'r"^firmware/go2/"' in workflow
+    assert 'r"^firmware/go2_nixo/"' in workflow
+    assert 'r"^firmware/heavy_blaster/"' in workflow
+    assert 'r"^firmware/turret_fleet/"' in workflow
+    assert 'r"^lib/bb_esp_hw/"' in workflow
+    assert 'r"^lib/bb_esp_net/"' in workflow
 
-    for workflow in (boss_workflow, turret_workflow):
-        assert "lib/bb_esp_core/**" in workflow
-        assert "lib/bb_esp_nvs/**" in workflow
-        assert "lib/bb_esp_ota/**" in workflow
-        assert "scripts/firmware/make_release_manifest.py" in workflow
+    assert "lib/bb_esp_core/**" in workflow
+    assert "lib/bb_esp_nvs/**" in workflow
+    assert "lib/bb_esp_ota/**" in workflow
+    assert "scripts/firmware/make_release_manifest.py" in workflow
 
-    assert "`active-firmware-ota.yml` covers Go2, Go2-Nixo 1ch, Go2-Nixo 2ch, and Heavy Blaster" in firmware_readme
+    assert "The unified `Firmware OTA Releases` workflow covers all active firmware families" in firmware_readme
     assert "builds only the affected firmware matrix entries" in firmware_readme
     assert "repo-wide `latest`" in firmware_readme
 
@@ -268,7 +281,6 @@ def test_moved_firmware_entrypoints_do_not_point_to_old_src_paths() -> None:
         "firmware/MIGRATION_PLAN.md",
         "platformio.ini",
         ".github/workflows/boss-target-firmware.yml",
-        ".github/workflows/turret-fleet-firmware.yml",
         "scripts/heavy_blaster/mqtt_command.py",
         "scripts/heavy_blaster/provision.py",
         "scripts/turret_fleet/provision.py",

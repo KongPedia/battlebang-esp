@@ -22,7 +22,7 @@ Applies to all firmware folders under `src/**` unless a deeper `AGENTS.md` overr
 
 ## CI and OTA
 
-- Folder workflows should be path-filtered. Unrelated `src/<other-firmware>/**` or `firmware/<other-firmware>/**` changes must not trigger another firmware's build.
+- The unified firmware OTA workflow should be path-filtered. Unrelated `src/<other-firmware>/**` or `firmware/<other-firmware>/**` changes must not trigger another firmware's build.
 - `platformio.ini` is a shared build/dependency index, so workflow path filters may include it deliberately.
 - Do not use GitHub's repo-wide `/releases/latest/download/...` URL for device polling when multiple firmware families share one release repo. Use firmware-specific stable tags instead:
   - hit target: `/releases/download/hit-target-latest/hit-target-manifest.json`

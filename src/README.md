@@ -32,7 +32,7 @@ Some active firmware still builds from `src/` while common modules are introduce
 
 - Do not put site-specific Wi-Fi, MQTT, Command Center IP, serial ports, or passwords in source files or GitHub Actions.
 - Commit only example env/config files. Real env files are ignored, for example `.env.*` files and `local_secrets.h` files.
-- A folder-specific workflow should watch only its workflow file, source folder, helper scripts, required common modules, and `platformio.ini` when that shared build index affects the env.
+- The unified firmware OTA workflow should watch only its workflow file, active firmware folders, build-affecting helper scripts, required common modules, and `platformio.ini` when that shared build index affects the env.
 - Runtime-configured firmware stores provisioned values in ESP32 NVS, so changing Wi-Fi/MQTT/gameplay tuning should not require a firmware rebuild.
 - Do not duplicate common NVS/Wi-Fi/OTA/topic utility implementations inside every firmware folder. Put shared code under capability-specific `bb_esp_*` private libraries and include only what each env needs.
 - MQTT domain commands are allowed to differ by firmware; keep command parsing and safety checks inside the firmware domain layer.

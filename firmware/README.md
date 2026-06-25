@@ -126,8 +126,8 @@ Active standardized OTA channels should be owned by the corresponding firmware f
 | `turret_fleet` | `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json` | `turret-fleet-v{version}` |
 
 Go2, Go2-Nixo, Boss Target, Heavy Blaster, and Turret Fleet all use firmware-specific OTA manifest channels. `hit_target` is unused and should not be used as the reference OTA channel for new work.
-The GitHub Actions workflows publish these channels without using repo-wide `latest`: `active-firmware-ota.yml` covers Go2, Go2-Nixo 1ch, Go2-Nixo 2ch, and Heavy Blaster and builds only the affected firmware matrix entries; the existing boss/turret workflows cover Boss Target and Turret Fleet.
-Host-only provisioning/MQTT helper changes under `scripts/go2/`, `scripts/go2_runtime/`, `scripts/go2_nixo/`, or `scripts/heavy_blaster/` do not trigger OTA release builds. Build-affecting extra scripts (`scripts/go2_config.py`, `scripts/go2_nixo_config.py`) and the shared manifest generator still trigger the relevant release job.
+The unified `Firmware OTA Releases` workflow covers all active firmware families and publishes these channels without using repo-wide `latest`. On `main` pushes it builds only the affected firmware matrix entries; manual dispatch builds the full matrix for branch smoke/release validation.
+Host-only provisioning/MQTT helper changes under `scripts/boss_target/`, `scripts/go2/`, `scripts/go2_runtime/`, `scripts/go2_nixo/`, `scripts/heavy_blaster/`, or `scripts/turret_fleet/` do not trigger OTA release builds. Build-affecting extra scripts (`scripts/go2_config.py`, `scripts/go2_nixo_config.py`) and the shared manifest generator still trigger the relevant release job.
 
 ## Bench hardware validation IDs
 

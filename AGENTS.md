@@ -36,10 +36,8 @@ python3 -m py_compile scripts/turret_fleet/*.py scripts/hit_target/*.py tests/py
 
 ## Hit target operating model
 
-- `src/hit_target/` is the generic standalone circular LED hit-target firmware. It is separate from Go2-mounted hit targets and from turret fleet.
-- Device identity is derived from ESP32 eFuse MAC by default; use runtime `group` and `location` metadata instead of numbered target build profiles.
-- Wi-Fi, MQTT/Command Center host, gameplay HP phases, sensor tuning, and OTA policy are provisioned into NVS from `src/hit_target/.env.hit_target` via `scripts/hit_target/provision.py`.
-- Keep hit-target GitHub Actions scoped to hit-target source/scripts plus the shared `platformio.ini` build index.
+- `src/hit_target/` is legacy/unused for the current active firmware plan. Do not use it as the reference NVS/MQTT/OTA pattern for new work.
+- Active firmware OTA release automation is centralized in the unified Firmware OTA Releases workflow.
 
 ## Turret fleet operating model
 
@@ -58,11 +56,9 @@ python3 -m py_compile scripts/turret_fleet/*.py scripts/hit_target/*.py tests/py
 
 ## OTA policy
 
-- GitHub Actions builds `esp32dev_turret_fleet` and `esp32dev_hit_target` into separate release channels by default.
-- Do not use repo-wide `/releases/latest/download/...` for device polling in this multi-firmware repo. Use firmware-specific stable tags:
-  - turret fleet: `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json`
-  - hit target: `https://github.com/KongPedia/battlebang-esp/releases/download/hit-target-latest/hit-target-manifest.json`
-- Versioned tags (`turret-fleet-v{version}`, `hit-target-v{version}`) remain audit points. Stable tags are only polling pointers and must not overwrite another firmware family's manifest asset.
+- GitHub Actions builds active firmware through one matrix workflow and publishes firmware-specific release channels.
+- Do not use repo-wide `/releases/latest/download/...` for device polling in this multi-firmware repo. Use firmware-specific stable tags such as `boss-target-latest`, `turret-fleet-latest`, `go2-latest`, `go2-nixo-1ch-latest`, `go2-nixo-2ch-latest`, and `heavy-blaster-latest`.
+- Versioned tags (`{firmware}-v{version}`) remain audit points. Stable tags are only polling pointers and must not overwrite another firmware family's manifest asset.
 - Automatic polling applies only when enabled by runtime config. With `ota.command_center_controlled=true`, the polled manifest build must exactly match `ota.desired_build`.
 - Direct MQTT `/ota` manifest messages are treated as Command Center-approved jobs and still pass app/hardware/build/hash/safe-state checks.
 

@@ -537,7 +537,7 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     firmware = read("firmware/turret_fleet/app/firmware_info.h")
     script = read("scripts/turret_fleet/make_release_manifest.py")
     provision = read("scripts/turret_fleet/provision.py")
-    workflow = read(".github/workflows/turret-fleet-firmware.yml")
+    workflow = read(".github/workflows/boss-target-firmware.yml")
     example = json.loads(read("firmware/turret_fleet/examples/ota-manifest.example.json"))
 
     assert 'BB_TURRET_FLEET_APP_NAME "battlebang-turret-fleet"' in firmware
@@ -561,9 +561,10 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert "steps.version.outputs.public_release_repo" in workflow
     assert 'if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then' in workflow
     assert 'export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"' in workflow
-    assert 'STABLE_TAG="turret-fleet-latest"' in workflow
+    assert "turret-fleet-latest" in workflow
+    assert "turret-fleet-v" in workflow
+    assert '"manifest_name": "manifest.json"' in workflow
     assert '--latest=false' in workflow
-    assert 'releases/download/turret-fleet-latest/manifest.json' in workflow
     assert example["app"] == "battlebang-turret-fleet"
     assert example["hardware"] == "esp32dev-turret-v2"
 
