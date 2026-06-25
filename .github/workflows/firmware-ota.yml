@@ -79,14 +79,6 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          shared_firmware_paths = [
-              r"^lib/bb_esp_core/",
-              r"^lib/bb_esp_hw/",
-              r"^lib/bb_esp_net/",
-              r"^lib/bb_esp_nvs/",
-              r"^lib/bb_esp_ota/",
-          ]
-
           firmware_jobs = [
               {
                   "id": "boss-target",
@@ -102,7 +94,7 @@ jobs:
                   "git_macro": "BB_BOSS_TARGET_GIT_SHA",
                   "version_tag_prefix": "boss-target-v",
                   "stable_tag": "boss-target-latest",
-                  "paths": [r"^firmware/boss_target/", *shared_firmware_paths],
+                  "paths": [r"^firmware/boss_target/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "go2",
@@ -118,7 +110,7 @@ jobs:
                   "git_macro": "BB_GO2_GIT_SHA",
                   "version_tag_prefix": "go2-v",
                   "stable_tag": "go2-latest",
-                  "paths": [r"^firmware/go2/", r"^scripts/go2_config\.py$", *shared_firmware_paths],
+                  "paths": [r"^firmware/go2/", r"^scripts/go2_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "go2-nixo-1ch",
@@ -134,7 +126,7 @@ jobs:
                   "git_macro": "BB_GO2_NIXO_GIT_SHA",
                   "version_tag_prefix": "go2-nixo-1ch-v",
                   "stable_tag": "go2-nixo-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", *shared_firmware_paths],
+                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "go2-nixo-2ch",
@@ -150,7 +142,7 @@ jobs:
                   "git_macro": "BB_GO2_NIXO_GIT_SHA",
                   "version_tag_prefix": "go2-nixo-2ch-v",
                   "stable_tag": "go2-nixo-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", *shared_firmware_paths],
+                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "heavy-blaster",
@@ -166,7 +158,7 @@ jobs:
                   "git_macro": "BB_HEAVY_BLASTER_GIT_SHA",
                   "version_tag_prefix": "heavy-blaster-v",
                   "stable_tag": "heavy-blaster-latest",
-                  "paths": [r"^firmware/heavy_blaster/", *shared_firmware_paths],
+                  "paths": [r"^firmware/heavy_blaster/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "turret-fleet",
@@ -182,7 +174,7 @@ jobs:
                   "git_macro": "BB_TURRET_FLEET_GIT_SHA",
                   "version_tag_prefix": "turret-fleet-v",
                   "stable_tag": "turret-fleet-latest",
-                  "paths": [r"^firmware/turret_fleet/", *shared_firmware_paths],
+                  "paths": [r"^firmware/turret_fleet/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
           ]
 

@@ -238,6 +238,9 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert 'r"^firmware/turret_fleet/"' in workflow
     assert 'r"^lib/bb_esp_hw/"' in workflow
     assert 'r"^lib/bb_esp_net/"' in workflow
+    assert '"paths": [r"^firmware/go2/", r"^scripts/go2_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
+    assert '"paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
+    assert '"paths": [r"^firmware/heavy_blaster/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
 
     assert "lib/bb_esp_core/**" in workflow
     assert "lib/bb_esp_nvs/**" in workflow
