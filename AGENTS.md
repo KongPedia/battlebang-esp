@@ -34,6 +34,15 @@ python3 -m py_compile scripts/turret_fleet/*.py scripts/hit_target/*.py tests/py
 ```
 
 
+## New firmware agent workflow
+
+- For new active firmware, read and follow `firmware/AGENTS.md` before adding code.
+- Put deployable firmware applications under `firmware/<name>/`; do not add new active firmware under `src/`.
+- Put reusable firmware-agnostic code under capability-scoped `lib/bb_esp_*` libraries and follow `lib/AGENTS.md`.
+- Add or update `.github/workflows/firmware-ota.yml` matrix rows according to `.github/workflows/AGENTS.md`.
+- Lock layout/NVS/MQTT/OTA/Actions expectations with tests under `tests/` and follow `tests/AGENTS.md`.
+- Use README files for human/operator explanations; use AGENTS.md files for agent execution rules. A Codex skill is not the right home for repo-specific firmware onboarding rules unless the guidance must be reused across many repositories.
+
 ## Hit target operating model
 
 - `src/hit_target/` is legacy/unused for the current active firmware plan. Do not use it as the reference NVS/MQTT/OTA pattern for new work.

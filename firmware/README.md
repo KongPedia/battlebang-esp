@@ -39,6 +39,8 @@ scripts/
 
 Migration should be incremental. Do not move all existing firmware at once unless the corresponding PlatformIO envs, helper scripts, CI path filters, release workflows, and tests are updated in the same change.
 
+Agent-facing rules live in `firmware/AGENTS.md`, `lib/AGENTS.md`, `.github/workflows/AGENTS.md`, and `tests/AGENTS.md`. README files remain the human/operator explanation layer; AGENTS files are the execution contract for coding agents.
+
 
 ## Current branch status
 
