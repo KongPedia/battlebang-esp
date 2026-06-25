@@ -246,6 +246,28 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert "lib/bb_esp_nvs/**" in workflow
     assert "lib/bb_esp_ota/**" in workflow
     assert "scripts/firmware/make_release_manifest.py" in workflow
+    assert 'VERSION="0.2.${GITHUB_RUN_NUMBER}-main"' in workflow
+    assert 'BUILD="$((1000 + GITHUB_RUN_NUMBER))"' in workflow
+    assert "update_stable_latest" in workflow
+    assert 'UPDATE_STABLE_LATEST="true"' in workflow
+    assert 'UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"' in workflow
+    assert 'if [[ "${UPDATE_STABLE_LATEST}" == "true" ]]; then' in workflow
+    assert 'update_stable_latest=false keeps branch smoke builds' in workflow
+    assert 'tag_sha()' in workflow
+    assert 'ensure_version_tag_available()' in workflow
+    assert 'move_tag_to_target()' in workflow
+    assert 'gh api -X PATCH "repos/${PUBLIC_REPO}/git/refs/tags/${tag}"' in workflow
+    assert 'ensure_version_tag_available "${tag}" "${RELEASE_TARGET_SHA}"' in workflow
+    assert 'move_tag_to_target "${tag}" "${RELEASE_TARGET_SHA}"' in workflow
+    assert '--target "${RELEASE_TARGET_SHA}"' in workflow
+    assert 'upload_release "${VERSION_TAG}"' in workflow
+    assert 'upload_release "${STABLE_TAG}"' in workflow
+    version_upload = workflow.split('upload_release "${VERSION_TAG}"', 1)[1].split(
+        'upload_release "${STABLE_TAG}"', 1
+    )[0]
+    stable_upload = workflow.split('upload_release "${STABLE_TAG}"', 1)[1]
+    assert '"false"' in version_upload
+    assert '"true"' in stable_upload
 
     assert "The unified `Firmware OTA Releases` workflow covers all active firmware families" in firmware_readme
     assert "builds only the affected firmware matrix entries" in firmware_readme

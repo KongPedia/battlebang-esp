@@ -553,8 +553,10 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert 'GITHUB_EVENT_NAME" == "pull_request"' not in workflow
     assert "branches:" in workflow
     assert "- main" in workflow
-    assert 'VERSION="0.1.${GITHUB_RUN_NUMBER}-main"' in workflow
-    assert 'BUILD="${GITHUB_RUN_NUMBER}"' in workflow
+    assert 'VERSION="0.2.${GITHUB_RUN_NUMBER}-main"' in workflow
+    assert 'BUILD="$((1000 + GITHUB_RUN_NUMBER))"' in workflow
+    assert "update_stable_latest" in workflow
+    assert 'UPDATE_STABLE_LATEST="true"' in workflow
     assert 'default: "KongPedia/battlebang-esp"' in workflow
     assert "DEFAULT_GITHUB_TOKEN: ${{ github.token }}" in workflow
     assert "PUBLIC_RELEASE_REPO_TOKEN: ${{ secrets.PUBLIC_RELEASE_REPO_TOKEN }}" in workflow
