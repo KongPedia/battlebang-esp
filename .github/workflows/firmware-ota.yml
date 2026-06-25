@@ -377,7 +377,10 @@ jobs:
 
           tag_sha() {
             local tag="$1"
-            gh api "repos/${PUBLIC_REPO}/git/ref/tags/${tag}" --jq '.object.sha' 2>/dev/null || true
+            local existing_sha
+            if existing_sha="$(gh api "repos/${PUBLIC_REPO}/git/ref/tags/${tag}" --jq '.object.sha' 2>/dev/null)"; then
+              printf '%s\n' "${existing_sha}"
+            fi
           }
 
           ensure_version_tag_available() {

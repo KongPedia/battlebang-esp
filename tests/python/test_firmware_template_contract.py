@@ -254,6 +254,8 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert 'if [[ "${UPDATE_STABLE_LATEST}" == "true" ]]; then' in workflow
     assert 'update_stable_latest=false keeps branch smoke builds' in workflow
     assert 'tag_sha()' in workflow
+    assert 'if existing_sha="$(gh api "repos/${PUBLIC_REPO}/git/ref/tags/${tag}"' in workflow
+    assert 'printf '"'"'%s\\n'"'"' "${existing_sha}"' in workflow
     assert 'ensure_version_tag_available()' in workflow
     assert 'move_tag_to_target()' in workflow
     assert 'gh api -X PATCH "repos/${PUBLIC_REPO}/git/refs/tags/${tag}"' in workflow
