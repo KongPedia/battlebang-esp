@@ -1,7 +1,5 @@
-# Historical filename retained so this PR branch can be workflow_dispatch'ed before
-# the unified workflow lands on the default branch. This file is the canonical
-# monorepo firmware OTA workflow; it is intentionally not boss-target-only.
 name: Firmware OTA Releases
+run-name: Firmware OTA Releases
 
 on:
   push:
@@ -10,7 +8,7 @@ on:
     # Monorepo firmware trigger: host-only provisioning/MQTT helper edits do not
     # publish OTA assets unless they are part of firmware generation itself.
     paths:
-      - ".github/workflows/boss-target-firmware.yml"
+      - ".github/workflows/firmware-ota.yml"
       - "platformio.ini"
       - "firmware/boss_target/**"
       - "firmware/go2/**"
@@ -189,7 +187,7 @@ jobs:
           ]
 
           always_all_paths = [
-              r"^\.github/workflows/boss-target-firmware\.yml$",
+              r"^\.github/workflows/firmware-ota\.yml$",
               r"^platformio\.ini$",
               r"^scripts/firmware/make_release_manifest\.py$",
           ]
@@ -384,7 +382,7 @@ jobs:
             fi
           }
 
-          upload_release "${VERSION_TAG}" "${VERSION_TAG}" \
-            "BattleBang ${{ matrix.id }} firmware built from private source commit ${GITHUB_SHA}."
-          upload_release "${STABLE_TAG}" "BattleBang ${{ matrix.id }} latest" \
-            "Stable ${{ matrix.channel }} OTA manifest. Devices poll /releases/download/${STABLE_TAG}/${{ matrix.manifest_name }}; firmware URLs inside the manifest still point at versioned release assets."
+          upload_release "${VERSION_TAG}" "BattleBang ${{ matrix.id }} ${{ steps.version.outputs.version }}" \
+            "BattleBang ${{ matrix.id }} firmware version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }} built from private source commit ${GITHUB_SHA}."
+          upload_release "${STABLE_TAG}" "BattleBang ${{ matrix.id }} latest (${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }})" \
+            "Stable ${{ matrix.channel }} OTA manifest for version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }}. Devices poll /releases/download/${STABLE_TAG}/${{ matrix.manifest_name }}; firmware URLs inside the manifest still point at versioned release assets."

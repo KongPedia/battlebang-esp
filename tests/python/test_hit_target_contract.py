@@ -438,7 +438,7 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
 
 def test_hit_target_github_action_removed_while_firmware_ota_action_is_scoped() -> None:
     assert not (ROOT / ".github/workflows/hit-target-firmware.yml").exists()
-    workflow = read(".github/workflows/boss-target-firmware.yml")
+    workflow = read(".github/workflows/firmware-ota.yml")
 
     assert "Firmware OTA Releases" in workflow
     assert '"firmware/boss_target/**"' in workflow

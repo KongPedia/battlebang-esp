@@ -8,7 +8,7 @@ first provisioning and later MQTT/NVS config.
 
 ## Triggers
 
-The workflow the unified `Firmware OTA Releases` workflow (`.github/workflows/boss-target-firmware.yml`) supports both normal
+The unified `Firmware OTA Releases` workflow (`.github/workflows/firmware-ota.yml`) supports both normal
 merge-to-main releases and manual smoke-test builds.
 
 ### Automatic merge-to-main release
@@ -16,7 +16,7 @@ merge-to-main releases and manual smoke-test builds.
 A push to `main` automatically runs the workflow when one of these paths changes:
 
 ```yaml
-.github/workflows/boss-target-firmware.yml
+.github/workflows/firmware-ota.yml
 platformio.ini
 firmware/turret_fleet/**
 scripts/turret_fleet/**
@@ -39,7 +39,7 @@ the local build-5 smoke-test firmware.
 Manual runs remain available for PR smoke tests or one-off builds:
 
 ```bash
-gh workflow run boss-target-firmware.yml \
+gh workflow run firmware-ota.yml \
   --repo KongPedia/battlebang-esp \
   --ref feature/BTB-721-turret-fleet-rebuild-plan \
   -f version=0.1.4-pr9-bootfix \

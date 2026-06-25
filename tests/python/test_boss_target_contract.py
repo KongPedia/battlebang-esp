@@ -258,7 +258,7 @@ def test_boss_target_mqtt_topics_status_and_ota_are_firmware_specific() -> None:
     manifest = read("firmware/boss_target/ota/ota_manifest.cpp")
     manifest_h = read("firmware/boss_target/ota/ota_manifest.h")
     common_manifest = read("lib/bb_esp_ota/src/bb_esp_ota/ota_manifest.cpp")
-    workflow = read(".github/workflows/boss-target-firmware.yml")
+    workflow = read(".github/workflows/firmware-ota.yml")
     pio = read("platformio.ini")
 
     assert "#include <bb_esp_core/mqtt/device_topics.h>" in topics

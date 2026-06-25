@@ -178,9 +178,11 @@ def test_go2_standardization_checkpoint_is_locked_before_path_moves() -> None:
 
 
 def test_active_ota_release_workflows_publish_firmware_specific_stable_channels() -> None:
-    workflow = read(".github/workflows/boss-target-firmware.yml")
+    workflow = read(".github/workflows/firmware-ota.yml")
     firmware_readme = read("firmware/README.md")
 
+    assert (ROOT / ".github/workflows/firmware-ota.yml").exists()
+    assert not (ROOT / ".github/workflows/boss-target-firmware.yml").exists()
     assert not (ROOT / ".github/workflows/active-firmware-ota.yml").exists()
     assert not (ROOT / ".github/workflows/turret-fleet-firmware.yml").exists()
 
@@ -280,7 +282,7 @@ def test_moved_firmware_entrypoints_do_not_point_to_old_src_paths() -> None:
         "firmware/README.md",
         "firmware/MIGRATION_PLAN.md",
         "platformio.ini",
-        ".github/workflows/boss-target-firmware.yml",
+        ".github/workflows/firmware-ota.yml",
         "scripts/heavy_blaster/mqtt_command.py",
         "scripts/heavy_blaster/provision.py",
         "scripts/turret_fleet/provision.py",

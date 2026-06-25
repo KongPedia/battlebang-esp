@@ -537,7 +537,7 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     firmware = read("firmware/turret_fleet/app/firmware_info.h")
     script = read("scripts/turret_fleet/make_release_manifest.py")
     provision = read("scripts/turret_fleet/provision.py")
-    workflow = read(".github/workflows/boss-target-firmware.yml")
+    workflow = read(".github/workflows/firmware-ota.yml")
     example = json.loads(read("firmware/turret_fleet/examples/ota-manifest.example.json"))
 
     assert 'BB_TURRET_FLEET_APP_NAME "battlebang-turret-fleet"' in firmware
