@@ -118,6 +118,9 @@ def test_runtime_config_persists_gameplay_network_mqtt_and_ota_in_nvs() -> None:
     assert 'JsonObjectConst wifi = doc["wifi"]' in source
     assert 'JsonObjectConst mqtt = doc["mqtt"]' in source
     assert 'JsonObjectConst ota = doc["ota"]' in source
+    assert "#include <bb_esp_core/config/runtime_config_json.h>" in source
+    assert 'validateOtaManifestUrl(\n          config.otaPublicManifestUrl, "ota.public_manifest_url", error)' in source
+    assert 'validateOtaManifestUrl(\n          config.otaLocalMirrorUrl, "ota.local_mirror_url", error)' in source
     assert 'wifi["password"] = includeSecrets ? config.wifiPassword : "***"' in source
     assert 'mqtt["password"] = includeSecrets ? config.mqttPassword : "***"' in source
     assert "led pin/type/color_order are hardware-profile build values" in source
@@ -194,13 +197,14 @@ def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
     bus = read("src/hit_target/mqtt/mqtt_bus.cpp")
     pio = read("platformio.ini")
 
-    assert 'root + "/devices/" + config.deviceId + "/status"' in topics
-    assert 'root + "/devices/" + config.deviceId + "/config"' in topics
-    assert 'root + "/devices/" + config.deviceId + "/ota"' in topics
+    assert 'root + "/devices/hit_target/" + config.deviceId + "/status"' in topics
+    assert 'root + "/devices/hit_target/" + config.deviceId + "/config"' in topics
+    assert 'root + "/devices/hit_target/" + config.deviceId + "/ota"' in topics
     assert 'root + "/hit_targets/all/ota"' in topics
     assert 'root + "/hit_targets/" + config.targetId' in topics
     assert 'topics.targetCommand = base + "/command"' in topics
     assert 'if (normalized == "turret") return "turrets";' in topics
+    assert 'return "devices/" + normalized;' in topics
     assert 'topics.linkedDeviceStatus = root + "/" + linkedDeviceCollection(config.activation.linkedDeviceKind)' in topics
     assert "if (topics.linkedDeviceStatus.length() > 0) result.push_back(topics.linkedDeviceStatus);" in topics
 

@@ -57,6 +57,27 @@ inline void normalizeCommonRuntimeConfig(CommonRuntimeConfig& config) {
   if (config.otaChannel.length() == 0) config.otaChannel = "stable";
 }
 
+inline bool otaUrlHasHost(const String& url, const char* host) {
+  const String http = String("http://") + host;
+  const String https = String("https://") + host;
+  return url == http || url == https || url.startsWith(http + "/") || url.startsWith(https + "/");
+}
+
+inline bool isExamplePlaceholderUrl(String url) {
+  url.trim();
+  url.toLowerCase();
+  return otaUrlHasHost(url, "example.invalid") ||
+         otaUrlHasHost(url, "example.com") ||
+         otaUrlHasHost(url, "example.org") ||
+         otaUrlHasHost(url, "example.net");
+}
+
+inline bool validateOtaManifestUrl(const String& url, const char* fieldName, String& error) {
+  if (!isExamplePlaceholderUrl(url)) return true;
+  error = String(fieldName) + " must use a real release manifest URL, not an example placeholder URL";
+  return false;
+}
+
 inline bool validateCommonRuntimeConfig(CommonRuntimeConfig& config, String& error) {
   normalizeCommonRuntimeConfig(config);
   if (config.schema == 0) {
@@ -78,6 +99,12 @@ inline bool validateCommonRuntimeConfig(CommonRuntimeConfig& config, String& err
   if (!battlebang::esp::mqtt::normalizeConfiguredRoot(config.mqttRoot, error)) return false;
   if (!battlebang::esp::mqtt::isSafeTopicSegment(config.otaChannel)) {
     error = "ota.channel must be a safe topic segment";
+    return false;
+  }
+  if (!validateOtaManifestUrl(config.otaPublicManifestUrl, "ota.public_manifest_url", error)) {
+    return false;
+  }
+  if (!validateOtaManifestUrl(config.otaLocalMirrorUrl, "ota.local_mirror_url", error)) {
     return false;
   }
   if (config.configured && config.wifiSsid.length() == 0) {

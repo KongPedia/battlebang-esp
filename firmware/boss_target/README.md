@@ -137,9 +137,9 @@ Default gameplay is simple and production-readable:
 With `mqtt.root=battlebang` and `boss_id=boss_target_AABBCCDDEEFF`:
 
 ```text
-battlebang/devices/{device_id}/status
-battlebang/devices/{device_id}/config
-battlebang/devices/{device_id}/ota
+battlebang/devices/boss_target/{device_id}/status
+battlebang/devices/boss_target/{device_id}/config
+battlebang/devices/boss_target/{device_id}/ota
 battlebang/boss_targets/{boss_id}/status
 battlebang/boss_targets/{boss_id}/config
 battlebang/boss_targets/{boss_id}/command

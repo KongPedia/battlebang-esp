@@ -85,7 +85,7 @@ void HitMqttClient::begin(const RuntimeConfig& config, BarDisplayHandler barHand
   const String ringCommandTopic = battlebang::esp::mqtt::joinTopic(
       config.hit.hitTopicPrefix, config.hit.robotId, "ring_display", "command");
   const battlebang::esp::mqtt::DeviceTopics deviceTopics =
-      battlebang::esp::mqtt::makeDeviceTopics(config.common.mqttRoot, config.common.deviceId);
+      battlebang::esp::mqtt::makeDeviceTopics(config.common.mqttRoot, "go2", config.common.deviceId);
   copyStringOrWarn("mqtt.event_topic", eventTopic, eventTopic_, sizeof(eventTopic_));
   copyStringOrWarn("mqtt.ring_command_topic", ringCommandTopic, ringCommandTopic_, sizeof(ringCommandTopic_));
   copyStringOrWarn("mqtt.device_status_topic", deviceTopics.status, deviceStatusTopic_, sizeof(deviceStatusTopic_));

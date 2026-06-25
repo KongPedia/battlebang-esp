@@ -159,12 +159,13 @@ def topic_for(root: str, kind: str, identifier: str | None, suffix: str, all_ota
     if not identifier:
         raise HitTargetMqttError(f"missing --{kind}-id for {suffix} topic")
     if kind == "device":
-        return f"{root}/devices/{identifier}/{suffix}"
+        return f"{root}/devices/hit_target/{identifier}/{suffix}"
     return f"{root}/hit_targets/{identifier}/{suffix}"
 
 
 def linked_device_collection(device_kind: str) -> str:
-    return "turrets" if device_kind.strip().lower() == "turret" else "devices"
+    normalized = device_kind.strip().lower()
+    return "turrets" if normalized == "turret" else f"devices/{normalized}"
 
 
 def linked_device_status_topic(root: str, device_kind: str, device_id: str) -> str:

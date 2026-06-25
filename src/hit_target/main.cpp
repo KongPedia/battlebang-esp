@@ -262,7 +262,7 @@ void printHelp() {
   Serial.println("[CMD] r/2=reset, h=simulate hit, s/status/show-status=JSON status");
   Serial.println("[CMD] show-config, config {json}, provision {json}, clear-config");
   Serial.println("[CMD] start-network, stop-network, check-ota [url], help");
-  Serial.println("[MQTT] {root}/devices/{device_id}/status|config|ota");
+  Serial.println("[MQTT] {root}/devices/hit_target/{device_id}/status|config|ota");
   Serial.println("[MQTT] {root}/hit_targets/{target_id}/status|config|command|ota and {root}/hit_targets/all/ota");
 }
 

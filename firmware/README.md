@@ -167,10 +167,10 @@ For stage-scoped Command Center routing, set `stage_id` during provisioning
 its device management topic and firmware-domain topic, for example:
 
 ```text
-battlebang/devices/go2_dev_01/status
+battlebang/devices/go2/go2_dev_01/status
 battlebang/hit/go2_dev_01/events
-battlebang/devices/heavy_blaster_dev_01/status
+battlebang/devices/heavy_blaster/heavy_blaster_dev_01/status
 battlebang/heavy-blasters/heavy_blaster_dev_01/status
-battlebang/devices/turret_dev_01/status
+battlebang/devices/turret/turret_dev_01/status
 battlebang/turrets/turret_dev_01/status
 ```

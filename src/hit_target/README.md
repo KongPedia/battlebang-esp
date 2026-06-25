@@ -32,7 +32,7 @@ Defaults are migrated from the wall-mounted target bench sketch on `origin/Heavy
 | HP phases | config | Default `hp_phase_count=3`, `hits_per_phase=5`, `max_hits=15`. |
 | Hit cooldown | config | Lock term after one accepted hit. |
 | Hit threshold / re-arm threshold | config | AO sensitivity only. Lower `hit_threshold` is more sensitive; keep re-arm lower than hit threshold. |
-| Activation mode | config | `always_on` or `linked_device`; kind `turret` follows `{root}/turrets/{linked_device_id}/status`, other kinds use `{root}/devices/{linked_device_id}/status`. |
+| Activation mode | config | `always_on` or `linked_device`; kind `turret` follows `{root}/turrets/{linked_device_id}/status`, other kinds use `{root}/devices/{linked_device_kind}/{linked_device_id}/status`. |
 | Damage chip | config | Current default is 240 ms for compact/faster HP loss. |
 | Defeat rainbow | config | Final HP=0 completion beat/sweep. Default `defeat_blackout_ms=90`, `defeat_rainbow_ms=1900`, `defeat_rainbow_spins=2`. |
 | Phase backfill gap/scale | config | Shows dim next-phase color behind missing HP with black edge gaps. |
@@ -135,7 +135,7 @@ If the analog line is not wired yet, use `BATTLEBANG_HIT_TARGET_PIEZO_AO_PIN=-1`
 - `defeat_rainbow_ms`: duration of the final HP=0 rainbow gradient before blackout. Default `1900`.
 - `defeat_rainbow_spins`: how many hue rotations the rainbow completes during that defeat window. Default `2`; higher feels more energetic but can become noisy.
 - `activation.mode`: `always_on` ignores linked device state and stays damageable whenever enabled; use this for standalone/Go2-style targets. `linked_device` gates LEDs/hits from a linked status topic.
-- `activation.linked_device_kind`: device kind to follow. Current production value is `turret`; future/generic devices use the `devices/{id}/status` extension point.
+- `activation.linked_device_kind`: device kind to follow. Current production value is `turret`; future/generic devices use the `devices/{kind}/{id}/status` extension point.
 - `activation.linked_device_id`: linked device id to follow in `linked_device` mode, for example `turret_4`.
 - `activation.stale_ms`: linked device status timeout. If no fresh linked status arrives within this window, LEDs turn off and piezo hits are ignored.
 - Command Center bridge: `destroyed=true` plus `linked_device_kind=turret` and `linked_device_id` is the only coupling needed for HP0 -> turret `dead`; repeated destroyed status with the same hit `sequence` is deduped by Command Center.
@@ -194,7 +194,7 @@ What each common config value changes:
 | `hp.palette` | Phase colors. Default green → yellow/orange → red. | Use readable high-contrast colors; dark colors reduce HP readability. |
 | `visual.damage_chip_ms` | How long the removed HP chunk sequentially wipes away. | Lower feels faster; too low makes HP loss hard to see. |
 | `activation.mode` | `always_on` or `linked_device`. | Use `linked_device` only when a linked status topic exists. |
-| `activation.linked_device_kind` | Linked device kind. | `turret` maps to turret status; other kinds use generic device status. |
+| `activation.linked_device_kind` | Linked device kind. | `turret` maps to turret status; other kinds use typed generic device status. |
 | `activation.linked_device_id` | Device id to follow. | Required for linked mode. |
 | `activation.stale_ms` | Linked status freshness window. | Too high can keep vulnerability after a disconnected turret; too low can flicker if status heartbeat is slow. |
 | `sensor.hit_cooldown_ms` | Lockout after one accepted hit. | Prevents one burst from dropping many HP steps. |
@@ -207,16 +207,16 @@ All operational config is represented in runtime config and persisted in NVS aft
 MQTT topics use device-level discovery plus hit-target-level control:
 
 ```text
-{root}/devices/{device_id}/status
-{root}/devices/{device_id}/config
-{root}/devices/{device_id}/ota
+{root}/devices/hit_target/{device_id}/status
+{root}/devices/hit_target/{device_id}/config
+{root}/devices/hit_target/{device_id}/ota
 {root}/hit_targets/{target_id}/status
 {root}/hit_targets/{target_id}/config
 {root}/hit_targets/{target_id}/command
 {root}/hit_targets/{target_id}/ota
 {root}/hit_targets/all/ota
 {root}/turrets/{linked_device_id}/status        # subscribed when linked_device_kind=turret
-{root}/devices/{linked_device_id}/status        # extension point for non-turret linked devices
+{root}/devices/{linked_device_kind}/{linked_device_id}/status  # extension point for non-turret linked devices
 ```
 
 Supported MQTT commands on `{root}/hit_targets/{target_id}/command`:

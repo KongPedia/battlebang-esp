@@ -196,7 +196,7 @@ firmware/turret_fleet/
 Topic:
 
 ```text
-battlebang/devices/{device_id}/config
+battlebang/devices/turret/{device_id}/config
 battlebang/turrets/{turret_id}/config
 ```
 
@@ -479,7 +479,7 @@ Example commands:
 #    Serial line example: config {json}
 
 # 4. After reboot/network, tune config over MQTT without USB/rebuild
-mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/devices/esp32-001122334455/config -m @firmware/turret_fleet/examples/config.boss_turret.json
+mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/devices/turret/esp32-001122334455/config -m @firmware/turret_fleet/examples/config.boss_turret.json
 
 # 5. Aim only
 mosquitto_pub -h <COMMAND_CENTER_IP> -t battlebang/turrets/boss_1f_left/command -m '{"command":"target","frame_id":"boss_stage_v1","target":{"x":1.2,"y":0.4,"z":0.7}}'

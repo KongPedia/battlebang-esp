@@ -215,7 +215,7 @@ def test_go2_standardization_checkpoint_is_locked_before_path_moves() -> None:
 
     assert "ota_supported=true" in go2_readme
     assert "ota_supported=true" in go2_nixo_readme
-    assert "MQTT `{mqtt_root}/devices/{device_id}/ota`" in go2_readme
+    assert "MQTT `{mqtt_root}/devices/go2/{device_id}/ota`" in go2_readme
     assert "`local_secrets.h`는 표준 경로에서 필요하지 않습니다" in go2_readme
     assert "local_secrets.h` is not read by default" in go2_nixo_readme
     assert "OTA is deferred while the Nixo relay is firing" in go2_nixo_readme

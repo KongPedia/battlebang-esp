@@ -255,7 +255,7 @@ void applyAndPersistConfig(const char* json, const char* source) {
 void printHelp() {
   Serial.println("[CMD] status/show-status, reset/lock, unlock, set-slot <0..3> <0|1>, set-slots <bitmask>, show-config");
   Serial.println("[CMD] config {json}, provision {json}, clear-config, check-ota [manifest-url], start-network, stop-network, help");
-  Serial.println("[MQTT] {root}/devices/{device_id}/status|config|ota");
+  Serial.println("[MQTT] {root}/devices/heavy_blaster/{device_id}/status|config|ota");
   Serial.println("[MQTT] {root}/heavy-blasters/{blaster_id}/status|config|command|ota and {root}/heavy-blasters/all/ota");
   Serial.println("[NOTE] Bluetooth prototype controls are not production commands; use MQTT from Command Center.");
 }

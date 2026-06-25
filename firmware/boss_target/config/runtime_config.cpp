@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <bb_esp_core/config/common_runtime_config.h>
+#include <bb_esp_core/config/runtime_config_json.h>
 #include <bb_esp_nvs/common_runtime_config_store.h>
 
 #include "boss_target/app/firmware_info.h"
@@ -331,6 +332,16 @@ bool validateConfig(RuntimeConfig& config, String& error) {
     return false;
   }
   if (!validateMqttRoot(config, error)) return false;
+  config.otaPublicManifestUrl.trim();
+  config.otaLocalMirrorUrl.trim();
+  if (!battlebang::esp::config::validateOtaManifestUrl(
+          config.otaPublicManifestUrl, "ota.public_manifest_url", error)) {
+    return false;
+  }
+  if (!battlebang::esp::config::validateOtaManifestUrl(
+          config.otaLocalMirrorUrl, "ota.local_mirror_url", error)) {
+    return false;
+  }
   if (config.otaCheckIntervalS < 30) config.otaCheckIntervalS = 30;
   if (!hardwareProfileMatchesCompiled(config)) {
     error = "hardware_profile does not match compiled boss-target board profile";

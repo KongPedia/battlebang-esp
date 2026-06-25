@@ -22,7 +22,7 @@ Responsibilities:
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
 - Command Center → ESP HP bar: `battlebang/hit/{robot_id}/ring_display/command`
 - Command Center → Nixo relay: `battlebang/nixo/{nixo_id}/command`
-- Device management: `{mqtt_root}/devices/{device_id}/status|config|ota`
+- Device management: `{mqtt_root}/devices/go2_nixo/{device_id}/status|config|ota`
 
 Example after provisioning `robot_id=go2_03`, `nixo_id=nixo_go2_03`:
 
@@ -87,7 +87,7 @@ Do not put relay pins, relay polarity, relay channel count, or physical LED capa
 
 ## OTA
 
-Go2-Nixo uses the common `bb_esp_ota` HTTP OTA engine. `show-status` and MQTT device status include `ota_supported=true`, `ota_manifest_url`, `ota_channel`, `ota_desired_build`, and `post_ota_reboot`. Serial/BT/Jetson `check-ota [manifest-url]`, MQTT `{mqtt_root}/devices/{device_id}/ota`, and automatic polling all pass through manifest app/hardware/build/hash/safe-state checks. If `ota.apply_only_in_safe_state=true`, OTA is deferred while the Nixo relay is firing.
+Go2-Nixo uses the common `bb_esp_ota` HTTP OTA engine. `show-status` and MQTT device status include `ota_supported=true`, `ota_manifest_url`, `ota_channel`, `ota_desired_build`, and `post_ota_reboot`. Serial/BT/Jetson `check-ota [manifest-url]`, MQTT `{mqtt_root}/devices/go2_nixo/{device_id}/ota`, and automatic polling all pass through manifest app/hardware/build/hash/safe-state checks. If `ota.apply_only_in_safe_state=true`, OTA is deferred while the Nixo relay is firing.
 
 OTA is split by relay hardware variant because 1ch and 2ch use different relay pins/polarity:
 

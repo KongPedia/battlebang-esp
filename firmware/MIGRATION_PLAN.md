@@ -236,7 +236,7 @@ Common owns:
 - `stage_id` as persisted routing metadata for Command Center inventory/stage-scoped dispatch; this does not imply firmware-side wildcard subscriptions yet;
 - topic root normalization;
 - topic segment validation;
-- device-level topic builder: `devices/{device_id}/status|config|ota`;
+- device-level topic builder: `devices/{device_type}/{device_id}/status|config|ota`;
 - optional JSON publish/subscribe glue.
 
 Firmware owns:

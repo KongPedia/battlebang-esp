@@ -18,7 +18,7 @@ def test_turret_fleet_mqtt_topics_use_common_builders() -> None:
 
     assert "#include <bb_esp_core/mqtt/device_topics.h>" in topics
     assert "normalizeRootOrDefault(config.mqttRoot)" in topics
-    assert "makeDeviceTopicsChecked(root, config.deviceId" in topics
+    assert 'makeDeviceTopicsChecked(root, "turret", config.deviceId' in topics
     assert 'makeAllOtaTopicChecked(root, "turrets"' in topics
     assert 'makeEntityTopicsChecked(\n            root, "turrets", config.turretId' in topics
     assert "topics.turretCommand = entityTopics.command;" in topics
@@ -326,6 +326,9 @@ def test_network_autostart_is_forced_after_local_boot_initial_target() -> None:
     assert 'startNetwork("boot_retry")' in main.split("void loop()", 1)[1]
     assert "mqtt.connected()" in main.split("void loop()", 1)[1]
     assert "normalizeConfiguredRoot(next.mqttRoot, error)" in config_cpp
+    assert "#include <bb_esp_core/config/runtime_config_json.h>" in config_cpp
+    assert 'validateOtaManifestUrl(\n          next.otaPublicManifestUrl, "ota.public_manifest_url", error)' in config_cpp
+    assert 'validateOtaManifestUrl(\n          next.otaLocalMirrorUrl, "ota.local_mirror_url", error)' in config_cpp
     assert "isSafeTopicSegment(next.deviceId)" in config_cpp
     assert 'keys.deviceId = "device_id";' in config_cpp
     assert "isSafeTopicSegment(next.turretId)" in config_cpp
@@ -1506,6 +1509,15 @@ def test_fleet_provision_auto_loads_per_turret_config_and_patterns(tmp_path: Pat
         {"x": 0.0, "y": 0.5, "z": -0.6},
         {"x": 0.0, "y": -0.5, "z": -0.6},
     ]
+
+
+def test_fleet_provision_uses_dotenv_serial_port_before_auto_detect() -> None:
+    provision = read("scripts/turret_fleet/provision.py")
+
+    assert (
+        'args.port or env_first(env, "TURRET_FLEET_SERIAL_PORT", "TURRET_SERIAL_PORT") or auto_detect_port(args.pio)'
+        in provision
+    )
 
 
 def test_fleet_docs_mask_lab_broker_ip_and_define_mqtt_broker_host() -> None:

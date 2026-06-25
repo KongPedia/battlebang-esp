@@ -49,7 +49,7 @@ The firmware stores these fields in the `boss_target` NVS namespace. JSON paths 
 | --- | --- | --- | --- | --- |
 | `config_version` | `cfg_ver` | `0` | `1700000000` | Mandatory positive version used to reject stale config. |
 | `configured` / `type=provision` | `configured` | `false` | `true` | `type: "provision"` marks the device configured. |
-| `device_id` | `device_id` | MAC-derived | `boss_target_dev_01` | Stable device-level identity for `battlebang/devices/{device_id}/...` topics. Leave empty during provision to use the ESP32 MAC-derived id. Must be a safe MQTT topic segment. |
+| `device_id` | `device_id` | MAC-derived | `boss_target_dev_01` | Stable device-level identity for `battlebang/devices/boss_target/{device_id}/...` topics. Leave empty during provision to use the ESP32 MAC-derived id. Must be a safe MQTT topic segment. |
 | `boss_id` | `boss_id` | MAC-derived | `boss_target_E465B89B51E8` | Stable unique control identity and MQTT route. Leave empty during provision to use the ESP32 MAC-derived id. Must be a safe MQTT topic segment. |
 | `target_id` | `target_id` | same as `boss_id` | `boss_target_E465B89B51E8` | Compatibility alias for older hit-target consumers. Must be a safe MQTT topic segment. |
 | `display_name` / `name` | `display` | `boss_id` | `Mini Boss Left` | Human-readable UI label. Commands should still route by `boss_id`. |

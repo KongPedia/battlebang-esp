@@ -48,7 +48,7 @@
   "topics": {
     "logical_status": "battlebang/heavy-blasters/{blaster_id}/status",
     "logical_command": "battlebang/heavy-blasters/{blaster_id}/command",
-    "device_status": "battlebang/devices/{device_id}/status"
+    "device_status": "battlebang/devices/heavy_blaster/{device_id}/status"
   },
   "notes": [
     "Hyphenated product surfaces are intentional: firmware/heavy_blaster and MQTT heavy-blasters.",

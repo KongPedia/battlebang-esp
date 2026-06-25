@@ -13,7 +13,7 @@ battlebang
 Topic examples:
 
 ```text
-battlebang/devices/{device_id}/config
+battlebang/devices/turret/{device_id}/config
 battlebang/turrets/{turret_id}/config
 ```
 
@@ -263,7 +263,7 @@ Topic examples:
 ```text
 battlebang/turrets/all/ota
 battlebang/turrets/{turret_id}/ota
-battlebang/devices/{device_id}/ota
+battlebang/devices/turret/{device_id}/ota
 ```
 
 Payload:
@@ -358,7 +358,7 @@ after status shows the updated build.
 Topic:
 
 ```text
-battlebang/devices/{device_id}/status
+battlebang/devices/turret/{device_id}/status
 battlebang/turrets/{turret_id}/status
 ```
 

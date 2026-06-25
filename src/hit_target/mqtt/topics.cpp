@@ -14,16 +14,16 @@ String linkedDeviceCollection(const String& kind) {
   normalized.trim();
   normalized.toLowerCase();
   if (normalized == "turret") return "turrets";
-  return "devices";
+  return "devices/" + normalized;
 }
 }
 
 TopicSet buildTopics(const RuntimeConfig& config) {
   const String root = cleanRoot(config.mqttRoot);
   TopicSet topics;
-  topics.deviceStatus = root + "/devices/" + config.deviceId + "/status";
-  topics.deviceConfig = root + "/devices/" + config.deviceId + "/config";
-  topics.deviceOta = root + "/devices/" + config.deviceId + "/ota";
+  topics.deviceStatus = root + "/devices/hit_target/" + config.deviceId + "/status";
+  topics.deviceConfig = root + "/devices/hit_target/" + config.deviceId + "/config";
+  topics.deviceOta = root + "/devices/hit_target/" + config.deviceId + "/ota";
   topics.allOta = root + "/hit_targets/all/ota";
   if (config.configured && config.targetId.length() > 0) {
     const String base = root + "/hit_targets/" + config.targetId;

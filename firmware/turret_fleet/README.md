@@ -299,9 +299,9 @@ status, then send `initiate` or a fresh `target`.
 With `mqtt.root = "battlebang"` and `turret_id = "boss_1f_left"`:
 
 ```text
-battlebang/devices/{device_id}/config
-battlebang/devices/{device_id}/ota
-battlebang/devices/{device_id}/status
+battlebang/devices/turret/{device_id}/config
+battlebang/devices/turret/{device_id}/ota
+battlebang/devices/turret/{device_id}/status
 battlebang/turrets/all/ota
 battlebang/turrets/boss_1f_left/config
 battlebang/turrets/boss_1f_left/ota

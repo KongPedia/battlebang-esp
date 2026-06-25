@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <bb_esp_core/config/runtime_config_json.h>
 
 #include "hit_target/app/firmware_info.h"
 #include "hit_target/build_config.h"
@@ -221,6 +222,16 @@ bool validateConfig(RuntimeConfig& config, String& error) {
   }
   if (config.mqttPort == 0) {
     error = "mqtt.port must be positive";
+    return false;
+  }
+  config.otaPublicManifestUrl.trim();
+  config.otaLocalMirrorUrl.trim();
+  if (!battlebang::esp::config::validateOtaManifestUrl(
+          config.otaPublicManifestUrl, "ota.public_manifest_url", error)) {
+    return false;
+  }
+  if (!battlebang::esp::config::validateOtaManifestUrl(
+          config.otaLocalMirrorUrl, "ota.local_mirror_url", error)) {
     return false;
   }
   if (config.otaCheckIntervalS < 30) config.otaCheckIntervalS = 30;

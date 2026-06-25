@@ -263,7 +263,11 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
         assert 'warnIfFormatTruncated("mqtt.client_id", clientIdLength, sizeof(clientId_));' in source, firmware
         assert 'battlebang::esp::mqtt::joinTopic(config.hit.hitTopicPrefix, config.hit.robotId, "events")' in source, firmware
         assert 'config.hit.hitTopicPrefix, config.hit.robotId, "ring_display", "command"' in source, firmware
-        assert "makeDeviceTopics(config.common.mqttRoot, config.common.deviceId)" in source, firmware
+        expected_device_type = "go2_nixo" if firmware == "go2_nixo" else "go2"
+        assert (
+            f'makeDeviceTopics(config.common.mqttRoot, "{expected_device_type}", config.common.deviceId)'
+            in source
+        ), firmware
         assert "deviceStatusTopic_" in header, firmware
         assert "deviceConfigTopic_" in header, firmware
         assert "deviceOtaTopic_" in header, firmware
