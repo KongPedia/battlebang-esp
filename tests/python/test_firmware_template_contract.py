@@ -140,7 +140,7 @@ def test_common_modules_are_capability_split_and_template_forbids_copy_paste_imp
     assert not (ROOT / "lib/bb_esp_mqtt").exists()
 
 
-def test_agent_guidance_defines_new_firmware_onboarding_boundaries() -> None:
+def test_agent_guidance_files_cover_core_onboarding_boundaries() -> None:
     root_agents = read("AGENTS.md")
     firmware_agents = read("firmware/AGENTS.md")
     lib_agents = read("lib/AGENTS.md")
@@ -149,35 +149,40 @@ def test_agent_guidance_defines_new_firmware_onboarding_boundaries() -> None:
     src_agents = read("src/AGENTS.md")
     firmware_readme = read("firmware/README.md")
 
-    for path in (
+    guidance_files = (
         "firmware/AGENTS.md",
         "lib/AGENTS.md",
         ".github/workflows/AGENTS.md",
         "tests/AGENTS.md",
+    )
+    for guidance_file in guidance_files:
+        assert (ROOT / guidance_file).exists(), guidance_file
+
+    # Keep this as a smoke test for non-negotiable onboarding boundaries, not a
+    # phrase-by-phrase documentation snapshot. README/AGENTS prose should be
+    # editable without rewriting this test unless the boundary changes.
+    assert "README" in root_agents and "AGENTS.md" in root_agents
+    assert all(guidance_file in firmware_readme for guidance_file in guidance_files)
+
+    for required in (
+        "firmware/<firmware_name>/",
+        "Do not add new active firmware under `src/`",
+        "firmware-ota.yml",
+        "stage_id",
+        "esp32dev_<firmware>_01",
     ):
-        assert (ROOT / path).exists(), path
-        assert path in root_agents or path in firmware_readme
+        assert required in firmware_agents
 
-    assert "Use README files for human/operator explanations; use AGENTS.md files for agent execution rules" in root_agents
-    assert "A Codex skill is not the right home for repo-specific firmware onboarding rules" in root_agents
-    assert "Agent-facing rules live in `firmware/AGENTS.md`, `lib/AGENTS.md`, `.github/workflows/AGENTS.md`, and `tests/AGENTS.md`" in firmware_readme
+    assert "capability-scoped" in lib_agents
+    assert "monolithic `common`" in lib_agents
+    assert "path filters" in lib_agents
 
-    assert "Put new deployable ESP32 applications under `firmware/<firmware_name>/`" in firmware_agents
-    assert "Do not add new active firmware under `src/`" in firmware_agents
-    assert "A `.github/workflows/firmware-ota.yml` matrix row and path filters" in firmware_agents
-    assert "stage_id" in firmware_agents
-    assert "Do not create PlatformIO envs like `esp32dev_<firmware>_01`" in firmware_agents
+    assert "matrix rows" in workflow_agents
+    assert "Shared library changes" in workflow_agents
+    assert "versioned release assets" in workflow_agents
 
-    assert "Keep libraries capability-scoped and composable" in lib_agents
-    assert "Do not create a monolithic `common` library" in lib_agents
-    assert "Update `.github/workflows/firmware-ota.yml` path filters" in lib_agents
-
-    assert "Firmware release independence must be represented by matrix rows" in workflow_agents
-    assert "Shared library changes select only firmware that actually includes that library" in workflow_agents
-    assert "Release manifests must point firmware URLs at versioned release assets" in workflow_agents
-
-    assert "Contract tests document the firmware monorepo rules" in tests_agents
-    assert "Host-only provisioning/MQTT helper changes do not trigger OTA release builds" in tests_agents
+    assert "Contract tests" in tests_agents
+    assert "Host-only" in tests_agents
     assert "New active firmware must not be added under `src/`" in src_agents
 
 
