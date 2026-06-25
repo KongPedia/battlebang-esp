@@ -15,9 +15,10 @@
 using namespace go2;
 
 // Go2 hit/LED ESP firmware for the 2-ESP split:
-// - This ESP samples piezo AO (ADC) and publishes threshold crossings as
-//   hit_candidate events. Command Center owns final accept/reject, scoring,
-//   down state, and legacy-named ring_display commands rendered on the HP bar.
+// - This ESP samples piezo AO (ADC), accepts local hits immediately, owns
+//   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
+//   Command Center per-hit ring_display round trips.
+// - Command Center ingests hit_event/status metadata for dashboard/world state.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
@@ -27,6 +28,16 @@ HitMqttClient hitMqtt;
 RuntimeConfig runtimeConfig;
 
 uint32_t hitSequence = 0;
+
+struct LocalHitState {
+  uint16_t maxHits = MAX_HITS;
+  uint16_t hpRemaining = MAX_HITS;
+  uint16_t acceptedHitCount = 0;
+  bool down = false;
+  uint32_t lastHitSequence = 0;
+};
+
+LocalHitState localHitState;
 String usbCommandLine;
 String btCommandLine;
 String pendingMqttConfigJson;
@@ -36,6 +47,7 @@ bool pendingMqttOta = false;
 bool postOtaReboot = false;
 uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
+bool lastMqttConnected = false;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -61,6 +73,7 @@ struct AnalogPiezoState {
 AnalogPiezoState analogPiezo;
 
 static void onBarDisplayUpdate(const BarDisplayUpdate& update);
+static void publishDeviceStatusIfConnected(const char* reason);
 
 static bool piezoAoEnabled() {
   return PIEZO_AO_PIN >= 0;
@@ -99,6 +112,56 @@ static void resetAnalogPiezoState() {
   resetAnalogStats(readPiezoAoRaw());
 }
 
+static void resetLocalHitState() {
+  localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  localHitState.hpRemaining = localHitState.maxHits;
+  localHitState.acceptedHitCount = 0;
+  localHitState.down = false;
+  localHitState.lastHitSequence = 0;
+  barDisplay.resetLocalHpState(localHitState.maxHits);
+}
+
+static float localHpFillRatio() {
+  if (localHitState.maxHits == 0) return 1.0f;
+  return constrain(static_cast<float>(localHitState.hpRemaining) / static_cast<float>(localHitState.maxHits), 0.0f, 1.0f);
+}
+
+static void syncLocalHitStateWithRuntimeConfig() {
+  uint16_t nextMaxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  if (localHitState.maxHits == nextMaxHits) {
+    barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+    return;
+  }
+
+  localHitState.maxHits = nextMaxHits;
+  if (localHitState.acceptedHitCount == 0) {
+    localHitState.hpRemaining = nextMaxHits;
+  } else {
+    localHitState.hpRemaining = localHitState.acceptedHitCount >= nextMaxHits
+                                    ? 0
+                                    : nextMaxHits - localHitState.acceptedHitCount;
+  }
+  localHitState.down = localHitState.hpRemaining == 0;
+  barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+}
+
+static bool applyLocalHit(uint32_t sequence, uint32_t now) {
+  localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  if (localHitState.hpRemaining > localHitState.maxHits) localHitState.hpRemaining = localHitState.maxHits;
+  if (!localHitState.down && localHitState.hpRemaining > 0) {
+    localHitState.hpRemaining--;
+    localHitState.acceptedHitCount++;
+    localHitState.down = localHitState.hpRemaining == 0;
+  }
+  localHitState.lastHitSequence = sequence;
+  barDisplay.setLocalHpState(localHitState.hpRemaining,
+                             localHitState.maxHits,
+                             localHitState.down,
+                             runtimeConfig.hit.hitFlashMs,
+                             now);
+  return localHitState.down;
+}
+
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
     Serial.println("[PIEZO AO] disabled: PIEZO_AO_PIN < 0");
@@ -128,32 +191,68 @@ static void beginAnalogPiezo() {
                 readPiezoDoLevel());
 }
 
-static void publishAdcHitCandidate(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
+static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
   uint32_t sequence = ++hitSequence;
+  const bool downNow = applyLocalHit(sequence, millis());
 
-  Serial.printf("[PIEZO AO] candidate seq=%lu target=%d peak=%d threshold=%d ts_ms=%lu mqtt_connected=%s queue=%u\n",
+  Serial.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
                 (unsigned long)sequence,
                 targetId,
                 peakRaw,
                 thresholdRaw,
+                localHitState.hpRemaining,
+                localHitState.maxHits,
+                downNow ? "true" : "false",
                 (unsigned long)eventTsMs,
                 hitMqtt.connected() ? "true" : "false",
                 hitMqtt.offlineQueueCount());
 
   if (SerialBT.hasClient()) {
-    SerialBT.printf("[PIEZO AO] candidate seq=%lu peak=%d threshold=%d\n",
+    SerialBT.printf("[PIEZO AO] local hit seq=%lu peak=%d threshold=%d hp=%u/%u down=%s\n",
                     (unsigned long)sequence,
                     peakRaw,
-                    thresholdRaw);
+                    thresholdRaw,
+                    localHitState.hpRemaining,
+                    localHitState.maxHits,
+                    downNow ? "true" : "false");
   }
 
   if (hitMqtt.offlineQueueCount() > 0) {
-    hitMqtt.queueHitCandidate(targetId, true, sequence, eventTsMs, peakRaw, thresholdRaw);
+    hitMqtt.queueHitEvent(targetId,
+                          sequence,
+                          eventTsMs,
+                          peakRaw,
+                          thresholdRaw,
+                          localHitState.acceptedHitCount,
+                          localHitState.hpRemaining,
+                          localHitState.maxHits,
+                          localHitState.down);
+    publishDeviceStatusIfConnected(localHitState.down ? "local_hit_down" : "local_hit");
     return;
   }
-  if (!hitMqtt.publishHitCandidate(targetId, true, sequence, eventTsMs, false, 0, 0, peakRaw, thresholdRaw)) {
-    hitMqtt.queueHitCandidate(targetId, true, sequence, eventTsMs, peakRaw, thresholdRaw);
+  if (!hitMqtt.publishHitEvent(targetId,
+                               sequence,
+                               eventTsMs,
+                               false,
+                               0,
+                               0,
+                               peakRaw,
+                               thresholdRaw,
+                               localHitState.acceptedHitCount,
+                               localHitState.hpRemaining,
+                               localHitState.maxHits,
+                               localHitState.down)) {
+    hitMqtt.queueHitEvent(targetId,
+                          sequence,
+                          eventTsMs,
+                          peakRaw,
+                          thresholdRaw,
+                          localHitState.acceptedHitCount,
+                          localHitState.hpRemaining,
+                          localHitState.maxHits,
+                          localHitState.down);
   }
+  publishDeviceStatusIfConnected(localHitState.down ? "local_hit_down" : "local_hit");
 }
 
 static void updateAnalogDebugStats(int raw) {
@@ -224,10 +323,10 @@ static void pollAnalogPiezo(uint32_t now) {
       analogPiezo.captureActive = false;
       analogPiezo.lastCandidateMs = now;
       analogPiezo.quietStartedMs = 0;
-      publishAdcHitCandidate(1,
-                             analogPiezo.capturePeakRaw,
-                             runtimeConfig.hit.piezoAoThresholdRaw,
-                             eventTsMs);
+      publishAdcHitEvent(1,
+                          analogPiezo.capturePeakRaw,
+                          runtimeConfig.hit.piezoAoThresholdRaw,
+                          eventTsMs);
     }
     printAnalogDebugTick(now);
     return;
@@ -331,12 +430,14 @@ void onMqttOtaMessage(const char*, const byte* payload, unsigned int length) {
 static void resetAll(const char* source) {
   resetAnalogPiezoState();
   hitMqtt.clearOfflineQueue();
+  resetLocalHitState();
   barDisplay.clearRemoteDisplay();
   barDisplay.markDirty();
-  Serial.printf("[RESET] source=%s ADC hit/display state cleared; sequence_kept=%lu\n",
+  Serial.printf("[RESET] source=%s ADC/local HP/display state cleared; sequence_kept=%lu\n",
                 source,
                 (unsigned long)hitSequence);
-  if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC hit/display state cleared");
+  if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC/local HP/display state cleared");
+  publishDeviceStatusIfConnected("reset");
 }
 
 static void handleCommandChar(char c, const char* source) {
@@ -363,6 +464,27 @@ static void addHitTuningStatus(JsonObject doc) {
   doc["piezo_ao_capture_window_ms"] = runtimeConfig.hit.piezoAoCaptureWindowMs;
   doc["piezo_ao_debug_period_ms"] = runtimeConfig.hit.piezoAoDebugPeriodMs;
   doc["piezo_ao_rearm_stable_ms"] = runtimeConfig.hit.piezoAoRearmStableMs;
+  doc["max_hits"] = runtimeConfig.hit.maxHits;
+  doc["hit_flash_ms"] = runtimeConfig.hit.hitFlashMs;
+}
+
+static void addLocalHitStatus(JsonObject doc) {
+  doc["accepted_hit_count"] = localHitState.acceptedHitCount;
+  doc["hp_remaining"] = localHitState.hpRemaining;
+  doc["max_hits"] = localHitState.maxHits;
+  doc["down"] = localHitState.down;
+  doc["ring_fill_ratio"] = localHpFillRatio();
+  doc["last_hit_sequence"] = localHitState.lastHitSequence;
+
+  JsonObject combat = doc.createNestedObject("combat");
+  combat["accepted_hit_count"] = localHitState.acceptedHitCount;
+  combat["hp"] = localHitState.hpRemaining;
+  combat["hp_current"] = localHitState.hpRemaining;
+  combat["max_hp"] = localHitState.maxHits;
+  combat["hp_max"] = localHitState.maxHits;
+  combat["down"] = localHitState.down;
+  combat["ring_fill_ratio"] = localHpFillRatio();
+  combat["last_hit_sequence"] = localHitState.lastHitSequence;
 }
 
 static void printStatusJson(const char* source, const char* reason) {
@@ -374,6 +496,9 @@ static void printStatusJson(const char* source, const char* reason) {
   doc["configured"] = runtimeConfig.common.configured;
   doc["device_id"] = runtimeConfig.common.deviceId;
   doc["robot_id"] = runtimeConfig.hit.robotId;
+  doc["hp_remaining"] = localHitState.hpRemaining;
+  doc["max_hits"] = localHitState.maxHits;
+  doc["down"] = localHitState.down;
   doc["group"] = runtimeConfig.common.group;
   doc["stage_id"] = runtimeConfig.common.stageId;
   doc["location"] = runtimeConfig.common.location;
@@ -399,6 +524,7 @@ static void printStatusJson(const char* source, const char* reason) {
   doc["offline_queue"] = hitMqtt.offlineQueueCount();
   doc["hit_sequence"] = hitSequence;
   addHitTuningStatus(doc.as<JsonObject>());
+  addLocalHitStatus(doc.as<JsonObject>());
   doc["uptime_ms"] = millis();
   String out;
   serializeJson(doc, out);
@@ -436,6 +562,7 @@ static void publishDeviceStatusIfConnected(const char* reason) {
   doc["offline_queue"] = hitMqtt.offlineQueueCount();
   doc["hit_sequence"] = hitSequence;
   addHitTuningStatus(doc.as<JsonObject>());
+  addLocalHitStatus(doc.as<JsonObject>());
   doc["uptime_ms"] = millis();
   String out;
   serializeJson(doc, out);
@@ -451,6 +578,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   hitMqtt.setManagementHandlers(onMqttConfigMessage, onMqttOtaMessage);
   hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
   barDisplay.setBrightness(runtimeConfig.hit.ledBrightness);
+  syncLocalHitStateWithRuntimeConfig();
   resetAnalogPiezoState();
   Serial.printf("[CONFIG] runtime config reapplied reason=%s configured=%s robot_id=%s broker=%s:%u event_topic=%s hp_bar_topic=%s\n",
                 reason,
@@ -544,7 +672,7 @@ static void applyAndPersistConfig(const String& json, const char* source) {
     reapplyRuntimeConfig("serial_config");
   }
 
-  DynamicJsonDocument doc(512);
+  DynamicJsonDocument doc(768);
   doc["event"] = saved ? "config_applied" : "config_save_failed";
   doc["saved"] = saved;
   doc["configured"] = runtimeConfig.common.configured;
@@ -661,6 +789,15 @@ static void processPendingMqttManagement() {
   }
 }
 
+static void publishMqttReconnectStatus(uint32_t now) {
+  const bool connected = hitMqtt.connected();
+  if (connected && !lastMqttConnected) {
+    lastDeviceStatusMs = now;
+    publishDeviceStatusIfConnected("mqtt_reconnected");
+  }
+  lastMqttConnected = connected;
+}
+
 static void publishPeriodicDeviceStatus(uint32_t now) {
   if (DEVICE_STATUS_PERIOD_MS == 0) return;
   if (now - lastDeviceStatusMs < DEVICE_STATUS_PERIOD_MS) return;
@@ -699,11 +836,15 @@ static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
   if (update.resetHitState) {
     resetAnalogPiezoState();
     hitMqtt.clearOfflineQueue();
+    resetLocalHitState();
     barDisplay.clearRemoteDisplay();
-    Serial.println("[RESET] MQTT ADC hit/display state reset");
-    if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC hit/display state reset");
+    Serial.println("[RESET] MQTT ADC/local HP/display state reset");
+    if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC/local HP/display state reset");
+    publishDeviceStatusIfConnected("mqtt_reset");
   }
-  barDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
+  if (update.debugOverride) {
+    barDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
+  }
 }
 
 void setup() {
@@ -716,6 +857,7 @@ void setup() {
   runtimeConfig = runtimeConfigFromNvsOrBuild();
 
   barDisplay.begin(runtimeConfig.hit.ledBrightness);
+  resetLocalHitState();
   beginAnalogPiezo();
   hitMqtt.setManagementHandlers(onMqttConfigMessage, onMqttOtaMessage);
   hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
@@ -723,7 +865,7 @@ void setup() {
   barDisplay.markDirty();
   barDisplay.tick(millis());
 
-  Serial.println("[MODE] go2 ADC threshold hit candidate + server HP bar display; D0 is debug-only");
+  Serial.println("[MODE] go2 local ADC hit_event + ESP-owned HP bar display; D0 is debug-only");
   Serial.printf("[PIN] HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d | BT=%s\n",
                 HP_BAR_LED_PIN,
                 HP_BAR_NUM_LEDS,
@@ -732,12 +874,14 @@ void setup() {
                 PIEZO_AO_PIN,
                 PIEZO_DO_PIN,
                 BT_NAME);
-  Serial.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu\n",
+  Serial.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu max_hits=%u hit_flash_ms=%lu\n",
                 runtimeConfig.hit.piezoAoThresholdRaw,
                 runtimeConfig.hit.piezoAoRearmRaw,
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
-                (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
+                (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs,
+                runtimeConfig.hit.maxHits,
+                (unsigned long)runtimeConfig.hit.hitFlashMs);
   Serial.printf("[CMD] USB/BT: '%c' or 'r'=reset local ADC latch/display queue.\n",
                 CMD_RESET_HIT_DISPLAY);
   Serial.println("[CMD] USB/BT line commands: s/status/show-status, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
@@ -761,6 +905,7 @@ void loop() {
 
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   processPendingMqttManagement();
+  publishMqttReconnectStatus(now);
   publishPeriodicDeviceStatus(now);
   pollConfiguredOta(now);
   pollCommands();

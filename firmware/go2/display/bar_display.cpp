@@ -16,12 +16,13 @@ void BarDisplay::tick(uint32_t now) {
     dirty_ = true;
   }
 
+  handleLocalFlashExpiry(now);
   handleRemoteExpiry(now);
 
   if (remoteActive_) {
     renderRemote(now);
   } else {
-    renderFullIdle();
+    renderLocal(now);
   }
   showTick(now);
 }
@@ -33,6 +34,27 @@ void BarDisplay::markDirty() {
 void BarDisplay::setBrightness(uint16_t brightness) {
   if (brightness > 255) brightness = 255;
   FastLED.setBrightness(static_cast<uint8_t>(brightness));
+  dirty_ = true;
+}
+
+void BarDisplay::setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now) {
+  if (maxHits < 1) maxHits = 1;
+  localMaxHits_ = maxHits;
+  localHpRemaining_ = hpRemaining > maxHits ? maxHits : hpRemaining;
+  localDown_ = down || localHpRemaining_ == 0;
+  localMode_ = hitFlashMs > 0 && !localDown_ ? String("hit_flash") : String("active");
+  localFlashExpiresMs_ = hitFlashMs > 0 && !localDown_ ? now + hitFlashMs : 0;
+  dirty_ = true;
+}
+
+void BarDisplay::resetLocalHpState(uint16_t maxHits) {
+  if (maxHits < 1) maxHits = 1;
+  localMaxHits_ = maxHits;
+  localHpRemaining_ = maxHits;
+  localDown_ = false;
+  localMode_ = "active";
+  localFlashExpiresMs_ = 0;
+  clearRemoteDisplay();
   dirty_ = true;
 }
 
@@ -60,8 +82,21 @@ bool BarDisplay::remoteDisplayActive() const {
   return remoteActive_;
 }
 
+float BarDisplay::localFillRatio() const {
+  if (localMaxHits_ < 1) return 1.0f;
+  return constrain(static_cast<float>(localHpRemaining_) / static_cast<float>(localMaxHits_), 0.0f, 1.0f);
+}
+
 bool BarDisplay::remoteExpired(uint32_t now) const {
   return remoteActive_ && remoteExpiresMs_ != 0 && (int32_t)(now - remoteExpiresMs_) >= 0;
+}
+
+void BarDisplay::handleLocalFlashExpiry(uint32_t now) {
+  if (localFlashExpiresMs_ == 0) return;
+  if ((int32_t)(now - localFlashExpiresMs_) < 0) return;
+  localFlashExpiresMs_ = 0;
+  localMode_ = "active";
+  dirty_ = true;
 }
 
 void BarDisplay::handleRemoteExpiry(uint32_t now) {
@@ -83,6 +118,28 @@ void BarDisplay::handleRemoteExpiry(uint32_t now) {
   }
 
   clearRemoteDisplay();
+}
+
+void BarDisplay::renderLocal(uint32_t now) {
+  if (localDown_) {
+    if (now - lastDownBlinkMs_ >= LED_DEAD_BLINK_MS) {
+      lastDownBlinkMs_ = now;
+      downBlinkOn_ = !downBlinkOn_;
+      dirty_ = true;
+    }
+    for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
+    return;
+  }
+
+  CRGB healthyColor = CRGB::Green;
+  CRGB damagedColor = CRGB::Red;
+  if (localMode_ == "hit_flash") {
+    healthyColor = blinkOn_ ? CRGB::White : CRGB::Green;
+    damagedColor = blinkOn_ ? CRGB::White : CRGB::Red;
+  } else if (localFillRatio() <= 0.25f) {
+    healthyColor = CRGB::Orange;
+  }
+  renderHpBar(localFillRatio(), healthyColor, damagedColor);
 }
 
 void BarDisplay::renderRemote(uint32_t now) {

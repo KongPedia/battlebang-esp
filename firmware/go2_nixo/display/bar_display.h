@@ -13,6 +13,8 @@ class BarDisplay {
   void tick(uint32_t now);
   void markDirty();
   void setBrightness(uint16_t brightness);
+  void setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now);
+  void resetLocalHpState(uint16_t maxHits);
   void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
   void clearRemoteDisplay();
   bool remoteDisplayActive() const;
@@ -25,14 +27,22 @@ class BarDisplay {
   uint32_t lastBlinkMs_ = 0;
   uint32_t lastDownBlinkMs_ = 0;
   uint32_t lastShowMs_ = 0;
+  uint16_t localHpRemaining_ = 1;
+  uint16_t localMaxHits_ = 1;
+  bool localDown_ = false;
+  String localMode_ = "active";
+  uint32_t localFlashExpiresMs_ = 0;
   bool remoteActive_ = false;
   bool remoteDown_ = false;
   float remoteFillRatio_ = 1.0f;
   String remoteMode_ = "idle";
   uint32_t remoteExpiresMs_ = 0;
 
+  float localFillRatio() const;
   bool remoteExpired(uint32_t now) const;
+  void handleLocalFlashExpiry(uint32_t now);
   void handleRemoteExpiry(uint32_t now);
+  void renderLocal(uint32_t now);
   void renderRemote(uint32_t now);
   void renderFullIdle();
   void renderBlank();

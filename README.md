@@ -4,7 +4,7 @@ ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에
 
 | PlatformIO env | Source entrypoint | Purpose | Runtime config |
 | --- | --- | --- | --- |
-| `esp32dev_go2` | `firmware/go2/main.cpp` | Go2-mounted hit/LED ESP: piezo AO ADC threshold + Command Center HP bar display | NVS: identity, stage/group/location, Wi-Fi, MQTT, OTA, hit tuning |
+| `esp32dev_go2` | `firmware/go2/main.cpp` | Go2-mounted hit/LED ESP: local piezo hit/HP/down + ESP-owned HP bar display | NVS: identity, stage/group/location, Wi-Fi, MQTT, OTA, hit tuning |
 | `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/main.cpp` | Optional one-ESP fallback: hit/LED + Nixo relay | NVS: same as Go2 plus Nixo identity/topic and fire timing; relay pins/polarity/channel count stay build variant |
 | `esp32dev_boss_target` | `firmware/boss_target/main.cpp` | Boss target firmware | NVS/MQTT/OTA standard template |
 | `esp32dev_heavy_blaster` | `firmware/heavy_blaster/main.cpp` | Heavy blaster firmware | NVS/MQTT/OTA standard template |
@@ -20,10 +20,10 @@ ESP32 uploads are full-flash images. Pick the correct PlatformIO environment bef
 현재 Go2는 **runtime-provisioned generic image** 방식입니다. `go2_01`, `go2_02`, `go2_03` 같은 robot id는 PlatformIO env 이름이 아니라 ESP32 NVS에 들어가는 사용자 지정 runtime identity입니다. 같은 `esp32dev_go2` 이미지를 굽고, 이후 serial/MQTT config로 `robot_id`, `device_id`, `stage_id` 등을 바꿉니다.
 
 - Go2 hit/LED ESP: `firmware/go2/`
-  - piezo **AO ADC threshold** 기반 `hit_candidate` publish
-  - Command Center `ring_display`/HP bar 렌더링
+  - piezo **AO ADC threshold** 기반 ESP 로컬 hit accept + HP/down/LED bar 처리
+  - Command Center에는 `hit_event`/device `status`로 `accepted_hit_count`, `hp_remaining`, `max_hits`, `down` publish
   - 빌드/업로드 env: `esp32dev_go2`
-  - NVS 튜닝: `robot_id`, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, offline queue, LED brightness
+  - NVS 튜닝: `robot_id`, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, `max_hits`, `hit_flash_ms`, offline queue, LED brightness
 - Optional one-ESP fallback/reference: `firmware/go2_nixo/`
   - hit/LED/Nixo relay가 한 ESP에 통합된 경로
   - 빌드/업로드 env: `esp32dev_go2_nixo`(default 1ch), `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch`
@@ -49,14 +49,16 @@ cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
 
 ## Go2 hit/LED ESP firmware summary
 
-Go2 hit/LED ESP는 Command Center와 MQTT로 직접 통신합니다. 이 펌웨어는 발사/릴레이/서보를 하지 않고, AO ADC threshold를 넘은 피에조 입력을 `hit_candidate`로 보낸 뒤 서버의 `ring_display` 명령만 렌더링합니다.
+Go2 hit/LED ESP는 Command Center와 MQTT로 직접 통신합니다. 이 펌웨어는 발사/릴레이/서보를 하지 않고, AO ADC threshold를 넘은 피에조 입력을 ESP 로컬 hit로 accept한 뒤 HP/down 상태와 HP bar LED를 직접 갱신합니다. Command Center는 ESP가 publish하는 `hit_event`/device `status`를 ingest합니다.
 
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
-  - `hit_candidate`
+  - `hit_event`
   - `heartbeat`
-- Command Center → ESP: `battlebang/hit/{robot_id}/ring_display/command`
-  - `ring_display`
-- Device management: `battlebang/devices/{device_id}/status|config|ota`
+- ESP → Command Center: `battlebang/devices/{device_id}/status`
+  - `hp_remaining`, `max_hits`, `down`, nested `combat` facet
+- Command Center → ESP: `battlebang/devices/{device_id}/config|ota`
+- Command Center → ESP compatibility: `battlebang/hit/{robot_id}/ring_display/command`
+  - `reset_hit_state` or `debug_override` only
 
 Go2 hit/LED 펌웨어 구조:
 
@@ -65,13 +67,13 @@ Go2 hit/LED 펌웨어 구조:
 - `firmware/go2/hardware_profile.json`: non-secret build-time hardware defaults (pins, LED count/capacity, factory fallback threshold)
 - `firmware/go2/.env.go2.example`: serial provisioning defaults for NVS
 - `firmware/go2/config/`: runtime config bridge to common NVS/MQTT/OTA schema
-- `firmware/go2/display/`: Command Center `ring_display` 렌더링과 fallback LED 표시
-- `firmware/go2/mqtt/`: MQTT hit_candidate/heartbeat publish, ring_display subscribe, device config/OTA subscribe
+- `firmware/go2/display/`: ESP-owned HP bar 렌더링과 debug override 표시
+- `firmware/go2/mqtt/`: MQTT hit_event/heartbeat/status publish, config/OTA/reset/debug subscribe
 - `firmware/go2/docs/`: Go2 hit/LED 빌드/통신 문서
 
 NVS로 바꾸는 값 기준:
 
-- 자주 바뀌거나 현장 튜닝하는 값: `robot_id`, `device_id`, `group`, `stage_id`, `location`, Wi-Fi, MQTT, OTA policy, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, offline queue capacity/flush interval, LED brightness
+- 자주 바뀌거나 현장 튜닝하는 값: `robot_id`, `device_id`, `group`, `stage_id`, `location`, Wi-Fi, MQTT, OTA policy, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, `max_hits`, `hit_flash_ms`, offline queue capacity/flush interval, LED brightness
 - build-time으로 남기는 값: 실제 GPIO pin, LED 물리 count/capacity, relay pin/polarity/channel count 같은 하드웨어 안전 envelope
 
 기본 핀맵 (`firmware/go2/hardware_profile.json` defaults 기준):

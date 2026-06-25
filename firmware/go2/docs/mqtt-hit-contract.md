@@ -1,33 +1,50 @@
 # Go2 ESP ↔ Command Center MQTT 계약
 
-Go2 ESP는 Command Center와 직접 MQTT로 통신합니다. ESP는 piezo AO ADC raw 값이 설정 threshold를 넘는 입력만 `hit_candidate`로 보내고, 최종 accept/reject, scoring/down/LED 표시 정책은 Command Center가 소유합니다.
+Go2 ESP는 piezo AO ADC threshold를 넘은 입력을 **ESP 로컬에서 즉시 hit로 accept**하고, ESP 내부 HP/down 상태와 84-LED HP bar 표시를 갱신합니다. Command Center는 hit 판정/LED bar per-hit 표시를 다시 계산하지 않고, ESP가 publish하는 `hit_event`/device `status`의 `accepted_hit_count`, `hp_remaining`, `max_hits`, `down` 값을 combat facet/source of truth로 ingest합니다.
 
 ## Topic
 
-기본 prefix는 `battlebang/hit`입니다.
+기본 hit prefix는 `battlebang/hit`, 기본 device root는 `battlebang`입니다.
 
 ```text
 ESP -> Command Center
 battlebang/hit/{robot_id}/events
+battlebang/devices/{device_id}/status
 
 Command Center -> ESP
-battlebang/hit/{robot_id}/ring_display/command
+battlebang/devices/{device_id}/config
+battlebang/devices/{device_id}/ota
+battlebang/hit/{robot_id}/ring_display/command   # reset/debug compatibility only
 ```
 
-## ESP -> Command Center: hit_candidate
+## ESP -> Command Center: hit_event
 
-피에조 센서 AO ADC raw 값이 firmware threshold 이상으로 올라오면 ESP가 후보 이벤트를 보냅니다. D0 디지털 출력은 hit 판정에 사용하지 않고 debug readback으로만 남깁니다. ESP는 점수/HP/down을 계산하지 않고 `hit=true` 후보와 관측된 `peak`/`threshold`를 보냅니다. 최종 hit 수락/거절, 플레이어 난이도별 score/down/display 계산은 Command Center가 담당합니다. MQTT publish가 실패한 hit는 RAM queue에 보관되고, 재연결 후 같은 event topic으로 다시 publish됩니다.
+피에조 AO raw가 `piezo_ao_threshold_raw` 이상으로 올라오면 ESP가 capture window에서 peak를 잡고 hit를 accept합니다. accept 즉시:
+
+1. `accepted_hit_count`를 증가시킵니다.
+2. `hp_remaining`을 1 감소시킵니다.
+3. `hp_remaining == 0`이면 `down=true`가 됩니다.
+4. HP bar LED를 로컬에서 바로 갱신/flash/down 표시합니다.
+5. 아래 `hit_event`를 MQTT로 publish합니다.
+
+MQTT가 끊긴 동안의 hit는 HP/down 상태가 이미 로컬에 반영되고, event는 RAM queue에 보관했다가 재연결 후 원래 `firmware_ts_ms`와 당시 HP metadata로 재전송됩니다.
 
 ```json
 {
-  "schema_version": 1,
-  "event": "hit_candidate",
+  "schema_version": 2,
+  "event": "hit_event",
   "robot_id": "go2_05",
   "sensor_id": "piezo_t1",
-  "sequence": 1,
+  "sequence": 7,
   "hit": true,
+  "accepted": true,
+  "accepted_hit_count": 3,
+  "hp_remaining": 11,
+  "max_hits": 14,
+  "down": false,
+  "ring_fill_ratio": 0.785714,
   "peak": 2140,
-  "threshold": 200,
+  "threshold": 400,
   "firmware_ts_ms": 12345,
   "firmware": "go2",
   "firmware_role": "hit_led",
@@ -39,50 +56,53 @@ battlebang/hit/{robot_id}/ring_display/command
     "mac_suffix": "948C",
     "client_id": "battlebang-hit-go2_05-go2-948C",
     "hit_source": "piezo_ao_adc_threshold",
+    "decision_owner": "esp_local",
+    "display_owner": "esp_local",
+    "hp_current": 11,
+    "hp_max": 14,
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 200
+    "adc_threshold_raw": 400
   }
 }
 ```
 
-재전송된 hit는 원래 발생 시각을 유지하고 queue metadata를 추가합니다. 서버는 이 metadata를 관측/디버그에 사용할 수 있지만, 최종 accept/drop은 기존 Command Center hit policy가 결정합니다.
+재전송 event는 같은 schema에 `queued`, `queued_for_ms`, `queue_depth`, `queue_dropped` metadata를 추가합니다. 서버는 같은 `sequence`를 idempotency key로 취급해야 합니다.
+
+## ESP -> Command Center: device status / combat facet
+
+ESP는 boot, reset, config 적용, local hit/down, 주기 heartbeat, MQTT reconnect 이후 status를 `{mqtt_root}/devices/{device_id}/status`에 publish합니다. Command Center는 이 payload의 root 필드 또는 nested `combat` 필드를 읽어 현재 HP/down 상태를 동기화합니다.
 
 ```json
 {
-  "schema_version": 1,
-  "event": "hit_candidate",
+  "type": "status",
+  "reason": "local_hit",
+  "firmware_app": "go2",
+  "configured": true,
+  "device_id": "go2_05",
   "robot_id": "go2_05",
-  "sensor_id": "piezo_t1",
-  "sequence": 7,
-  "hit": true,
-  "peak": 2188,
-  "threshold": 200,
-  "firmware_ts_ms": 45678,
-  "firmware": "go2",
-  "firmware_role": "hit_led",
-  "mac_suffix": "948C",
-  "client_id": "battlebang-hit-go2_05-go2-948C",
-  "queued": true,
-  "queued_for_ms": 1200,
-  "metadata": {
-    "firmware": "go2",
-    "firmware_role": "hit_led",
-    "mac_suffix": "948C",
-    "client_id": "battlebang-hit-go2_05-go2-948C",
-    "hit_source": "piezo_ao_adc_threshold",
-    "adc_peak_raw": 2188,
-    "adc_threshold_raw": 200,
-    "queued": true,
-    "queued_for_ms": 1200,
-    "queue_depth": 3,
-    "queue_dropped": 0
+  "mqtt_connected": true,
+  "accepted_hit_count": 3,
+  "hp_remaining": 11,
+  "max_hits": 14,
+  "down": false,
+  "ring_fill_ratio": 0.785714,
+  "last_hit_sequence": 7,
+  "combat": {
+    "accepted_hit_count": 3,
+    "hp": 11,
+    "hp_current": 11,
+    "max_hp": 14,
+    "hp_max": 14,
+    "down": false,
+    "ring_fill_ratio": 0.785714,
+    "last_hit_sequence": 7
   }
 }
 ```
 
 ## ESP -> Command Center: heartbeat
 
-ESP 온라인 여부와 표시 경로 상태를 Command Center가 판단할 수 있게 주기적으로 보냅니다.
+Hit event topic heartbeat는 연결/queue/display ownership 관측용입니다.
 
 ```json
 {
@@ -93,15 +113,8 @@ ESP 온라인 여부와 표시 경로 상태를 Command Center가 판단할 수 
   "sequence": 10,
   "firmware_ts_ms": 20000,
   "mode": "mqtt_connected",
-  "firmware": "go2",
-  "firmware_role": "hit_led",
-  "mac_suffix": "948C",
-  "client_id": "battlebang-hit-go2_05-go2-948C",
+  "display_owner": "esp_local",
   "metadata": {
-    "firmware": "go2",
-    "firmware_role": "hit_led",
-    "mac_suffix": "948C",
-    "client_id": "battlebang-hit-go2_05-go2-948C",
     "offline_queue_count": 0,
     "offline_queue_capacity": 32,
     "offline_queue_dropped": 0
@@ -109,31 +122,61 @@ ESP 온라인 여부와 표시 경로 상태를 Command Center가 판단할 수 
 }
 ```
 
-- `mode=direct`: Command Center가 내려준 `ring_display`를 렌더링 중
-- `mode=mqtt_connected`: MQTT는 연결되어 있지만 현재 유효한 remote display가 없음
-- `mode=mqtt_disconnected`: MQTT 연결 없음
+- `display_owner=esp_local`: 정상. ESP 로컬 HP bar 상태가 화면 source of truth입니다.
+- `display_owner=debug_override`, `mode=direct`: `debug_override`/`maintenance_override` ring command가 TTL 동안 display를 덮어쓴 상태입니다.
+- `mode=mqtt_connected`: MQTT 연결 정상.
+- `mode=mqtt_disconnected`: MQTT 연결 없음. ESP는 그래도 local hit/LED 처리를 계속합니다.
 
-## Command Center -> ESP: ring_display
+## Command Center -> ESP: config / reset / debug display
 
-Command Center는 LED로 렌더링하는 데 필요한 semantic display state만 보냅니다. MQTT topic/field 이름은 호환성을 위해 `ring_display`/`ring_*`를 유지하지만, 현재 ESP는 이를 HP bar LED layout으로 렌더링합니다.
+### Runtime config
+
+Threshold, HP cap, flash 시간 등 현장 튜닝값은 device config topic으로 보냅니다.
+
+```bash
+./.venv-pio/bin/python scripts/go2/provision.py \
+  --env-file firmware/go2/.env.go2 \
+  --command config \
+  --no-serial \
+  --print-json-secrets \
+| mosquitto_pub -h <MQTT_HOST> -p 1883 -t "battlebang/devices/go2_05/config" -s
+```
+
+주요 hit tuning 필드:
+
+- `piezo_ao_threshold_raw`: hit trigger threshold
+- `piezo_ao_rearm_raw`: 재arm을 허용하는 low/raw 기준
+- `hit_cooldown_ms`: hit 후 재arm 전 최소 cooldown
+- `max_hits` / `hits_to_down`: full HP에서 down까지 필요한 accepted hit 수
+- `hit_flash_ms`: hit 직후 HP bar flash 지속 시간
+- `led_brightness`: HP bar brightness
+
+### Reset
+
+Reset/recovery는 legacy topic 이름을 유지하되 `reset_hit_state=true`만 정상 운영 명령으로 사용합니다. 이 명령은 ADC latch, offline queue, local hit count/HP/down, display 상태를 초기화합니다.
 
 ```json
 {
   "schema_version": 1,
   "command": "ring_display",
   "robot_id": "go2_05",
-  "ring_fill_ratio": 0.65,
-  "down": false,
-  "ring_display_mode": "hit_flash",
-  "ttl_ms": 1000,
-  "reset_hit_state": false
+  "reset_hit_state": true
 }
 ```
 
-ESP는 이 payload를 받아 84개 HP bar LED를 갱신합니다.
+### Debug/maintenance display override
 
-- `ring_fill_ratio`: HP 잔량 비율입니다. 1.0이면 28개 bar 그룹 전체 green, 0.5이면 앞쪽 14개 그룹 green/뒤쪽 14개 그룹 red, 0이면 전체 red입니다.
-- `down`: 다운 상태 표시 여부
-- `ring_display_mode`: `idle`, `active`, `hit_flash`, `down`, `stale`, `disabled` 등 semantic mode
-- `ttl_ms`: Command Center 표시가 유효한 시간
-- `reset_hit_state`: true면 ESP 센서 latch/flag와 현재 remote display를 초기화합니다. Command Center의 `POST /api/robots/{robot_id}/hit/reset` 응답 command에서 true로 내려옵니다.
+정상 hit마다 Command Center가 `ring_display`를 보내면 ESP는 무시합니다. 벤치/정비용으로 LED bar를 강제로 덮어쓰려면 `debug_override=true` 또는 `maintenance_override=true`를 명시해야 합니다.
+
+```json
+{
+  "schema_version": 1,
+  "command": "ring_display",
+  "robot_id": "go2_05",
+  "debug_override": true,
+  "ring_fill_ratio": 0.5,
+  "down": false,
+  "ring_display_mode": "active",
+  "ttl_ms": 1000
+}
+```

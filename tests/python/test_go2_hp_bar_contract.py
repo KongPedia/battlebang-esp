@@ -14,8 +14,8 @@ GO2 = (
 )
 GO2_NIXO = (
     "go2_nixo",
-    ROOT / "firmware/go2_nixo/ring_led/bar_display.cpp",
-    ROOT / "firmware/go2_nixo/ring_led/ring_display.cpp",
+    ROOT / "firmware/go2_nixo/display/bar_display.cpp",
+    ROOT / "firmware/go2_nixo/display/ring_display.cpp",
     ROOT / "firmware/go2_nixo/build_config.h",
     ROOT / "firmware/go2_nixo/hardware_profile.json",
 )
@@ -323,6 +323,108 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
 
 
 
+def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
+    main = (ROOT / f"firmware/{firmware_dir}/main.cpp").read_text()
+    bar_header = (ROOT / f"firmware/{firmware_dir}/display/bar_display.h").read_text()
+    bar_source = (ROOT / f"firmware/{firmware_dir}/display/bar_display.cpp").read_text()
+    mqtt_header = (ROOT / f"firmware/{firmware_dir}/mqtt/hit_mqtt_client.h").read_text()
+    mqtt_source = (ROOT / f"firmware/{firmware_dir}/mqtt/hit_mqtt_client.cpp").read_text()
+    runtime_header = (ROOT / f"firmware/{firmware_dir}/config/runtime_config.h").read_text()
+    runtime_source = (ROOT / f"firmware/{firmware_dir}/config/runtime_config.cpp").read_text()
+    build_config = (ROOT / f"firmware/{firmware_dir}/build_config.h").read_text()
+    env_example = (ROOT / f"firmware/{firmware_dir}/.env.{firmware_dir}.example").read_text()
+    provision_script = (ROOT / f"scripts/{firmware_dir}/provision.py").read_text()
+    mqtt_contract = (ROOT / f"firmware/{firmware_dir}/docs/mqtt-hit-contract.md").read_text()
+
+    assert "struct LocalHitState" in main
+    assert "acceptedHitCount" in main
+    assert "hpRemaining" in main
+    assert "applyLocalHit" in main
+    assert "publishAdcHitEvent" in main
+    assert "barDisplay.setLocalHpState" in main
+    assert "publishDeviceStatusIfConnected(localHitState.down ? \"local_hit_down\" : \"local_hit\")" in main
+    assert 'doc["accepted_hit_count"] = localHitState.acceptedHitCount;' in main
+    assert 'doc["hp_remaining"] = localHitState.hpRemaining;' in main
+    assert 'doc["max_hits"] = localHitState.maxHits;' in main
+    assert 'doc["down"] = localHitState.down;' in main
+    assert 'JsonObject combat = doc.createNestedObject("combat");' in main
+    assert 'combat["hp_current"] = localHitState.hpRemaining;' in main
+    assert 'combat["hp_max"] = localHitState.maxHits;' in main
+    assert "resetLocalHitState" in main
+    assert "syncLocalHitStateWithRuntimeConfig" in main
+    assert "publishMqttReconnectStatus" in main
+    assert 'publishDeviceStatusIfConnected("mqtt_reconnected")' in main
+
+    assert "setLocalHpState" in bar_header
+    assert "resetLocalHpState" in bar_header
+    assert "renderLocal" in bar_source
+    assert "handleLocalFlashExpiry" in bar_source
+    assert "localFillRatio" in bar_source
+
+    assert "publishHitEvent" in mqtt_header
+    assert "queueHitEvent" in mqtt_header
+    assert "QueuedHitEvent" in mqtt_header
+    assert 'doc["schema_version"] = 2;' in mqtt_source
+    assert 'doc["event"] = "hit_event";' in mqtt_source
+    assert 'doc["accepted"] = true;' in mqtt_source
+    assert 'doc["accepted_hit_count"] = acceptedHitCount;' in mqtt_source
+    assert 'doc["hp_remaining"] = hpRemaining;' in mqtt_source
+    assert 'doc["max_hits"] = maxHits;' in mqtt_source
+    assert 'metadata["decision_owner"] = "esp_local";' in mqtt_source
+    assert 'metadata["display_owner"] = "esp_local";' in mqtt_source
+    assert 'metadata["hp_current"] = hpRemaining;' in mqtt_source
+    assert 'metadata["hp_max"] = maxHits;' in mqtt_source
+    assert "ring command ignored: ESP owns local HP bar" in mqtt_source
+    assert "debug_override" in mqtt_source
+    assert "reset_hit_state" in mqtt_source
+    assert "if (barHandler_ != nullptr) barHandler_(update);" in mqtt_source.split(
+        "if (!update.resetHitState && !update.debugOverride)"
+    )[1]
+
+    assert "uint16_t maxHits = MAX_HITS;" in runtime_header
+    assert "uint32_t hitFlashMs = HIT_FLASH_MS;" in runtime_header
+    assert 'readUInt16ConfigField(object, "max_hits", hit.maxHits);' in runtime_source
+    assert 'readUInt16ConfigField(object, "hits_to_down", hit.maxHits);' in runtime_source
+    assert 'readUInt32Field(object, "hit_flash_ms", hit.hitFlashMs);' in runtime_source
+    assert 'prefs.preferences().getUInt("max_hits", hit.maxHits)' in runtime_source
+    assert 'prefs.preferences().getUInt("hit_flash", hit.hitFlashMs)' in runtime_source
+    assert 'hitObject["max_hits"] = hit.maxHits;' in runtime_source
+    assert 'hitObject["hits_to_down"] = hit.maxHits;' in runtime_source
+    assert 'hitObject["hit_flash_ms"] = hit.hitFlashMs;' in runtime_source
+
+    assert "#define BATTLEBANG_MAX_HITS 14" in build_config
+    assert "#define BATTLEBANG_HIT_FLASH_MS 900" in build_config
+    assert "static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;" in build_config
+    assert f"{env_prefix}_MAX_HITS=14" in env_example
+    assert f"{env_prefix}_HIT_FLASH_MS=900" in env_example
+    assert '"max_hits": env_int' in provision_script
+    assert '"hit_flash_ms": env_int' in provision_script
+
+    assert "hit_event" in mqtt_contract
+    assert "decision_owner" in mqtt_contract
+    assert "display_owner" in mqtt_contract
+    assert "reset/debug compatibility" in mqtt_contract
+    assert "hit_candidate" not in mqtt_contract
+
+
+def test_go2_local_hit_state_owns_hp_bar_and_publishes_combat_status() -> None:
+    assert_local_hit_state_contract("go2", "GO2")
+
+
+def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_cooldown() -> None:
+    assert_local_hit_state_contract("go2_nixo", "GO2_NIXO")
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    ring_source = (ROOT / "firmware/go2_nixo/display/ring_display.cpp").read_text()
+    nixo_fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
+    assert "ring LED is reserved for Nixo ready/firing/cooldown state, never HP state" in main
+    assert "ringDisplay.setCooldownState" in main
+    assert "nixoFire.cooldownRemainingMs(now)" in main
+    assert "nixoFire.cooldownDurationMs()" in main
+    assert "renderCooldown" in ring_source
+    assert "cooldownStartedMs_" in nixo_fire_source
+    assert 'nixoFire.stopFire("mqtt-hit-reset")' not in main
+
+
 def test_go2_platformio_envs_are_generic_and_identity_is_nvs_provisioned() -> None:
     platformio = (ROOT / "platformio.ini").read_text()
     go2_config = (ROOT / "scripts/go2_config.py").read_text()
@@ -497,6 +599,8 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2["hit"]["piezo_ao_threshold_raw"] == 200
     assert go2["hit"]["piezo_ao_rearm_raw"] == 150
     assert go2["hit"]["led_brightness"] == 120
+    assert go2["hit"]["max_hits"] == 14
+    assert go2["hit"]["hit_flash_ms"] == 900
     assert go2["hit"]["offline_queue_capacity"] == 32
     assert go2["wifi"]["ssid"] == "YOUR_WIFI_SSID"
     assert go2["mqtt"]["host"] == "COMMAND_CENTER_IP_OR_DNS"
@@ -526,6 +630,8 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2_nixo["hit"]["piezo_ao_rearm_raw"] == 150
     assert go2_nixo["hit"]["led_brightness"] == 120
     assert go2_nixo["hit"]["ring_brightness"] == 80
+    assert go2_nixo["hit"]["max_hits"] == 14
+    assert go2_nixo["hit"]["hit_flash_ms"] == 900
     assert go2_nixo["nixo"]["id"] == "nixo_go2_03"
     assert go2_nixo["nixo"]["command_topic_prefix"] == "battlebang/nixo"
     assert go2_nixo["nixo"]["fire_default_duration_ms"] == 3000

@@ -466,7 +466,7 @@ def test_src_docs_define_firmware_migration_scope_and_ota_contract() -> None:
     assert "turret-fleet-latest/manifest.json" in readme
     assert "hit-target-latest/hit-target-manifest.json" not in readme
 
-    assert "Applies to all firmware folders under `src/**`" in agents
+    assert "Applies to legacy/reference firmware folders under `src/**`" in agents
     assert "If copying values between ignored env files" in agents
     assert "Do not use GitHub's repo-wide `/releases/latest/download/...`" in agents
     assert "hit-target-latest" in agents
