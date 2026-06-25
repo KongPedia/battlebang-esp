@@ -140,6 +140,52 @@ def test_common_modules_are_capability_split_and_template_forbids_copy_paste_imp
     assert not (ROOT / "lib/bb_esp_mqtt").exists()
 
 
+def test_agent_guidance_files_cover_core_onboarding_boundaries() -> None:
+    root_agents = read("AGENTS.md")
+    firmware_agents = read("firmware/AGENTS.md")
+    lib_agents = read("lib/AGENTS.md")
+    workflow_agents = read(".github/workflows/AGENTS.md")
+    tests_agents = read("tests/AGENTS.md")
+    src_agents = read("src/AGENTS.md")
+    firmware_readme = read("firmware/README.md")
+
+    guidance_files = (
+        "firmware/AGENTS.md",
+        "lib/AGENTS.md",
+        ".github/workflows/AGENTS.md",
+        "tests/AGENTS.md",
+    )
+    for guidance_file in guidance_files:
+        assert (ROOT / guidance_file).exists(), guidance_file
+
+    # Keep this as a smoke test for non-negotiable onboarding boundaries, not a
+    # phrase-by-phrase documentation snapshot. README/AGENTS prose should be
+    # editable without rewriting this test unless the boundary changes.
+    assert "README" in root_agents and "AGENTS.md" in root_agents
+    assert all(guidance_file in firmware_readme for guidance_file in guidance_files)
+
+    for required in (
+        "firmware/<firmware_name>/",
+        "Do not add new active firmware under `src/`",
+        "firmware-ota.yml",
+        "stage_id",
+        "esp32dev_<firmware>_01",
+    ):
+        assert required in firmware_agents
+
+    assert "capability-scoped" in lib_agents
+    assert "monolithic `common`" in lib_agents
+    assert "path filters" in lib_agents
+
+    assert "matrix rows" in workflow_agents
+    assert "Shared library changes" in workflow_agents
+    assert "versioned release assets" in workflow_agents
+
+    assert "Contract tests" in tests_agents
+    assert "Host-only" in tests_agents
+    assert "New active firmware must not be added under `src/`" in src_agents
+
+
 def test_go2_standardization_checkpoint_is_locked_before_path_moves() -> None:
     migration = read("firmware/MIGRATION_PLAN.md")
     go2_readme = read("firmware/go2/README.md")
