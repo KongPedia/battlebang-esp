@@ -285,7 +285,7 @@ Payload:
   "ota": {
     "command_center_controlled": true,
     "auto_check_enabled": false,
-    "channel": "boss-demo",
+    "channel": "stable",
     "desired_build": 42,
     "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v0.3.0/manifest.json",
     "local_mirror_url": "http://COMMAND_CENTER_IP_OR_DNS:8080/firmware/turret/manifest.json",
@@ -433,7 +433,7 @@ Safety:
   "job_id": "turret-fw-2026-05-28-001",
   "app": "battlebang-turret-fleet",
   "hardware": "esp32dev-turret-v2",
-  "channel": "boss-demo",
+  "channel": "stable",
   "version": "0.3.0",
   "build": 42,
   "url": "http://COMMAND_CENTER_IP_OR_DNS:8080/firmware/battlebang-turret-fleet-0.3.0.bin",

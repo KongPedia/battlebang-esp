@@ -79,7 +79,7 @@ Payload:
   "ota": {
     "command_center_controlled": true,
     "auto_check_enabled": false,
-    "channel": "boss-demo",
+    "channel": "stable",
     "apply_only_in_safe_state": true
   }
 }

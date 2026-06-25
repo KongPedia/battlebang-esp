@@ -325,7 +325,7 @@ def build_config(
         "ota": {
             "command_center_controlled": True,
             "auto_check_enabled": parse_bool(env_first(env, "TURRET_FLEET_OTA_AUTO_CHECK_ENABLED", default="false"), default=False),
-            "channel": env_first(env, "TURRET_FLEET_OTA_CHANNEL", default="boss-demo"),
+            "channel": env_first(env, "TURRET_FLEET_OTA_CHANNEL", default="stable"),
             "desired_build": int(env_first(env, "TURRET_FLEET_OTA_DESIRED_BUILD", default="0") or "0"),
             "public_manifest_url": env_first(
                 env,

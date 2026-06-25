@@ -80,7 +80,7 @@
   "ota": {
     "command_center_controlled": true,
     "auto_check_enabled": false,
-    "channel": "boss-demo",
+    "channel": "stable",
     "desired_build": 0,
     "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json",
     "local_mirror_url": "",

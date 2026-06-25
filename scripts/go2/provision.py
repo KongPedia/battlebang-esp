@@ -33,6 +33,9 @@ from go2_runtime.provisioning import (  # noqa: E402
 PREFIXES: tuple[str, ...] = ("GO2", "ESP", "BATTLEBANG")
 DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "go2" / ".env.go2"
 DEFAULT_HIT_TOPIC_PREFIX = "battlebang/hit"
+DEFAULT_OTA_MANIFEST_URL = (
+    "https://github.com/KongPedia/battlebang-esp/releases/download/go2-latest/go2-manifest.json"
+)
 
 
 def prefixed_tuning_keys(suffix: str) -> tuple[str, ...]:
@@ -124,6 +127,7 @@ def build_payload(env: dict[str, str], action: str, robot_id: str) -> dict[str, 
         device_id=robot_id,
         group_default="go2",
         ota_channel_default="go2",
+        ota_public_manifest_url_default=DEFAULT_OTA_MANIFEST_URL,
     )
     hit_topic_prefix = env_first(
         env,

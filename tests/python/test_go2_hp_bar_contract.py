@@ -502,6 +502,7 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2["mqtt"]["host"] == "COMMAND_CENTER_IP_OR_DNS"
     assert go2["mqtt"]["root"] == "battlebang"
     assert go2["ota"]["channel"] == "go2"
+    assert go2["ota"]["public_manifest_url"].endswith("/go2-latest/go2-manifest.json")
     assert "nixo_id" not in go2
 
     go2_nixo = run_provision_script(

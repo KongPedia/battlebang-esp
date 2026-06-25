@@ -120,7 +120,7 @@ struct RuntimeConfig {
 
   bool otaCommandCenterControlled = true;
   bool otaAutoCheckEnabled = false;
-  String otaChannel = "boss-demo";
+  String otaChannel = "stable";
   uint32_t otaDesiredBuild = 0;
   String otaPublicManifestUrl;
   String otaLocalMirrorUrl;
