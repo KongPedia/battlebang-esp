@@ -1,0 +1,59 @@
+{
+  "firmware": "battlebang-heavy-blaster",
+  "documentation": "README.md",
+  "schema": 1,
+  "defaults": {
+    "display_name": "Heavy Blaster",
+    "debug_allow_local_control": false,
+    "unlock": {
+      "required_slots": 4,
+      "pre_effect_ms": 10000,
+      "fade_out_ms": 4000,
+      "blink_bpm": 40,
+      "relay_on_after_all_slots": true
+    },
+    "led": {
+      "slot_count": 4,
+      "matrix_width": 8,
+      "matrix_height": 8,
+      "matrix_num_leds": 64,
+      "brightness": 30,
+      "max_ma": 2000,
+      "led_type": "WS2812B",
+      "color_order": "GRB",
+      "active_color": "#FFFF00"
+    },
+    "hardware_profile": {
+      "slot_count": 4,
+      "matrix_pins": [23, 22, 21, 19],
+      "relay_pin": 26,
+      "relay_active_low": false,
+      "relay_profile": "single_channel_active_high"
+    },
+    "wifi": {
+      "auto_start": true,
+      "start_delay_ms": 0
+    },
+    "mqtt": {
+      "root": "battlebang",
+      "port": 1883
+    },
+    "ota": {
+      "channel": "heavy-blaster",
+      "command_center_controlled": true,
+      "auto_check_enabled": false,
+      "public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/heavy-blaster-latest/heavy-blaster-manifest.json"
+    }
+  },
+  "topics": {
+    "logical_status": "battlebang/heavy-blasters/{blaster_id}/status",
+    "logical_command": "battlebang/heavy-blasters/{blaster_id}/command",
+    "device_status": "battlebang/devices/{device_id}/status"
+  },
+  "notes": [
+    "Hyphenated product surfaces are intentional: firmware/heavy_blaster and MQTT heavy-blasters.",
+    "C++ namespace, PlatformIO env, and shell variables remain underscore-safe as heavy_blaster / HEAVY_BLASTER_*.",
+    "Command Center owns slot progress; the ESP owns local relay safe-off and unlock rendering.",
+    "Relay polarity is explicit and defaults to active-HIGH for the prototype branch wiring."
+  ]
+}

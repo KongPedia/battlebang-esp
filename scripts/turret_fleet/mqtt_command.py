@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "turret_fleet" / ".env.turret_fleet"
+DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "turret_fleet" / ".env.turret_fleet"
 DEFAULT_LATEST_MANIFEST_URL = "https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json"
 
 
@@ -539,7 +539,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Publish BattleBang turret_fleet MQTT config/command messages without external MQTT tools."
     )
-    parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="dotenv file; default src/turret_fleet/.env.turret_fleet")
+    parser.add_argument("--env-file", default=str(DEFAULT_ENV_FILE), help="dotenv file; default firmware/turret_fleet/.env.turret_fleet")
     parser.add_argument("--host", help="MQTT broker host; env TURRET_FLEET_MQTT_HOST/TURRET_MQTT_HOST")
     parser.add_argument("--port", type=int, help="MQTT broker port; default/env 1883")
     parser.add_argument("--root", help="MQTT root; default/env battlebang")

@@ -13,7 +13,7 @@ PYTHON_BIN="$ROOT_DIR/.venv-pio/bin/python"
 TURRETS_JSON="$ROOT_DIR/src/turret/turrets.json"
 LOCAL_SECRETS="$ROOT_DIR/src/turret/local_secrets.h"
 UPLOAD_TARGETS="$ROOT_DIR/src/turret/upload_targets.toml"
-FLEET_ENV_FILE="${TURRET_FLEET_ENV_FILE:-$ROOT_DIR/src/turret_fleet/.env.turret_fleet}"
+FLEET_ENV_FILE="${TURRET_FLEET_ENV_FILE:-$ROOT_DIR/firmware/turret_fleet/.env.turret_fleet}"
 HIT_TARGET_ENV_FILE="${HIT_TARGET_ENV_FILE:-$ROOT_DIR/src/hit_target/.env.hit_target}"
 declare -a SECRET_ARGS=()
 
@@ -58,7 +58,7 @@ Examples:
   ./bin/turret fleet-provision turret_2 /dev/cu.usbserial-120
   ./bin/turret fleet-mqtt turret_2 target 0 0 1
   ./bin/turret fleet-mqtt turret_2 aim 0 10
-  ./bin/turret fleet-mqtt turret_2 config --profile-file src/turret_fleet/profiles/turret_2.json --patterns-file src/turret_fleet/pattern_presets/turret_2.json
+  ./bin/turret fleet-mqtt turret_2 config --profile-file firmware/turret_fleet/profiles/turret_2.json --patterns-file firmware/turret_fleet/pattern_presets/turret_2.json
   ./bin/turret fleet-mqtt turret_2 pattern two_point_bounce --frame-id boss_stage_v1
   ./bin/turret fleet-e2e turret_2 --host COMMAND_CENTER_IP_OR_DNS --allow-live-fire
   ./bin/turret fleet-mqtt turret_2 recover
@@ -80,12 +80,12 @@ Secrets:
       ./bin/turret upload 5
 
 Fleet first provisioning:
-  - Copy src/turret_fleet/.env.turret_fleet.example -> src/turret_fleet/.env.turret_fleet and fill Wi-Fi/MQTT.
+  - Copy firmware/turret_fleet/.env.turret_fleet.example -> firmware/turret_fleet/.env.turret_fleet and fill Wi-Fi/MQTT.
   - `fleet-upload 2` uploads one generic esp32dev_turret_fleet image and then
     injects turret_2 runtime config over USB serial into ESP32 NVS.
   - Per-turret non-secret defaults are auto-loaded from:
-      src/turret_fleet/profiles/<turret>.json
-      src/turret_fleet/pattern_presets/<turret>.json
+      firmware/turret_fleet/profiles/<turret>.json
+      firmware/turret_fleet/pattern_presets/<turret>.json
   - Env file can be overridden with TURRET_FLEET_ENV_FILE=/path/to/.env.
   - `fleet-mqtt` reads the same module-local env file for broker host/port/root. Use
     --host "$MQTT_BROKER_HOST" when the env file is absent; this host is the MQTT broker,

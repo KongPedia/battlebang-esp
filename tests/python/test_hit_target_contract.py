@@ -280,8 +280,8 @@ def test_hit_target_platformio_env_is_distinct_from_go2_mounted_firmware() -> No
 
     assert "[env:esp32dev_hit_target]" in pio
     assert "+<hit_target/**>" in pio
-    assert "+<go2_nixo/**>" in pio
-    assert "src/go2_nixo/" in readme
+    assert "+<../firmware/go2_nixo/**>" in pio
+    assert "firmware/go2_nixo/" in readme
     assert "src/hit_target/" in readme
     assert "Go2-mounted" in readme
     assert "Generic standalone hit target" in readme
@@ -436,30 +436,35 @@ def test_hit_target_provision_helper_maps_env_to_nvs_runtime_config() -> None:
     }
 
 
-def test_hit_target_github_action_removed_while_boss_target_action_is_scoped() -> None:
+def test_hit_target_github_action_removed_while_firmware_ota_action_is_scoped() -> None:
     assert not (ROOT / ".github/workflows/hit-target-firmware.yml").exists()
-    workflow = read(".github/workflows/boss-target-firmware.yml")
+    workflow = read(".github/workflows/firmware-ota.yml")
 
-    assert "Folder-scoped trigger" in workflow
-    assert '"src/boss_target/**"' in workflow
-    assert '"scripts/boss_target/**"' in workflow
+    assert "Firmware OTA Releases" in workflow
+    assert '"firmware/boss_target/**"' in workflow
     assert '"scripts/firmware/make_release_manifest.py"' in workflow
     assert '"src/hit_target/**"' not in workflow
-    assert '"src/turret_fleet/**"' not in workflow
-    assert '"src/go2_nixo/**"' not in workflow
-    assert "platformio.ini remains included" in workflow
+    assert '"scripts/boss_target/**"' not in workflow
+    assert '"scripts/go2/**"' not in workflow
+    assert '"scripts/go2_runtime/**"' not in workflow
+    assert '"scripts/go2_nixo/**"' not in workflow
+    assert '"scripts/heavy_blaster/**"' not in workflow
 
 
-def test_src_docs_define_independent_firmware_env_and_ota_contract() -> None:
+def test_src_docs_define_firmware_migration_scope_and_ota_contract() -> None:
     readme = read("src/README.md")
     agents = read("src/AGENTS.md")
     root_agents = read("AGENTS.md")
 
-    assert "Each production firmware folder owns its source" in readme
-    assert "src/hit_target/.env.hit_target" in readme
-    assert "src/turret_fleet/.env.turret_fleet" in readme
-    assert "hit-target-latest/hit-target-manifest.json" in readme
+    assert "current compatibility workspace" in readme
+    assert "New standardized firmware should live under `firmware/`" in readme
+    assert "`src/hit_target/`" in readme
+    assert "Unused/retire" in readme
+    assert "hit_target` is unused" in readme
+    assert "`firmware/go2/` — already moved" in readme
+    assert "`firmware/go2_nixo/` — already moved" in readme
     assert "turret-fleet-latest/manifest.json" in readme
+    assert "hit-target-latest/hit-target-manifest.json" not in readme
 
     assert "Applies to all firmware folders under `src/**`" in agents
     assert "If copying values between ignored env files" in agents

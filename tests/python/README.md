@@ -18,7 +18,7 @@ python3 -m venv .venv-pio
 
 ## Contract tests
 
-Hardware-free checks for `src/turret_fleet` contracts, helper payloads, config validation, OTA policy, and safety strings:
+Hardware-free checks for `firmware/turret_fleet` contracts, helper payloads, config validation, OTA policy, and safety strings:
 
 ```bash
 python3 -m py_compile scripts/turret_fleet/*.py tests/python/test_turret_fleet_contract.py

@@ -1,0 +1,8 @@
+{
+  "name": "bb_esp_net",
+  "version": "0.1.0",
+  "description": "BattleBang ESP Wi-Fi connection and retry helpers.",
+  "keywords": ["battlebang", "esp32", "wifi", "network"],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}

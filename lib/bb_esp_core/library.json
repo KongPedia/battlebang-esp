@@ -1,0 +1,24 @@
+{
+  "name": "bb_esp_core",
+  "version": "0.1.0",
+  "description": "BattleBang ESP header-first foundations for identity, config, JSON, and MQTT topic helpers.",
+  "keywords": [
+    "battlebang",
+    "esp32",
+    "firmware",
+    "mqtt",
+    "config"
+  ],
+  "frameworks": [
+    "arduino"
+  ],
+  "platforms": [
+    "espressif32"
+  ],
+  "dependencies": [
+    {
+      "name": "bblanchon/ArduinoJson",
+      "version": "^6.21.5"
+    }
+  ]
+}

@@ -768,8 +768,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", help="MQTT root; default/env battlebang")
     parser.add_argument("--username")
     parser.add_argument("--password")
-    parser.add_argument("--profile-file", type=Path, help="default src/turret_fleet/profiles/<turret>.json")
-    parser.add_argument("--patterns-file", type=Path, help="default src/turret_fleet/pattern_presets/<turret>.json")
+    parser.add_argument("--profile-file", type=Path, help="default firmware/turret_fleet/profiles/<turret>.json")
+    parser.add_argument("--patterns-file", type=Path, help="default firmware/turret_fleet/pattern_presets/<turret>.json")
     parser.add_argument("--skip-config", action="store_true", help="do not publish profile/pattern config before tests")
     parser.add_argument("--allow-live-fire", action="store_true", help="run fire and pattern tests that energize relays/ESC")
     parser.add_argument("--target-point", nargs=3, type=float, default=[0.0, -0.5, -0.6], metavar=("X", "Y", "Z"))
@@ -807,9 +807,9 @@ def main(argv: list[str] | None = None) -> int:
     username = args.username or env_first(env, "TURRET_FLEET_MQTT_USERNAME", "TURRET_MQTT_USERNAME")
     password = args.password or env_first(env, "TURRET_FLEET_MQTT_PASSWORD", "TURRET_MQTT_PASSWORD")
     if args.profile_file is None:
-        args.profile_file = PROJECT_ROOT / "src" / "turret_fleet" / "profiles" / f"{turret_id}.json"
+        args.profile_file = PROJECT_ROOT / "firmware" / "turret_fleet" / "profiles" / f"{turret_id}.json"
     if args.patterns_file is None:
-        args.patterns_file = PROJECT_ROOT / "src" / "turret_fleet" / "pattern_presets" / f"{turret_id}.json"
+        args.patterns_file = PROJECT_ROOT / "firmware" / "turret_fleet" / "pattern_presets" / f"{turret_id}.json"
 
     command_topic = topic_for(root, turret_id, "command")
     config_topic = topic_for(root, turret_id, "config")

@@ -13,6 +13,31 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def test_turret_fleet_mqtt_topics_use_common_builders() -> None:
+    topics = read("firmware/turret_fleet/mqtt/topics.cpp")
+
+    assert "#include <bb_esp_core/mqtt/device_topics.h>" in topics
+    assert "normalizeRootOrDefault(config.mqttRoot)" in topics
+    assert "makeDeviceTopicsChecked(root, config.deviceId" in topics
+    assert 'makeAllOtaTopicChecked(root, "turrets"' in topics
+    assert 'makeEntityTopicsChecked(\n            root, "turrets", config.turretId' in topics
+    assert "topics.turretCommand = entityTopics.command;" in topics
+
+
+def test_turret_fleet_ota_manifest_uses_common_helper() -> None:
+    manifest = read("firmware/turret_fleet/ota/ota_manifest.cpp")
+    manifest_h = read("firmware/turret_fleet/ota/ota_manifest.h")
+    reboot = read("firmware/turret_fleet/ota/reboot_marker.cpp")
+
+    assert "#include <bb_esp_ota/ota_manifest.h>" in manifest_h
+    assert "identity.app = BB_TURRET_FLEET_APP_NAME" in manifest
+    assert "identity.hardware = BB_TURRET_FLEET_HARDWARE" in manifest
+    assert "identity.build = BB_TURRET_FLEET_BUILD" in manifest
+    assert "shouldApplyManifest(manifest, firmwareIdentity(), reason)" in manifest
+    assert "bb_esp_ota/reboot_marker.h" in reboot
+    assert "writeRebootMarker(kSafetyPrefsNamespace, kOtaRebootMarkerKey, active)" in reboot
+
+
 def test_legacy_turret_boots_hold_not_idle_sweep() -> None:
     main = read("src/turret/main.cpp")
     setup_body = main.split("void setup()", 1)[1].split("void loop()", 1)[0]
@@ -22,9 +47,9 @@ def test_legacy_turret_boots_hold_not_idle_sweep() -> None:
 
 
 def test_fleet_control_boots_wait_command_then_initial_local_home() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    main = read("src/turret_fleet/main.cpp")
-    mqtt_h = read("src/turret_fleet/mqtt/mqtt_bus.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
+    mqtt_h = read("firmware/turret_fleet/mqtt/mqtt_bus.h")
 
     assert 'mode_ = config.configured ? "WAIT_COMMAND" : "UNCONFIGURED";' in control
     assert 'mode_ = config.configured ? "IDLE" : "UNCONFIGURED";' not in control
@@ -44,7 +69,7 @@ def test_fleet_control_boots_wait_command_then_initial_local_home() -> None:
 
 
 def test_default_runtime_config_has_no_compiled_broker_and_schema_2() -> None:
-    header = read("src/turret_fleet/config/runtime_config.h")
+    header = read("firmware/turret_fleet/config/runtime_config.h")
 
     assert "uint16_t schema = 2;" in header
     assert 'String mqttHost = "";' in header
@@ -54,7 +79,7 @@ def test_default_runtime_config_has_no_compiled_broker_and_schema_2() -> None:
 
 
 def test_serial_supports_first_provisioning_and_debug_commands() -> None:
-    main = read("src/turret_fleet/main.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
 
     assert 'Serial.println("  provision {json}");' in main
     assert 'Serial.println("  command {json}");' in main
@@ -68,16 +93,18 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     helper = read("bin/turret")
     provision = read("scripts/turret_fleet/provision.py")
     gitignore = read(".gitignore")
-    env_example = read("src/turret_fleet/.env.turret_fleet.example")
+    env_example = read("firmware/turret_fleet/.env.turret_fleet.example")
 
     assert "fleet-upload" in helper
     assert "fleet-provision" in helper
     assert "esp32dev_turret_fleet" in helper
-    assert "src/turret_fleet/.env.turret_fleet" in gitignore
+    assert "firmware/turret_fleet/.env.turret_fleet" in gitignore
     assert "TURRET_FLEET_WIFI_PASSWORD=YOUR_WIFI_PASSWORD" in env_example
     assert "TURRET_FLEET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS" in env_example
     assert PRIVATE_LAB_PREFIX not in env_example
     assert "TURRET_FLEET_NETWORK_AUTO_START=true" in env_example
+    assert "TURRET_FLEET_DEVICE_ID=" in env_example
+    assert "TURRET_FLEET_STAGE_ID=boss_stage_v1" in env_example
     assert "Keep false while power/servo brownout" not in env_example
     assert "TURRET_FLEET_YAW_STOP_US=1500" in env_example
     assert "TURRET_FLEET_PITCH_STOP_US=1500" in env_example
@@ -86,7 +113,10 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
     assert "TURRET_FLEET_AXIS_SWITCH_COOLDOWN_MS=800" in env_example
     assert "def build_config" in provision
     assert "normalize_turret_id" in provision
+    assert "TURRET_FLEET_PROFILE_ID" in provision
+    assert "TURRET_FLEET_DEVICE_ID" in provision
     assert '"turret_id": turret_id' in provision
+    assert '"device_id": runtime_device_id' in provision
     assert "TURRET_FLEET_MQTT_HOST" in provision
     assert 'default="true"' in provision
     assert '"yaw_stop_us": yaw_stop_us' in provision
@@ -101,7 +131,7 @@ def test_fleet_dotenv_upload_provisioning_supports_turret_2_without_committing_s
 
 
 def test_fleet_target_contract_rejects_frame_mismatch_and_converts_meters() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
 
     assert "frame_id mismatch" in control
     assert "return mqttTargetsInMeters(config_) ? value * 100.0f : value;" in control
@@ -116,7 +146,7 @@ def test_fleet_target_contract_rejects_frame_mismatch_and_converts_meters() -> N
 
 
 def test_fleet_rejects_expired_timestamped_commands_when_wall_clock_is_valid() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
     helper = read("scripts/turret_fleet/mqtt_command.py")
 
     assert "#include <time.h>" in control
@@ -131,13 +161,13 @@ def test_fleet_rejects_expired_timestamped_commands_when_wall_clock_is_valid() -
     assert 'lastError_ = "";' in control.split("bool TurretControl::handleCommandJson", 1)[1].split("const char* command", 1)[0]
     assert "lastError_ = ttlRejectReason;" in control
     assert "return false;" in control.split("if (commandExpiredByTtl(doc, ttlRejectReason))", 1)[1].split("if (strcmp(command, \"recover\")", 1)[0]
-    assert "publishStatus(applied ? \"command_applied\" : \"command_rejected\")" in read("src/turret_fleet/mqtt/mqtt_bus.cpp")
+    assert "publishStatus(applied ? \"command_applied\" : \"command_rejected\")" in read("firmware/turret_fleet/mqtt/mqtt_bus.cpp")
     assert 'payload["issued_at_ms"] = int(time.time() * 1000)' in helper
 
 
 def test_fleet_supports_direct_yaw_pitch_aim_for_axis_debugging() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
 
     assert "applyDirectAimCommand" in header
     assert 'strcmp(command, "aim") == 0' in control
@@ -149,8 +179,8 @@ def test_fleet_supports_direct_yaw_pitch_aim_for_axis_debugging() -> None:
 
 
 def test_fleet_supports_mqtt_home_init_command_for_local_zeroing() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
     helper = read("scripts/turret_fleet/mqtt_command.py")
 
     assert "applyHomeCommand" in header
@@ -166,8 +196,8 @@ def test_fleet_supports_mqtt_home_init_command_for_local_zeroing() -> None:
 
 
 def test_fleet_supports_bounded_jog_for_yaw_wrap_debugging() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
     helper = read("scripts/turret_fleet/mqtt_command.py")
 
     assert "applyJogCommand" in header
@@ -190,8 +220,8 @@ def test_fleet_supports_bounded_jog_for_yaw_wrap_debugging() -> None:
 
 
 def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
-    bus = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    bus = read("firmware/turret_fleet/mqtt/mqtt_bus.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
 
     assert "control_->appendStatus" in bus
     for field in [
@@ -258,7 +288,7 @@ def test_mqtt_status_exposes_alignment_and_safe_state_fields() -> None:
 
 
 def test_turret_fleet_boot_sends_esc_stop_signal_on_gpio25() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
 
     assert "const int kEscPin = 25;" in control
     assert "ensureEscStopSignal(\"boot-ready\");" in control
@@ -268,19 +298,22 @@ def test_turret_fleet_boot_sends_esc_stop_signal_on_gpio25() -> None:
 
 
 def test_mqtt_config_update_can_change_wifi_or_broker_after_first_provisioning() -> None:
-    bus = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
+    bus = read("firmware/turret_fleet/mqtt/mqtt_bus.cpp")
 
     assert "wifiChanged" in bus
     assert "mqttChanged" in bus
+    assert "next.deviceId != config_->deviceId" in bus
     assert "wifi_->begin(*config_)" in bus
     assert "reconfigure();" in bus
 
 
 def test_network_autostart_is_forced_after_local_boot_initial_target() -> None:
-    main = read("src/turret_fleet/main.cpp")
-    config_h = read("src/turret_fleet/config/runtime_config.h")
-    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
-    wifi = read("src/turret_fleet/net/wifi_manager.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
+    config_h = read("firmware/turret_fleet/config/runtime_config.h")
+    config_cpp = read("firmware/turret_fleet/config/runtime_config.cpp")
+    wifi = read("firmware/turret_fleet/net/wifi_manager.cpp")
+    wifi_h = read("firmware/turret_fleet/net/wifi_manager.h")
+    common_wifi = read("lib/bb_esp_net/src/bb_esp_net/wifi_manager.cpp")
 
     assert "uint32_t networkStartDelayMs = 10000;" in config_h
     assert "bool networkAutoStart = true;" in config_h
@@ -292,18 +325,27 @@ def test_network_autostart_is_forced_after_local_boot_initial_target() -> None:
     assert 'startNetwork("boot_forced")' in main
     assert 'startNetwork("boot_retry")' in main.split("void loop()", 1)[1]
     assert "mqtt.connected()" in main.split("void loop()", 1)[1]
+    assert "normalizeConfiguredRoot(next.mqttRoot, error)" in config_cpp
+    assert "isSafeTopicSegment(next.deviceId)" in config_cpp
+    assert 'keys.deviceId = "device_id";' in config_cpp
+    assert "isSafeTopicSegment(next.turretId)" in config_cpp
+    assert "turret_id must use only A-Z" in config_cpp
+    assert "mqtt.root must not contain empty path segments" in read("lib/bb_esp_core/src/bb_esp_core/mqtt/topic_utils.h")
     setup_body = main.split("void setup()", 1)[1].split("void loop()", 1)[0]
     assert setup_body.index('runBootInitialTargetIfNeeded("setup_local_boot")') < setup_body.index('startNetwork("boot_forced")')
     assert "prearmMotion" not in main
     assert "network_start_before_wifi" not in main
     assert "wifi.begin(config);" in main
-    assert "connecting to configured SSID" in wifi
+    assert "#include <bb_esp_net/wifi_manager.h>" in wifi_h
+    assert 'WifiManager::WifiManager() : wifi_("[fleet][wifi]")' in wifi
+    assert "connecting to configured SSID" in common_wifi
     assert "Serial.println(config.wifiSsid)" not in wifi
+    assert "Serial.println(config.wifiSsid)" not in common_wifi
 
 
 def test_fleet_idle_and_dead_attach_motion_and_set_targets() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    config = read("src/turret_fleet/config/runtime_config.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    config = read("firmware/turret_fleet/config/runtime_config.h")
 
     assert "float deadPitchDeg = 12.0f;" in config
     assert "float idleYawSpeedDegS = 8.0f;" in config
@@ -319,17 +361,17 @@ def test_fleet_idle_and_dead_attach_motion_and_set_targets() -> None:
 
 
 def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
-    config = read("src/turret_fleet/config/runtime_config.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
+    config = read("firmware/turret_fleet/config/runtime_config.h")
 
     assert "uint16_t fireEscRunUs = 1700;" in config
     assert "uint32_t fireDefaultHoldMs = 500;" in config
     assert "uint32_t fireMinHoldMs = 100;" in config
     assert "bool fireRelayActiveLow = true;" in config
     assert "bool fireRelayCh3ActiveLow = true;" in config
-    assert 'fire["relay_ch3_active_low"]' in read("src/turret_fleet/config/runtime_config.cpp")
-    assert 'prefs.getBool("fire_r3_al"' in read("src/turret_fleet/config/runtime_config.cpp")
+    assert 'fire["relay_ch3_active_low"]' in read("firmware/turret_fleet/config/runtime_config.cpp")
+    assert 'prefs.getBool("fire_r3_al"' in read("firmware/turret_fleet/config/runtime_config.cpp")
     assert "const int kRelayCh1Pin = 21;" in control
     assert "const int kRelayCh2Pin = 22;" in control
     assert "const int kRelayCh3Pin = 23;" in control
@@ -356,10 +398,10 @@ def test_fleet_fire_drives_real_relay_esc_outputs_and_allows_500ms_pulse() -> No
 
 
 def test_fleet_relay_profile_is_explicit_nvs_contract_not_turret_id_mapping() -> None:
-    config = read("src/turret_fleet/config/runtime_config.cpp")
-    header = read("src/turret_fleet/config/runtime_config.h")
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    docs = read("src/turret_fleet/config/README.md")
+    config = read("firmware/turret_fleet/config/runtime_config.cpp")
+    header = read("firmware/turret_fleet/config/runtime_config.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    docs = read("firmware/turret_fleet/config/README.md")
 
     assert "String fireRelayProfile;" in header
     assert 'profile == "single_channel_ch3_active_high"' in config
@@ -375,8 +417,8 @@ def test_fleet_relay_profile_is_explicit_nvs_contract_not_turret_id_mapping() ->
 
 
 def test_explicit_fire_does_not_wait_for_target_aim_stability() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
 
     assert "bool TurretControl::aimReached() const" in control
     assert "aimStableForFire" not in control
@@ -389,7 +431,7 @@ def test_explicit_fire_does_not_wait_for_target_aim_stability() -> None:
 
 
 def test_pitch_deadband_is_tighter_than_aim_reached_tolerance() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
 
     assert "const float kPitchDeadbandPseudo = 10.0f;" in control
     assert "const float kAimReachedToleranceDeg = 3.0f;" in control
@@ -400,17 +442,17 @@ def test_pitch_deadband_is_tighter_than_aim_reached_tolerance() -> None:
 
 
 def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
 
     assert "setTrackedTarget" in header
     assert "updateTrackedTargetSlew" in header
     assert "const float kTargetYawLeadDeg = 30.0f;" in control
     assert "const float kTargetPitchLeadDeg = 30.0f;" in control
-    assert "uint16_t servoMaxDeltaUs = 220;" in read("src/turret_fleet/config/runtime_config.h")
-    assert "uint16_t yawMaxDeltaUs = 20;" in read("src/turret_fleet/config/runtime_config.h")
-    assert "uint16_t pitchMaxDeltaUs = 20;" in read("src/turret_fleet/config/runtime_config.h")
-    assert "uint16_t pitchMinDriveUs = 20;" in read("src/turret_fleet/config/runtime_config.h")
+    assert "uint16_t servoMaxDeltaUs = 220;" in read("firmware/turret_fleet/config/runtime_config.h")
+    assert "uint16_t yawMaxDeltaUs = 20;" in read("firmware/turret_fleet/config/runtime_config.h")
+    assert "uint16_t pitchMaxDeltaUs = 20;" in read("firmware/turret_fleet/config/runtime_config.h")
+    assert "uint16_t pitchMinDriveUs = 20;" in read("firmware/turret_fleet/config/runtime_config.h")
     assert "Drive exactly one axis at a time" in control
     assert "Lock onto one axis" in control
     assert "axis_switch_to_yaw" in control
@@ -466,8 +508,8 @@ def test_target_motion_uses_slew_and_pitch_safety_guard() -> None:
 
 
 def test_new_motion_commands_preempt_stale_axis_state_before_tracking() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
 
     assert "prepareForNewMotionCommand" in header
     assert "void TurretControl::prepareForNewMotionCommand(const char* source)" in control
@@ -492,11 +534,11 @@ def test_fleet_env_includes_esp32servo_for_yaw_pitch_motion() -> None:
 
 
 def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
-    firmware = read("src/turret_fleet/app/firmware_info.h")
+    firmware = read("firmware/turret_fleet/app/firmware_info.h")
     script = read("scripts/turret_fleet/make_release_manifest.py")
     provision = read("scripts/turret_fleet/provision.py")
-    workflow = read(".github/workflows/turret-fleet-firmware.yml")
-    example = json.loads(read("src/turret_fleet/examples/ota-manifest.example.json"))
+    workflow = read(".github/workflows/firmware-ota.yml")
+    example = json.loads(read("firmware/turret_fleet/examples/ota-manifest.example.json"))
 
     assert 'BB_TURRET_FLEET_APP_NAME "battlebang-turret-fleet"' in firmware
     assert 'BB_TURRET_FLEET_HARDWARE "esp32dev-turret-v2"' in firmware
@@ -519,17 +561,19 @@ def test_ota_identity_is_aligned_across_firmware_script_and_examples() -> None:
     assert "steps.version.outputs.public_release_repo" in workflow
     assert 'if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then' in workflow
     assert 'export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"' in workflow
-    assert 'STABLE_TAG="turret-fleet-latest"' in workflow
+    assert "turret-fleet-latest" in workflow
+    assert "turret-fleet-v" in workflow
+    assert '"manifest_name": "manifest.json"' in workflow
     assert '--latest=false' in workflow
-    assert 'releases/download/turret-fleet-latest/manifest.json' in workflow
     assert example["app"] == "battlebang-turret-fleet"
     assert example["hardware"] == "esp32dev-turret-v2"
 
 
 def test_first_provisioning_example_contains_coordinate_frame_and_ip_broker_placeholder() -> None:
-    config = json.loads(read("src/turret_fleet/examples/config.turret_5.json"))
+    config = json.loads(read("firmware/turret_fleet/examples/config.turret_5.json"))
 
     assert config["schema"] == 2
+    assert config["stage_id"] == "boss_stage_v1"
     assert config["coordinate_frame"]["frame_id"] == "boss_stage_v1"
     assert config["coordinate_frame"]["mqtt_target_unit"] == "m"
     assert config["mqtt"] == {
@@ -559,10 +603,10 @@ def test_first_provisioning_example_contains_coordinate_frame_and_ip_broker_plac
 
 def test_fleet_docs_do_not_reference_old_pitch_pattern_or_old_ota_identity() -> None:
     paths = [
-        "src/turret_fleet/docs/implementation-plan.md",
-        "src/turret_fleet/docs/mqtt-http-contract.md",
-        "src/turret_fleet/docs/usage.md",
-        "src/turret_fleet/examples/ota-manifest.example.json",
+        "firmware/turret_fleet/docs/implementation-plan.md",
+        "firmware/turret_fleet/docs/mqtt-http-contract.md",
+        "firmware/turret_fleet/docs/usage.md",
+        "firmware/turret_fleet/examples/ota-manifest.example.json",
     ]
     combined = "\n".join(read(path) for path in paths)
 
@@ -577,13 +621,13 @@ def test_fleet_docs_do_not_reference_old_pitch_pattern_or_old_ota_identity() -> 
 
 
 def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> None:
-    plan = read("src/turret_fleet/docs/btb-726-readable-patterns-plan.md")
+    plan = read("firmware/turret_fleet/docs/btb-726-readable-patterns-plan.md")
     examples = {
-        "lane_sweep": json.loads(read("src/turret_fleet/examples/pattern.lane_sweep.json")),
-        "two_point_bounce": json.loads(read("src/turret_fleet/examples/pattern.two_point_bounce.json")),
-        "telegraph_column": json.loads(read("src/turret_fleet/examples/pattern.telegraph_column.json")),
+        "lane_sweep": json.loads(read("firmware/turret_fleet/examples/pattern.lane_sweep.json")),
+        "two_point_bounce": json.loads(read("firmware/turret_fleet/examples/pattern.two_point_bounce.json")),
+        "telegraph_column": json.loads(read("firmware/turret_fleet/examples/pattern.telegraph_column.json")),
     }
-    preset_config = json.loads(read("src/turret_fleet/pattern_presets/turret_2.json"))
+    preset_config = json.loads(read("firmware/turret_fleet/pattern_presets/turret_2.json"))
     presets = preset_config["presets"]
 
     requirements = plan.split("## Requirements Summary", 1)[1].split("## Current Code Facts", 1)[0]
@@ -606,7 +650,7 @@ def test_btb_726_readable_pattern_catalog_has_three_player_attack_patterns() -> 
     assert examples["two_point_bounce"]["params"].get("loop") == 2
     assert examples["telegraph_column"]["params"].get("phase_offset_ms") >= 0
     assert set(presets) == set(examples)
-    assert not (ROOT / "src/turret_fleet/examples/config.patterns.turret_2.json").exists()
+    assert not (ROOT / "firmware/turret_fleet/examples/config.patterns.turret_2.json").exists()
     expected_move_timeout_ms = {
         "lane_sweep": 20000,
         "two_point_bounce": 60000,
@@ -650,8 +694,8 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
     }
 
     for turret_id, layout in expected.items():
-        config = json.loads(read(f"src/turret_fleet/profiles/{turret_id}.json"))
-        presets = json.loads(read(f"src/turret_fleet/pattern_presets/{turret_id}.json"))
+        config = json.loads(read(f"firmware/turret_fleet/profiles/{turret_id}.json"))
+        presets = json.loads(read(f"firmware/turret_fleet/pattern_presets/{turret_id}.json"))
         expected_limits = {
             "yaw_min_deg": -50.0,
             "yaw_max_deg": 50.0,
@@ -721,10 +765,10 @@ def test_turret_fleet_profiles_define_four_turret_layout_and_preset_files() -> N
 
 
 def test_turret_fleet_pattern_engine_runs_btb_726_readable_mvp_steps() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
-    pattern_h = read("src/turret_fleet/control/patterns/pattern_plan.h")
-    pattern_cpp = read("src/turret_fleet/control/patterns/pattern_plan.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
+    pattern_h = read("firmware/turret_fleet/control/patterns/pattern_plan.h")
+    pattern_cpp = read("firmware/turret_fleet/control/patterns/pattern_plan.cpp")
     pattern_module = pattern_h + "\n" + pattern_cpp
 
     for token in [
@@ -1298,9 +1342,9 @@ def test_fleet_e2e_scenarios_pass_against_fake_mqtt_status_stream() -> None:
 
 
 def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
-    config_h = read("src/turret_fleet/config/runtime_config.h")
-    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
-    pattern_cpp = read("src/turret_fleet/control/patterns/pattern_plan.cpp")
+    config_h = read("firmware/turret_fleet/config/runtime_config.h")
+    config_cpp = read("firmware/turret_fleet/config/runtime_config.cpp")
+    pattern_cpp = read("firmware/turret_fleet/control/patterns/pattern_plan.cpp")
     helper = read("scripts/turret_fleet/mqtt_command.py")
     provision = read("scripts/turret_fleet/provision.py")
 
@@ -1327,7 +1371,7 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
             "turret_2",
             "config",
             "--patterns-file",
-            str(ROOT / "src/turret_fleet/pattern_presets/turret_2.json"),
+            str(ROOT / "firmware/turret_fleet/pattern_presets/turret_2.json"),
         ],
         cwd=ROOT,
         check=True,
@@ -1352,9 +1396,9 @@ def test_pattern_presets_are_runtime_configurable_over_mqtt_and_nvs() -> None:
             "turret_2",
             "config",
             "--profile-file",
-            str(ROOT / "src/turret_fleet/profiles/turret_2.json"),
+            str(ROOT / "firmware/turret_fleet/profiles/turret_2.json"),
             "--patterns-file",
-            str(ROOT / "src/turret_fleet/pattern_presets/turret_2.json"),
+            str(ROOT / "firmware/turret_fleet/pattern_presets/turret_2.json"),
         ],
         cwd=ROOT,
         check=True,
@@ -1439,6 +1483,7 @@ def test_fleet_provision_auto_loads_per_turret_config_and_patterns(tmp_path: Pat
 
     assert payload["type"] == "provision"
     assert payload["turret_id"] == "turret_2"
+    assert payload["stage_id"] == "boss_stage_v1"
     assert payload["pose"] == {
         "x_cm": -300.0,
         "y_cm": 200.0,
@@ -1466,14 +1511,14 @@ def test_fleet_docs_mask_lab_broker_ip_and_define_mqtt_broker_host() -> None:
         "README.md",
         "bin/turret",
         "scripts/turret_fleet/README.md",
-        "src/turret_fleet/.env.turret_fleet.example",
-        "src/turret_fleet/README.md",
-        "src/turret_fleet/docs/context.md",
-        "src/turret_fleet/docs/github-actions.md",
-        "src/turret_fleet/docs/mqtt-http-contract.md",
-        "src/turret_fleet/docs/usage.md",
-        "src/turret_fleet/mqtt/README.md",
-        "src/turret_fleet/ota/README.md",
+        "firmware/turret_fleet/.env.turret_fleet.example",
+        "firmware/turret_fleet/README.md",
+        "firmware/turret_fleet/docs/context.md",
+        "firmware/turret_fleet/docs/github-actions.md",
+        "firmware/turret_fleet/docs/mqtt-http-contract.md",
+        "firmware/turret_fleet/docs/usage.md",
+        "firmware/turret_fleet/mqtt/README.md",
+        "firmware/turret_fleet/ota/README.md",
     ]
     combined = "\n".join(read(path) for path in paths)
 
@@ -1483,10 +1528,68 @@ def test_fleet_docs_mask_lab_broker_ip_and_define_mqtt_broker_host() -> None:
     assert "COMMAND_CENTER_IP_OR_DNS" in combined
 
 
+def test_fleet_provision_can_use_dev_runtime_id_with_reused_physical_profile(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.turret_fleet"
+    env_file.write_text(
+        "\n".join(
+            [
+                "TURRET_FLEET_WIFI_SSID=TEST_WIFI",
+                "TURRET_FLEET_WIFI_PASSWORD=TEST_PASSWORD",
+                "TURRET_FLEET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS",
+                "TURRET_FLEET_MQTT_PORT=1883",
+                "TURRET_FLEET_MQTT_ROOT=battlebang",
+                "TURRET_FLEET_GROUP=dev",
+                "TURRET_FLEET_STAGE_ID=dev_stage_01",
+                "TURRET_FLEET_FRAME_ID=dev_stage_01",
+                "TURRET_FLEET_CONFIG_VERSION=2001",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/turret_fleet/provision.py"),
+            "build-config",
+            "turret_dev_01",
+            "--profile-id",
+            "turret_1",
+            "--env-file",
+            str(env_file),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["type"] == "provision"
+    assert payload["device_id"] == "turret_dev_01"
+    assert payload["turret_id"] == "turret_dev_01"
+    assert payload["group"] == "dev"
+    assert payload["stage_id"] == "dev_stage_01"
+    assert payload["coordinate_frame"]["frame_id"] == "dev_stage_01"
+    assert payload["pose"] == {
+        "x_cm": -300.0,
+        "y_cm": 0.0,
+        "z_cm": 134.5,
+        "default_target_z_cm": 70.0,
+    }
+    assert payload["motion"]["pitch_max_delta_us"] == 140
+    assert payload["patterns"]["presets"]["lane_sweep"]["points"][0] == {
+        "x": 0.0,
+        "y": 1.2,
+        "z": 0.5,
+    }
+
+
 def test_serial_and_mqtt_json_buffers_are_heap_backed_to_avoid_loop_stack_overflow() -> None:
-    main = read("src/turret_fleet/main.cpp")
-    mqtt = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
-    config = read("src/turret_fleet/config/runtime_config.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
+    mqtt = read("firmware/turret_fleet/mqtt/mqtt_bus.cpp")
+    config = read("firmware/turret_fleet/config/runtime_config.cpp")
 
     assert "DynamicJsonDocument doc(4096);" in main
     assert "DynamicJsonDocument doc(1024);" in main
@@ -1505,7 +1608,7 @@ def test_serial_and_mqtt_json_buffers_are_heap_backed_to_avoid_loop_stack_overfl
 
 
 def test_fleet_applies_power_saving_without_disabling_brownout_detector() -> None:
-    main = read("src/turret_fleet/main.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
 
     assert "btStop();" in main
     assert "setCpuFrequencyMhz(80);" in main
@@ -1514,10 +1617,10 @@ def test_fleet_applies_power_saving_without_disabling_brownout_detector() -> Non
 
 
 def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
-    main = read("src/turret_fleet/main.cpp")
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
-    mqtt = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
+    mqtt = read("firmware/turret_fleet/mqtt/mqtt_bus.cpp")
     helper = read("scripts/turret_fleet/mqtt_command.py")
 
     assert "fireRecoveryRequiredAtBoot = loadFireRecoveryMarker();" in main
@@ -1527,7 +1630,7 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
     assert '#include "../ota/reboot_marker.h"' in mqtt
     assert "bootSafetyLockoutRequired = bootResetReason == ESP_RST_BROWNOUT" in main
     assert "!otaRebootInhibitRequiredAtBoot" in main
-    assert "fireHardwareEnabled" not in read("src/turret_fleet/config/runtime_config.h")
+    assert "fireHardwareEnabled" not in read("firmware/turret_fleet/config/runtime_config.h")
     assert "hardware_enabled" not in read("scripts/turret_fleet/provision.py")
     assert "--fire-hardware-enabled" not in helper
     assert "control.setBrownoutLockout(bootSafetyLockoutRequired)" in main
@@ -1565,9 +1668,9 @@ def test_brownout_boot_locks_motion_and_fire_until_explicit_recovery() -> None:
 
 
 def test_yaw_drive_can_be_tuned_asymmetrically_per_pwm_direction() -> None:
-    config_h = read("src/turret_fleet/config/runtime_config.h")
-    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    config_h = read("firmware/turret_fleet/config/runtime_config.h")
+    config_cpp = read("firmware/turret_fleet/config/runtime_config.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
     helper = read("scripts/turret_fleet/mqtt_command.py")
 
     for field in [
@@ -1607,8 +1710,8 @@ def test_yaw_drive_can_be_tuned_asymmetrically_per_pwm_direction() -> None:
 
 
 def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
-    main = read("src/turret_fleet/main.cpp")
-    mqtt = read("src/turret_fleet/mqtt/mqtt_bus.cpp")
+    main = read("firmware/turret_fleet/main.cpp")
+    mqtt = read("firmware/turret_fleet/mqtt/mqtt_bus.cpp")
     helper = read("scripts/turret_fleet/mqtt_command.py")
     publisher = read("scripts/turret_fleet/publish_mqtt_manifest.py")
     bin_helper = read("bin/turret")
@@ -1618,9 +1721,9 @@ def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
     assert "manifest.build != config.otaDesiredBuild" in main
     assert "config.otaCommandCenterControlled" in main
     assert "config.otaApplyOnlyInSafeState && !control.isSafeForOta()" in main
-    assert 'if (mode_ == "HOME" || mode_ == "TARGET")' in read("src/turret_fleet/control/turret_control.cpp")
-    assert "aimReached() && !targetSlewActive_" in read("src/turret_fleet/control/turret_control.cpp")
-    assert "selectedMotionAxis_ == 'N'" in read("src/turret_fleet/control/turret_control.cpp")
+    assert 'if (mode_ == "HOME" || mode_ == "TARGET")' in read("firmware/turret_fleet/control/turret_control.cpp")
+    assert "aimReached() && !targetSlewActive_" in read("firmware/turret_fleet/control/turret_control.cpp")
+    assert "selectedMotionAxis_ == 'N'" in read("firmware/turret_fleet/control/turret_control.cpp")
     assert "ota_poll_not_approved" in main
     assert 'doc["ota_auto_check_enabled"] = config.otaAutoCheckEnabled;' in main
     assert 'doc["ota_desired_build"] = config.otaDesiredBuild;' in main
@@ -1635,10 +1738,10 @@ def test_ota_polling_is_command_center_approved_and_safe_state_gated() -> None:
 
 
 def test_axis_offsets_are_runtime_configurable_for_software_zeroing() -> None:
-    config_h = read("src/turret_fleet/config/runtime_config.h")
-    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    docs = read("src/turret_fleet/README.md") + read("src/turret_fleet/docs/mqtt-http-contract.md")
+    config_h = read("firmware/turret_fleet/config/runtime_config.h")
+    config_cpp = read("firmware/turret_fleet/config/runtime_config.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    docs = read("firmware/turret_fleet/README.md") + read("firmware/turret_fleet/docs/mqtt-http-contract.md")
 
     assert "float yawAxisOffsetDeg = 0.0f;" in config_h
     assert "float pitchAxisOffsetDeg = 0.0f;" in config_h
@@ -1672,7 +1775,7 @@ def test_axis_offsets_are_runtime_configurable_for_software_zeroing() -> None:
 
 
 def test_fleet_calibration_config_accepts_150deg_safe_envelope() -> None:
-    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
+    config_cpp = read("firmware/turret_fleet/config/runtime_config.cpp")
 
     assert "next.yawMaxDeg - next.yawMinDeg > 150.0f" in config_cpp
     assert "next.pitchMaxDeg - next.pitchMinDeg > 150.0f" in config_cpp
@@ -1680,10 +1783,10 @@ def test_fleet_calibration_config_accepts_150deg_safe_envelope() -> None:
 
 
 def test_fleet_motion_commands_use_runtime_configurable_inner_envelope() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
-    config_h = read("src/turret_fleet/config/runtime_config.h")
-    config_cpp = read("src/turret_fleet/config/runtime_config.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
+    config_h = read("firmware/turret_fleet/config/runtime_config.h")
+    config_cpp = read("firmware/turret_fleet/config/runtime_config.cpp")
 
     assert "float commandEnvelopeRatio = 0.65f;" in config_h
     assert 'motion["command_envelope_ratio"]' in config_cpp
@@ -1708,7 +1811,7 @@ def test_fleet_motion_commands_use_runtime_configurable_inner_envelope() -> None
 
 
 def test_fleet_direct_fire_requires_current_pose_inside_safe_window() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
     fire_body = control.split("bool TurretControl::startFireFromCommand", 1)[1].split(
         "bool TurretControl::handlePatternCommand", 1
     )[0]
@@ -1721,8 +1824,8 @@ def test_fleet_direct_fire_requires_current_pose_inside_safe_window() -> None:
 
 
 def test_fleet_allows_only_inward_yaw_recovery_from_soft_limit() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
-    header = read("src/turret_fleet/control/turret_control.h")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
+    header = read("firmware/turret_fleet/control/turret_control.h")
 
     assert "bool yawInwardRecoveryAllowed() const;" in header
     assert "bool TurretControl::yawInwardRecoveryAllowed() const" in control
@@ -1735,7 +1838,7 @@ def test_fleet_allows_only_inward_yaw_recovery_from_soft_limit() -> None:
 
 
 def test_fleet_patterns_abort_on_axis_divergence_and_hold_reports_unsafe_pose() -> None:
-    control = read("src/turret_fleet/control/turret_control.cpp")
+    control = read("firmware/turret_fleet/control/turret_control.cpp")
 
     assert 'abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern aborted: yaw divergence guard")' in control
     assert 'abortPattern(lastError_.length() > 0 ? lastError_.c_str() : "pattern aborted: pitch divergence guard")' in control

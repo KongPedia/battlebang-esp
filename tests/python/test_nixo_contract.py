@@ -37,9 +37,10 @@ def test_platformio_exposes_1ch_and_2ch_nixo_envs() -> None:
 
     assert "custom_nixo_variant = relay_1ch" in platformio
     assert "custom_nixo_variant = relay_2ch" in platformio
-    for robot_id in ("go2_03", "go2_05", "go2_06", "go2_07"):
-        assert f"[env:esp32dev_nixo_1ch_{robot_id}]" in platformio
-        assert f"[env:esp32dev_nixo_2ch_{robot_id}]" in platformio
+    assert "[env:esp32dev_nixo_1ch]" in platformio
+    assert "[env:esp32dev_nixo_2ch]" in platformio
+    assert "esp32dev_nixo_1ch_go2_" not in platformio
+    assert "esp32dev_nixo_2ch_go2_" not in platformio
 
 
 def test_nixo_config_loads_variant_configs_and_env_overrides() -> None:

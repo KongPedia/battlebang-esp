@@ -12,9 +12,9 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TURRETS_JSON = PROJECT_ROOT / "src" / "turret" / "turrets.json"
-DEFAULT_PROFILE_DIR = PROJECT_ROOT / "src" / "turret_fleet" / "profiles"
-DEFAULT_PATTERN_PRESETS_DIR = PROJECT_ROOT / "src" / "turret_fleet" / "pattern_presets"
-DEFAULT_ENV_FILE = PROJECT_ROOT / "src" / "turret_fleet" / ".env.turret_fleet"
+DEFAULT_PROFILE_DIR = PROJECT_ROOT / "firmware" / "turret_fleet" / "profiles"
+DEFAULT_PATTERN_PRESETS_DIR = PROJECT_ROOT / "firmware" / "turret_fleet" / "pattern_presets"
+DEFAULT_ENV_FILE = PROJECT_ROOT / "firmware" / "turret_fleet" / ".env.turret_fleet"
 DEFAULT_PIO = PROJECT_ROOT / ".venv-pio" / "bin" / "pio"
 DEFAULT_PYTHON = PROJECT_ROOT / ".venv-pio" / "bin" / "python"
 SERIAL_WRITE_CHUNK_BYTES = 96
@@ -168,12 +168,20 @@ def build_config(
     include_secrets: bool = True,
     profile_file: Path | None = None,
     pattern_presets_file: Path | None = None,
+    profile_id: str | None = None,
 ) -> dict[str, Any]:
     turret_id = normalize_turret_id(turret_id)
+    runtime_device_id = env_first(env, "TURRET_FLEET_DEVICE_ID", default=turret_id) or turret_id
+    profile_id = normalize_turret_id(
+        profile_id or env_first(env, "TURRET_FLEET_PROFILE_ID", default=turret_id) or turret_id
+    )
+    runtime_group = env_first(env, "TURRET_FLEET_GROUP", default="boss")
+    runtime_stage_id = env_first(env, "TURRET_FLEET_STAGE_ID", default="boss_stage_v1")
+    runtime_frame_id = env_first(env, "TURRET_FLEET_FRAME_ID", default=runtime_stage_id or "boss_stage_v1")
     table = load_turret_table()
-    entry = table.get("turrets", {}).get(turret_id)
+    entry = table.get("turrets", {}).get(profile_id)
     if not isinstance(entry, dict) or not entry.get("configured"):
-        raise ProvisionError(f"{turret_id} is not configured in {TURRETS_JSON}")
+        raise ProvisionError(f"profile_id {profile_id} is not configured in {TURRETS_JSON}")
 
     motion_defaults = table.get("motion_defaults", {})
     motion = deep_merge(motion_defaults, entry.get("motion", {}))
@@ -230,12 +238,14 @@ def build_config(
         "schema": 2,
         "config_version": config_version,
         "configured": True,
+        "device_id": runtime_device_id,
         "turret_id": turret_id,
-        "group": env_first(env, "TURRET_FLEET_GROUP", default="boss"),
+        "group": runtime_group,
+        "stage_id": runtime_stage_id,
         "floor": int(env_first(env, "TURRET_FLEET_FLOOR", default="1") or "1"),
         "side": env_first(env, "TURRET_FLEET_SIDE", default=""),
         "coordinate_frame": {
-            "frame_id": env_first(env, "TURRET_FLEET_FRAME_ID", default="boss_stage_v1"),
+            "frame_id": runtime_frame_id,
             "unit": "cm",
             "origin": env_first(env, "TURRET_FLEET_FRAME_ORIGIN", default="boss_stage_center_floor"),
             "x_axis": env_first(env, "TURRET_FLEET_FRAME_X_AXIS", default="stage_forward"),
@@ -315,7 +325,7 @@ def build_config(
         "ota": {
             "command_center_controlled": True,
             "auto_check_enabled": parse_bool(env_first(env, "TURRET_FLEET_OTA_AUTO_CHECK_ENABLED", default="false"), default=False),
-            "channel": env_first(env, "TURRET_FLEET_OTA_CHANNEL", default="boss-demo"),
+            "channel": env_first(env, "TURRET_FLEET_OTA_CHANNEL", default="stable"),
             "desired_build": int(env_first(env, "TURRET_FLEET_OTA_DESIRED_BUILD", default="0") or "0"),
             "public_manifest_url": env_first(
                 env,
@@ -339,17 +349,17 @@ def build_config(
     else:
         doc["wifi"] = {"ssid": wifi_ssid, "password": "***"}
 
-    selected_profile_file = select_profile_file(turret_id, env, profile_file)
+    selected_profile_file = select_profile_file(profile_id, env, profile_file)
     if selected_profile_file is not None:
         overlay = load_profile_file(selected_profile_file)
         overlay_turret_id = overlay.get("turret_id")
-        if overlay_turret_id is not None and normalize_turret_id(str(overlay_turret_id)) != turret_id:
+        if overlay_turret_id is not None and normalize_turret_id(str(overlay_turret_id)) != profile_id:
             raise ProvisionError(
-                f"turret profile file {selected_profile_file} is for {overlay_turret_id}, not {turret_id}"
+                f"turret profile file {selected_profile_file} is for {overlay_turret_id}, not profile_id {profile_id}"
             )
         doc = deep_merge(doc, overlay)
 
-    selected_pattern_presets_file = select_pattern_presets_file(turret_id, env, pattern_presets_file)
+    selected_pattern_presets_file = select_pattern_presets_file(profile_id, env, pattern_presets_file)
     if selected_pattern_presets_file is not None:
         doc["patterns"] = load_patterns_file(selected_pattern_presets_file)
 
@@ -358,7 +368,13 @@ def build_config(
     # non-secret turret profile files.
     doc["type"] = "provision"
     doc["configured"] = True
+    doc["device_id"] = runtime_device_id
     doc["turret_id"] = turret_id
+    doc["group"] = runtime_group
+    doc["stage_id"] = runtime_stage_id
+    if not isinstance(doc.get("coordinate_frame"), dict):
+        doc["coordinate_frame"] = {}
+    doc["coordinate_frame"]["frame_id"] = runtime_frame_id
     doc["config_version"] = config_version
 
     return doc
@@ -500,6 +516,7 @@ def cmd_build_config(args: argparse.Namespace) -> int:
         include_secrets=args.include_secrets,
         profile_file=args.profile_file,
         pattern_presets_file=args.patterns_file,
+        profile_id=args.profile_id,
     )
     if args.mask and args.include_secrets:
         doc = mask_config(doc)
@@ -515,6 +532,7 @@ def cmd_provision(args: argparse.Namespace) -> int:
         include_secrets=True,
         profile_file=args.profile_file,
         pattern_presets_file=args.patterns_file,
+        profile_id=args.profile_id,
     )
     port = args.port or auto_detect_port(args.pio)
     print(f"[fleet_provision] turret={doc['turret_id']} port={port} config_version={doc['config_version']}")
@@ -544,9 +562,10 @@ def build_parser() -> argparse.ArgumentParser:
     build = sub.add_parser("build-config", help="Print fleet runtime provision JSON for a turret")
     build.add_argument("turret")
     build.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
-    build.add_argument("--profile-file", dest="profile_file", type=Path, help="non-secret turret runtime profile; defaults to src/turret_fleet/profiles/<turret>.json")
+    build.add_argument("--profile-file", dest="profile_file", type=Path, help="non-secret turret runtime profile; defaults to firmware/turret_fleet/profiles/<turret>.json")
+    build.add_argument("--profile-id", help="physical profile id to reuse while provisioning a different runtime turret id, e.g. turret_1 for turret_dev_01")
     build.add_argument("--config-file", dest="profile_file", type=Path, help=argparse.SUPPRESS)
-    build.add_argument("--patterns-file", type=Path, help="pattern preset JSON; defaults to src/turret_fleet/pattern_presets/<turret>.json")
+    build.add_argument("--patterns-file", type=Path, help="pattern preset JSON; defaults to firmware/turret_fleet/pattern_presets/<turret>.json")
     build.add_argument("--include-secrets", action="store_true")
     build.add_argument("--mask", action="store_true", default=True)
     build.set_defaults(func=cmd_build_config)
@@ -554,9 +573,10 @@ def build_parser() -> argparse.ArgumentParser:
     provision = sub.add_parser("provision", help="Send provision JSON to an already-flashed ESP over USB serial")
     provision.add_argument("turret")
     provision.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
-    provision.add_argument("--profile-file", dest="profile_file", type=Path, help="non-secret turret runtime profile; defaults to src/turret_fleet/profiles/<turret>.json")
+    provision.add_argument("--profile-file", dest="profile_file", type=Path, help="non-secret turret runtime profile; defaults to firmware/turret_fleet/profiles/<turret>.json")
+    provision.add_argument("--profile-id", help="physical profile id to reuse while provisioning a different runtime turret id, e.g. turret_1 for turret_dev_01")
     provision.add_argument("--config-file", dest="profile_file", type=Path, help=argparse.SUPPRESS)
-    provision.add_argument("--patterns-file", type=Path, help="pattern preset JSON; defaults to src/turret_fleet/pattern_presets/<turret>.json")
+    provision.add_argument("--patterns-file", type=Path, help="pattern preset JSON; defaults to firmware/turret_fleet/pattern_presets/<turret>.json")
     provision.add_argument("--port")
     provision.add_argument("--timeout", type=float, default=10.0)
     provision.add_argument("--dry-run", action="store_true")

@@ -1,15 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
-
-namespace battlebang {
-
-inline void configureRelayPinOffWithLevel(int pin, int offLevel) {
-  if (pin < 0) return;
-  pinMode(pin, offLevel == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);
-  digitalWrite(pin, offLevel);
-  pinMode(pin, OUTPUT);
-  digitalWrite(pin, offLevel);
-}
-
-}  // namespace battlebang
+// Compatibility include for legacy source paths. New firmware should include
+// <bb_esp_hw/relay_pin_utils.h> directly.
+#include <bb_esp_hw/relay_pin_utils.h>

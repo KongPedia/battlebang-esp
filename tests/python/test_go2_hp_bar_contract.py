@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GO2 = (
     "go2",
-    ROOT / "src/go2/display/bar_display.cpp",
-    ROOT / "src/go2/build_config.h",
-    ROOT / "src/go2/robots.json",
+    ROOT / "firmware/go2/display/bar_display.cpp",
+    ROOT / "firmware/go2/build_config.h",
+    ROOT / "firmware/go2/hardware_profile.json",
 )
 GO2_NIXO = (
     "go2_nixo",
-    ROOT / "src/go2_nixo/ring_led/bar_display.cpp",
-    ROOT / "src/go2_nixo/ring_led/ring_display.cpp",
-    ROOT / "src/go2_nixo/build_config.h",
-    ROOT / "src/go2_nixo/robots.json",
+    ROOT / "firmware/go2_nixo/ring_led/bar_display.cpp",
+    ROOT / "firmware/go2_nixo/ring_led/ring_display.cpp",
+    ROOT / "firmware/go2_nixo/build_config.h",
+    ROOT / "firmware/go2_nixo/hardware_profile.json",
 )
 HP_BAR_FIRMWARES = (
     GO2,
@@ -27,6 +29,25 @@ HP_BAR_GROUP_COUNT = 28
 HP_BAR_LEDS_PER_GROUP = 3
 HP_BAR_LED_COUNT = HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP
 RING_LED_COUNT = 40
+
+
+def run_provision_script(script: str, env_file: str, *args: str) -> dict:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / script),
+            "--env-file",
+            str(ROOT / env_file),
+            "--no-serial",
+            "--print-json-secrets",
+            *args,
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return json.loads(result.stdout.strip().splitlines()[-1])
 
 
 def linked_group_indices(group_1_based: int) -> tuple[int, int, int]:
@@ -89,20 +110,14 @@ def test_go2_nixo_defaults_keep_fire_ring_and_one_point_five_second_cooldown_fal
     assert defaults["nixo_fire_cooldown_ms"] == 1500, firmware
 
 
-def test_go2_06_profile_keeps_relay_hardware_in_variant_configs() -> None:
-    firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
-    profile = json.loads(robots_json.read_text())["robots"]["go2_06"]
-    assert profile["configured"] is True, firmware
+def test_go2_identity_is_not_a_build_time_profile() -> None:
+    for firmware, *_paths, hardware_profile in (GO2, GO2_NIXO):
+        data = json.loads(hardware_profile.read_text())
+        assert "defaults" in data, firmware
+        assert "robots" not in data, firmware
 
-    relay_keys = {
-        "nixo_variant",
-        "nixo_relay1_pin",
-        "nixo_relay2_pin",
-        "nixo_relay_on_level",
-        "nixo_relay_off_level",
-        "nixo_relay_delay1_ms",
-    }
-    assert relay_keys.isdisjoint(profile), firmware
+    assert not (ROOT / "firmware/go2/robots.json").exists()
+    assert not (ROOT / "firmware/go2_nixo/robots.json").exists()
 
 
 def test_hp_bar_renderer_uses_bar_led_layout() -> None:
@@ -111,6 +126,9 @@ def test_hp_bar_renderer_uses_bar_led_layout() -> None:
         header = bar_cpp.with_suffix(".h").read_text()
         assert "CRGB leds_[HP_BAR_NUM_LEDS] = {};" in header, firmware
         assert "BarDisplay::begin" in source, firmware
+        assert "void begin(uint16_t brightness = HP_BAR_LED_BRIGHTNESS);" in header, firmware
+        assert "void setBrightness(uint16_t brightness);" in header, firmware
+        assert "setBrightness(brightness);" in source, firmware
         assert "FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>" in source, firmware
         assert "i < HP_BAR_NUM_LEDS" in source, firmware
         assert "i < NUM_LEDS" not in source, firmware
@@ -122,11 +140,14 @@ def test_hp_bar_renderer_uses_bar_led_layout() -> None:
 
 
 def test_fire_ring_renderer_uses_original_ring_pin_only_in_go2_nixo() -> None:
-    assert not (ROOT / "src/go2/display/ring_display.cpp").exists()
-    assert not (ROOT / "src/go2/display/ring_display.h").exists()
+    assert not (ROOT / "firmware/go2/display/ring_display.cpp").exists()
+    assert not (ROOT / "firmware/go2/display/ring_display.h").exists()
     for firmware, _bar_cpp, ring_cpp, _build_config, _robots_json in RING_FIRMWARES:
         source = ring_cpp.read_text()
+        header = ring_cpp.with_suffix(".h").read_text()
         assert "RingDisplay::begin" in source, firmware
+        assert "void begin(uint16_t brightness = RING_LED_BRIGHTNESS);" in header, firmware
+        assert "void setBrightness(uint16_t brightness);" in header, firmware
         assert "FastLED.addLeds<WS2811, RING_LED_PIN, RGB>" in source, firmware
         assert "renderCooldown" in source, firmware
         assert "RING_NUM_LEDS" in source, firmware
@@ -145,6 +166,8 @@ def test_fire_ring_renders_red_fire_and_original_cooldown_fill() -> None:
         assert "uint32_t cooldownStartedMs_" in header, firmware
         assert "uint32_t cooldownDurationMs_" in header, firmware
         assert "uint32_t cooldownRemainingMs_" in header, firmware
+        assert "uint16_t brightness_ = RING_LED_BRIGHTNESS;" in header, firmware
+        assert "uint16_t scale = brightness_;" in source, firmware
         assert "if (firing_)" in source, firmware
         assert "if (inhibited_)" in source, firmware
         assert "CRGB color = scaled(96, 0, 0)" in source, firmware
@@ -168,6 +191,371 @@ def test_fire_ring_cooldown_fill_updates_only_when_pixels_change() -> None:
         assert "if (mismatch)" in source, firmware
 
 
+def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -> None:
+    go2_runtime = (ROOT / "firmware/go2/config/runtime_config.h").read_text()
+    go2_runtime_source = (ROOT / "firmware/go2/config/runtime_config.cpp").read_text()
+    go2_nixo_runtime = (ROOT / "firmware/go2_nixo/config/runtime_config.h").read_text()
+    go2_nixo_runtime_source = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+    go2_hit_header = (ROOT / "firmware/go2/mqtt/hit_mqtt_client.h").read_text()
+    go2_hit_source = (ROOT / "firmware/go2/mqtt/hit_mqtt_client.cpp").read_text()
+    go2_main = (ROOT / "firmware/go2/main.cpp").read_text()
+    go2_nixo_hit_header = (ROOT / "firmware/go2_nixo/mqtt/hit_mqtt_client.h").read_text()
+    go2_nixo_hit_source = (ROOT / "firmware/go2_nixo/mqtt/hit_mqtt_client.cpp").read_text()
+    go2_nixo_main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    nixo_fire_header = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    nixo_fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
+
+    for firmware, runtime, runtime_source in (
+        ("go2", go2_runtime, go2_runtime_source),
+        ("go2_nixo", go2_nixo_runtime, go2_nixo_runtime_source),
+    ):
+        assert "struct RuntimeConfig" in runtime, firmware
+        assert "battlebang::esp::config::CommonRuntimeConfig common;" in runtime, firmware
+        assert "uint16_t piezoAoThresholdRaw = PIEZO_AO_THRESHOLD_RAW;" in runtime, firmware
+        assert "uint16_t piezoAoRearmRaw = PIEZO_AO_REARM_RAW;" in runtime, firmware
+        assert "uint16_t offlineQueueCapacity = OFFLINE_HIT_QUEUE_CAPACITY;" in runtime, firmware
+        assert "config.hit.hitTopicPrefix" in runtime_source, firmware
+        assert "RuntimeConfig runtimeConfigFromBuild();" in runtime, firmware
+        assert "RuntimeConfig runtimeConfigFromNvsOrBuild();" in runtime, firmware
+        assert "bool loadRuntimeConfigFromNvs(RuntimeConfig& config);" in runtime, firmware
+        assert "bool saveRuntimeConfigToNvs(const RuntimeConfig& config);" in runtime, firmware
+        assert "bool clearRuntimeConfigNvs();" in runtime, firmware
+        assert "bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& error);" in runtime, firmware
+        assert "String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets = false);" in runtime, firmware
+        assert "#include <bb_esp_core/config/build_time_config.h>" in runtime_source, firmware
+        assert "#include <bb_esp_core/config/runtime_config_json.h>" in runtime_source, firmware
+        assert "#include <bb_esp_nvs/common_runtime_config_store.h>" in runtime_source, firmware
+        assert "makeBuildTimeCommonRuntimeConfig(commonDefaults)" in runtime_source, firmware
+        assert "commonDefaults.deviceId = buildDeviceId.c_str();" in runtime_source, firmware
+        assert "defaultRuntimeRobotId()" in runtime_source, firmware
+        assert 'commonDefaults.mqttRoot = "battlebang";' in runtime_source, firmware
+        assert "commonDefaults.otaPublicManifestUrl" in runtime_source, firmware
+        assert "standardCommonRuntimeConfigKeys()" in runtime_source, firmware
+        assert "loadCommonRuntimeConfig(prefs.preferences(), config.common, commonNvsKeys())" in runtime_source, firmware
+        assert "saveCommonRuntimeConfig(" in runtime_source, firmware
+        assert "clearNamespace(kConfigNamespace)" in runtime_source, firmware
+        assert 'config.common.configured = hasStoredConfig || config.common.configured;' in runtime_source, firmware
+        assert "applyCommonRuntimeConfigJson(root, next.common, error)" in runtime_source, firmware
+        assert "writeCommonRuntimeConfigJson(root, config.common, includeSecrets)" in runtime_source, firmware
+        assert "validateRuntimeConfig(next, error)" in runtime_source, firmware
+
+    for firmware, header, source, main in (
+        ("go2", go2_hit_header, go2_hit_source, go2_main),
+        ("go2_nixo", go2_nixo_hit_header, go2_nixo_hit_source, go2_nixo_main),
+    ):
+        assert "void begin(const RuntimeConfig& config, BarDisplayHandler barHandler);" in header, firmware
+        assert "void setManagementHandlers(ManagementMessageHandler configHandler, ManagementMessageHandler otaHandler);" in header, firmware
+        assert "begin(runtimeConfigFromBuild(), barHandler);" in source, firmware
+        if firmware in {"go2", "go2_nixo"}:
+            assert "#include <WiFi.h>" in source, firmware
+        assert "networkConfigured_ = config.common.configured;" in source, firmware
+        assert "offlineQueueCapacity_ = static_cast<uint8_t>(config.hit.offlineQueueCapacity);" in source, firmware
+        assert "offlineQueueFlushIntervalMs_ = config.hit.offlineQueueFlushIntervalMs;" in source, firmware
+        assert "#include <bb_esp_core/config/string_buffer.h>" in source, firmware
+        assert "#include <bb_esp_core/mqtt/device_topics.h>" in source, firmware
+        assert 'copyStringOrWarn("mqtt.host", config.common.mqttHost, mqttHost_, sizeof(mqttHost_));' in source, firmware
+        assert 'copyStringOrWarn("mqtt.username", config.common.mqttUsername, mqttUsername_, sizeof(mqttUsername_));' in source, firmware
+        assert 'copyStringOrWarn("mqtt.password", config.common.mqttPassword, mqttPassword_, sizeof(mqttPassword_));' in source, firmware
+        assert "char mqttUsername_[64] = {0};" in header, firmware
+        assert "char mqttPassword_[96] = {0};" in header, firmware
+        assert "mqttClient_.connect(clientId_, mqttUsername_, mqttPassword_)" in source, firmware
+        assert "mqtt_auth_configured" in main, firmware
+        assert 'warnIfFormatTruncated("mqtt.client_id", clientIdLength, sizeof(clientId_));' in source, firmware
+        assert 'battlebang::esp::mqtt::joinTopic(config.hit.hitTopicPrefix, config.hit.robotId, "events")' in source, firmware
+        assert 'config.hit.hitTopicPrefix, config.hit.robotId, "ring_display", "command"' in source, firmware
+        assert "makeDeviceTopics(config.common.mqttRoot, config.common.deviceId)" in source, firmware
+        assert "deviceStatusTopic_" in header, firmware
+        assert "deviceConfigTopic_" in header, firmware
+        assert "deviceOtaTopic_" in header, firmware
+        assert "mqttClient_.subscribe(deviceConfigTopic_, 1)" in source, firmware
+        assert "mqttClient_.subscribe(deviceOtaTopic_, 1)" in source, firmware
+        assert "publishDeviceStatus" in source, firmware
+        assert '"%s/%s/events"' not in source, firmware
+        assert '"%s/%s/ring_display/command"' not in source, firmware
+        assert "RuntimeConfig runtimeConfig;" in main, firmware
+        assert "runtimeConfig = runtimeConfigFromNvsOrBuild();" in main, firmware
+        assert "hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);" in main, firmware
+        assert "runtimeConfig.hit.piezoAoThresholdRaw" in main, firmware
+        assert "runtimeConfig.hit.hitCooldownMs" in main, firmware
+        assert '"piezo_ao_threshold_raw"' in main, firmware
+        assert "#include <bb_esp_ota/http_ota.h>" in main, firmware
+        assert "#include <bb_esp_ota/ota_manifest.h>" in main, firmware
+        assert "#include <bb_esp_ota/reboot_marker.h>" in main, firmware
+        assert "writeUnsupportedOtaStatus(" not in main, firmware
+        assert 'doc["ota_supported"] = true;' in main, firmware
+        assert "checkOtaManifestJson" in main, firmware
+        assert "checkOtaManifestUrlWithPolicy" in main, firmware
+        assert "pollConfiguredOta" in main, firmware
+        assert "publishDeviceStatusIfConnected" in main, firmware
+        assert "onMqttConfigMessage" in main, firmware
+        assert "onMqttOtaMessage" in main, firmware
+        assert "if (mqttClient_.connected()) mqttClient_.disconnect();" in source, firmware
+
+    assert "struct NixoRuntimeConfig" in go2_nixo_runtime
+    assert "config.nixo.nixoId = NIXO_ID_VALUE;" in go2_nixo_runtime_source
+    assert "config.nixo.commandTopicPrefix" in go2_nixo_runtime_source
+    assert "void begin(const RuntimeConfig& config);" in nixo_fire_header
+    assert "begin(runtimeConfigFromBuild());" in nixo_fire_source
+    assert "#include <WiFi.h>" in nixo_fire_source
+    assert "#include <bb_esp_core/config/string_buffer.h>" in nixo_fire_source
+    assert "networkConfigured_ = config.common.configured;" in nixo_fire_source
+    assert 'copyStringOrWarn("nixo.id", config.nixo.nixoId, nixoId_, sizeof(nixoId_));' in nixo_fire_source
+    assert 'copyStringOrWarn("mqtt.username", config.common.mqttUsername, mqttUsername_, sizeof(mqttUsername_));' in nixo_fire_source
+    assert 'copyStringOrWarn("mqtt.password", config.common.mqttPassword, mqttPassword_, sizeof(mqttPassword_));' in nixo_fire_source
+    assert "char mqttUsername_[64] = {0};" in nixo_fire_header
+    assert "char mqttPassword_[96] = {0};" in nixo_fire_header
+    assert "mqttClient_.connect(clientId_, mqttUsername_, mqttPassword_)" in nixo_fire_source
+    assert 'warnIfFormatTruncated("nixo.client_id", clientIdLength, sizeof(clientId_));' in nixo_fire_source
+    assert 'config.nixo.commandTopicPrefix, config.nixo.nixoId, "command"' in nixo_fire_source
+    assert '"%s/%s/command"' not in nixo_fire_source
+    assert "nixoFire.begin(runtimeConfig);" in go2_nixo_main
+    assert "deferred: Nixo relay is firing" in go2_nixo_main
+    assert "uint32_t fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;" in go2_nixo_runtime
+    assert "uint32_t fireCooldownMs = NIXO_FIRE_COOLDOWN_MS;" in go2_nixo_runtime
+    assert "config.nixo.fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;" in go2_nixo_runtime_source
+    assert "fireDefaultDurationMs_ = config.nixo.fireDefaultDurationMs;" in nixo_fire_source
+    assert "fireCooldownMs_ = config.nixo.fireCooldownMs;" in nixo_fire_source
+    assert "relayDelay1Ms_ = config.nixo.relayDelay1Ms;" in nixo_fire_source
+    assert "runtimeConfig.nixo.fireDefaultDurationMs" in go2_nixo_main
+    assert '"nixo_fire_default_duration_ms"' in go2_nixo_main
+    assert "nixo_relay1_pin" not in go2_nixo_runtime_source
+    assert "nixo_relay2_pin" not in go2_nixo_runtime_source
+
+
+
+def test_go2_platformio_envs_are_generic_and_identity_is_nvs_provisioned() -> None:
+    platformio = (ROOT / "platformio.ini").read_text()
+    go2_config = (ROOT / "scripts/go2_config.py").read_text()
+    go2_nixo_config = (ROOT / "scripts/go2_nixo_config.py").read_text()
+    go2_flash = (ROOT / "scripts/go2_flash.py").read_text()
+    go2_build = (ROOT / "firmware/go2/build_config.h").read_text()
+    go2_nixo_build = (ROOT / "firmware/go2_nixo/build_config.h").read_text()
+    go2_runtime = (ROOT / "firmware/go2/config/runtime_config.cpp").read_text()
+    go2_nixo_runtime = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+
+    assert "[env:esp32dev_go2]" in platformio
+    assert "[env:esp32dev_go2_nixo]" in platformio
+    assert "[env:esp32dev_go2_nixo_1ch]" in platformio
+    assert "[env:esp32dev_go2_nixo_2ch]" in platformio
+    for forbidden in (
+        "esp32dev_go2_go2_",
+        "esp32dev_go2_nixo_go2_",
+        "esp32dev_go2_nixo_1ch_go2_",
+        "esp32dev_go2_nixo_2ch_go2_",
+        "custom_robot_id",
+    ):
+        assert forbidden not in platformio
+
+    for script in (go2_config, go2_nixo_config):
+        assert "hardware_profile.json" in script
+        assert "robots.json" not in script
+        assert "detect_robot_id" not in script
+        assert "custom_robot_id" not in script
+        assert "BATTLEBANG_BUILD_ROBOT_ID" not in script
+
+    assert '#define BATTLEBANG_ROBOT_ID ""' in go2_build
+    assert '#define BATTLEBANG_ROBOT_ID ""' in go2_nixo_build
+    assert '#define BATTLEBANG_NIXO_ID ""' in go2_nixo_build
+    assert "BATTLEBANG_ENABLE_LOCAL_SECRETS" in go2_build
+    assert "BATTLEBANG_ENABLE_LOCAL_SECRETS" in go2_nixo_build
+    assert "BATTLEBANG_SKIP_LOCAL_SECRETS" not in go2_build
+    assert "BATTLEBANG_SKIP_LOCAL_SECRETS" not in go2_nixo_build
+    assert "--use-local-secrets" in go2_flash
+    assert "none (runtime NVS provisioning expected)" in go2_flash
+    assert '"go2_05"' not in go2_build
+    assert '"go2_05"' not in go2_nixo_build
+    assert "defaultRuntimeRobotId()" in go2_runtime
+    assert "defaultRuntimeRobotId()" in go2_nixo_runtime
+    assert 'String("go2-") + efuseMacHex()' in go2_runtime
+    assert 'String("go2-nixo-") + efuseMacHex()' in go2_nixo_runtime
+    assert 'String("nixo_") + robotId' in go2_nixo_runtime
+
+def test_go2_nvs_bridge_keeps_build_defaults_as_fallback_and_uses_standard_keys() -> None:
+    go2_runtime_source = (ROOT / "firmware/go2/config/runtime_config.cpp").read_text()
+    go2_nixo_runtime_source = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+    platformio = (ROOT / "platformio.ini").read_text()
+
+    assert "+<../firmware/go2/config/**>" in platformio
+
+    for firmware, source, namespace in (
+        ("go2", go2_runtime_source, "go2"),
+        ("go2_nixo", go2_nixo_runtime_source, "go2_nixo"),
+    ):
+        assert f'const char* kConfigNamespace = "{namespace}";' in source, firmware
+        assert 'const char* kHitTopicPrefixKey = "hit_topic";' in source, firmware
+        assert "return battlebang::esp::nvs::standardCommonRuntimeConfigKeys();" in source, firmware
+        assert 'prefs.preferences().getBool("configured", false)' in source, firmware
+        assert 'prefs.preferences().getString("robot_id", hit.robotId)' in source, firmware
+        assert 'prefs.preferences().getString(kHitTopicPrefixKey, hit.hitTopicPrefix)' in source, firmware
+        assert 'prefs.preferences().putString("robot_id", hit.robotId) > 0' in source, firmware
+        assert 'prefs.preferences().putString(kHitTopicPrefixKey, hit.hitTopicPrefix) > 0' in source, firmware
+        for key in (
+            "hit_cd_ms",
+            "offq_cap",
+            "offq_flush",
+            "led_bright",
+            "piezo_thr",
+            "piezo_rearm",
+            "piezo_cap_ms",
+            "piezo_dbg_ms",
+            "piezo_arm_ms",
+        ):
+            assert key in source, firmware
+        assert "normalizeRuntimeConfig(config);" in source, firmware
+
+    assert 'nixo.nixoId = prefs.preferences().getString("nixo_id", nixo.nixoId)' in go2_nixo_runtime_source
+    assert 'const char* kNixoCommandTopicPrefixKey = "nixo_cmd_topic";' in go2_nixo_runtime_source
+    assert 'prefs.preferences().getString(kNixoCommandTopicPrefixKey, nixo.commandTopicPrefix)' in go2_nixo_runtime_source
+    assert 'prefs.preferences().putString("nixo_id", nixo.nixoId) > 0' in go2_nixo_runtime_source
+    assert 'prefs.preferences().putString(kNixoCommandTopicPrefixKey, nixo.commandTopicPrefix) > 0' in go2_nixo_runtime_source
+    assert "ring_bright" in go2_nixo_runtime_source
+    for key in (
+        "fire_def_ms",
+        "fire_min_ms",
+        "fire_max_ms",
+        "fire_cd_ms",
+        "prefire_ms",
+        "relay_dly1_ms",
+    ):
+        assert key in go2_nixo_runtime_source
+
+
+def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
+    go2_main = (ROOT / "firmware/go2/main.cpp").read_text()
+    go2_nixo_main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    go2_runtime_source = (ROOT / "firmware/go2/config/runtime_config.cpp").read_text()
+    go2_nixo_runtime_source = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+
+    for firmware, main, source in (
+        ("go2", go2_main, go2_runtime_source),
+        ("go2_nixo", go2_nixo_main, go2_nixo_runtime_source),
+    ):
+        assert "String runtimeConfigToJson(const RuntimeConfig& config, bool includeSecrets)" in source, firmware
+        assert "bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& error)" in source, firmware
+        assert "DynamicJsonDocument doc(" in source, firmware
+        assert 'readStringField(root, "robot_id", next.hit.robotId);' in source, firmware
+        assert 'readStringField(root, "hit_topic_prefix", next.hit.hitTopicPrefix);' in source, firmware
+        assert "readHitTuningJson(root, next.hit);" in source, firmware
+        assert 'hitObject["topic_prefix"] = hit.hitTopicPrefix;' in source, firmware
+
+        assert "static void applyAndPersistConfig(const String& json, const char* source)" in main, firmware
+        assert "RuntimeConfig next = runtimeConfig;" in main, firmware
+        assert "applyRuntimeConfigJson(json.c_str(), next, error)" in main, firmware
+        assert "const bool saved = saveRuntimeConfigToNvs(next);" in main, firmware
+        assert "runtimeConfig = next;" in main, firmware
+        assert "reapplyRuntimeConfig(\"serial_config\");" in main, firmware
+        assert "runtimeConfigToJson(runtimeConfig, false)" in main, firmware
+        assert "clearRuntimeConfigNvs()" in main, firmware
+        assert "runtimeConfig = runtimeConfigFromBuild();" in main, firmware
+        assert "status/show-status" in main, firmware
+        assert "provision {json}" in main, firmware
+        assert "config {json}" in main, firmware
+        assert "clear-config" in main, firmware
+        assert "pollCommandStream" in main, firmware
+        assert "COMMAND_LINE_MAX = 2048" in main, firmware
+        assert "isImmediateCommandChar(c) && stream.available() == 0" in main, firmware
+
+    assert 'readStringField(root, "nixo_id", next.nixo.nixoId);' in go2_nixo_runtime_source
+    assert 'readStringField(root, "nixo_command_topic_prefix", next.nixo.commandTopicPrefix);' in go2_nixo_runtime_source
+    assert 'readStringField(nixo, "command_topic_prefix", next.nixo.commandTopicPrefix);' in go2_nixo_runtime_source
+    assert 'root["nixo_id"] = nixo.nixoId;' in go2_nixo_runtime_source
+    assert "pollCommandStream(JetsonSerial, jetsonCommandLine, \"jetson\");" in go2_nixo_main
+
+
+def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_relay_pin_runtime_fields() -> None:
+    go2_script = (ROOT / "scripts/go2/provision.py").read_text()
+    go2_nixo_script = (ROOT / "scripts/go2_nixo/provision.py").read_text()
+    common_script = (ROOT / "scripts/go2_runtime/provisioning.py").read_text()
+
+    assert "from go2_runtime.provisioning import" in go2_script
+    assert "from go2_runtime.provisioning import" in go2_nixo_script
+    assert "build_common_runtime_doc" in common_script
+    assert "MAX_SERIAL_COMMAND_BYTES = 2048" in common_script
+    assert "GO2_NIXO_RELAY1_PIN" not in go2_nixo_script
+    assert "GO2_NIXO_RELAY2_PIN" not in go2_nixo_script
+    assert "GO2_NIXO_RELAY_ON_LEVEL" not in go2_nixo_script
+    assert "GO2_NIXO_RELAY_OFF_LEVEL" not in go2_nixo_script
+
+    go2 = run_provision_script(
+        "scripts/go2/provision.py",
+        "firmware/go2/.env.go2.example",
+        "--robot-id",
+        "go2_03",
+    )
+    assert go2["type"] == "provision"
+    assert go2["schema"] == 1
+    assert go2["configured"] is True
+    assert go2["config_version"] > 0
+    assert go2["device_id"] == "go2_03"
+    assert go2["group"] == "go2"
+    assert "stage_id" in go2
+    assert go2["stage_id"] == "boss_stage_v1"
+    assert go2["robot_id"] == "go2_03"
+    assert go2["hit_topic_prefix"] == "battlebang/hit"
+    assert go2["hit"]["robot_id"] == "go2_03"
+    assert go2["hit"]["topic_prefix"] == "battlebang/hit"
+    assert go2["hit"]["piezo_ao_threshold_raw"] == 200
+    assert go2["hit"]["piezo_ao_rearm_raw"] == 150
+    assert go2["hit"]["led_brightness"] == 120
+    assert go2["hit"]["offline_queue_capacity"] == 32
+    assert go2["wifi"]["ssid"] == "YOUR_WIFI_SSID"
+    assert go2["mqtt"]["host"] == "COMMAND_CENTER_IP_OR_DNS"
+    assert go2["mqtt"]["root"] == "battlebang"
+    assert go2["ota"]["channel"] == "go2"
+    assert go2["ota"]["public_manifest_url"].endswith("/go2-latest/go2-manifest.json")
+    assert "nixo_id" not in go2
+
+    go2_nixo = run_provision_script(
+        "scripts/go2_nixo/provision.py",
+        "firmware/go2_nixo/.env.go2_nixo.example",
+        "--robot-id",
+        "go2_03",
+    )
+    assert go2_nixo["type"] == "provision"
+    assert go2_nixo["schema"] == 1
+    assert go2_nixo["configured"] is True
+    assert go2_nixo["device_id"] == "go2_03"
+    assert go2_nixo["group"] == "go2_nixo"
+    assert "stage_id" in go2_nixo
+    assert go2_nixo["stage_id"] == "boss_stage_v1"
+    assert go2_nixo["robot_id"] == "go2_03"
+    assert go2_nixo["hit_topic_prefix"] == "battlebang/hit"
+    assert go2_nixo["nixo_id"] == "nixo_go2_03"
+    assert go2_nixo["nixo_command_topic_prefix"] == "battlebang/nixo"
+    assert go2_nixo["hit"]["piezo_ao_threshold_raw"] == 200
+    assert go2_nixo["hit"]["piezo_ao_rearm_raw"] == 150
+    assert go2_nixo["hit"]["led_brightness"] == 120
+    assert go2_nixo["hit"]["ring_brightness"] == 80
+    assert go2_nixo["nixo"]["id"] == "nixo_go2_03"
+    assert go2_nixo["nixo"]["command_topic_prefix"] == "battlebang/nixo"
+    assert go2_nixo["nixo"]["fire_default_duration_ms"] == 3000
+    assert go2_nixo["nixo"]["fire_min_duration_ms"] == 100
+    assert go2_nixo["nixo"]["fire_max_duration_ms"] == 10000
+    assert go2_nixo["nixo"]["fire_cooldown_ms"] == 1500
+    assert go2_nixo["nixo"]["prefire_delay_ms"] == 600
+    assert go2_nixo["nixo"]["relay_delay1_ms"] == 800
+    assert go2_nixo["ota"]["channel"] == "go2-nixo-1ch"
+    assert go2_nixo["ota"]["public_manifest_url"].endswith(
+        "/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json"
+    )
+
+    go2_nixo_2ch = run_provision_script(
+        "scripts/go2_nixo/provision.py",
+        "firmware/go2_nixo/.env.go2_nixo.example",
+        "--robot-id",
+        "go2_03",
+        "--relay-variant",
+        "relay_2ch",
+    )
+    assert go2_nixo_2ch["ota"]["channel"] == "go2-nixo-2ch"
+    assert go2_nixo_2ch["ota"]["public_manifest_url"].endswith(
+        "/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json"
+    )
+    assert not [key for key in go2_nixo if "relay" in key.lower()]
+    assert "relay1_pin" not in go2_nixo["nixo"]
+    assert "relay2_pin" not in go2_nixo["nixo"]
+
+
 def test_go2_piezo_threshold_default_is_higher_sensitivity_trial_value() -> None:
     for firmware, _bar_cpp, build_config, robots_json in HP_BAR_FIRMWARES:
         defaults = json.loads(robots_json.read_text())["defaults"]
@@ -176,6 +564,10 @@ def test_go2_piezo_threshold_default_is_higher_sensitivity_trial_value() -> None
         assert defaults["piezo_ao_threshold_raw"] > defaults["piezo_ao_rearm_raw"], firmware
         assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 200" in build_config.read_text(), firmware
         assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 150" in build_config.read_text(), firmware
+        runtime_source = (ROOT / f"firmware/{firmware}/config/runtime_config.cpp").read_text()
+        assert '"piezo_ao_threshold_raw"' in runtime_source, firmware
+        assert '"piezo_ao_rearm_raw"' in runtime_source, firmware
+        assert "piezo_thr" in runtime_source, firmware
 
 
 def test_go2_build_config_locks_hp_bar_shape_without_nixo_ring() -> None:
@@ -209,9 +601,9 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
 
 
 def test_go2_does_not_mirror_or_render_nixo_fire() -> None:
-    source = (ROOT / "src/go2/mqtt/hit_mqtt_client.cpp").read_text()
-    header = (ROOT / "src/go2/mqtt/hit_mqtt_client.h").read_text()
-    main = (ROOT / "src/go2/main.cpp").read_text()
+    source = (ROOT / "firmware/go2/mqtt/hit_mqtt_client.cpp").read_text()
+    header = (ROOT / "firmware/go2/mqtt/hit_mqtt_client.h").read_text()
+    main = (ROOT / "firmware/go2/main.cpp").read_text()
     config_script = (ROOT / "scripts/go2_config.py").read_text()
     platformio = (ROOT / "platformio.ini").read_text()
 
@@ -219,14 +611,14 @@ def test_go2_does_not_mirror_or_render_nixo_fire() -> None:
     assert "ringDisplay" not in main
     assert "nixoCommandTopic" not in header
     assert "handleNixoCommandMessage" not in source
-    assert "+<go2/display/bar_display.cpp>" in platformio
-    assert "+<go2/display/**>" not in platformio
+    assert "+<../firmware/go2/display/bar_display.cpp>" in platformio
+    assert "+<../firmware/go2/display/**>" not in platformio
 
 
 def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
-    main = (ROOT / "src/go2_nixo/main.cpp").read_text()
-    fire_header = (ROOT / "src/go2_nixo/nixo/nixo_fire_client.h").read_text()
-    fire_source = (ROOT / "src/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    fire_header = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
     assert "ringDisplay.setCooldownState" in main
     assert "ringDisplay.setFireState" not in main
     assert "nixoFire.isFiring()" in main
@@ -251,20 +643,21 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
 
 
 def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
-    robots = json.loads((ROOT / "src/go2_nixo/robots.json").read_text())["defaults"]
-    relay_1ch = json.loads((ROOT / "src/go2_nixo/variants/relay_1ch/config.json").read_text())
-    relay_2ch = json.loads((ROOT / "src/go2_nixo/variants/relay_2ch/config.json").read_text())
+    defaults = json.loads((ROOT / "firmware/go2_nixo/hardware_profile.json").read_text())["defaults"]
+    relay_1ch = json.loads((ROOT / "firmware/go2_nixo/variants/relay_1ch/config.json").read_text())
+    relay_2ch = json.loads((ROOT / "firmware/go2_nixo/variants/relay_2ch/config.json").read_text())
     platformio = (ROOT / "platformio.ini").read_text()
-    build_config = (ROOT / "src/go2_nixo/build_config.h").read_text()
-    fire_source = (ROOT / "src/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
+    build_config = (ROOT / "firmware/go2_nixo/build_config.h").read_text()
+    fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
     config_script = (ROOT / "scripts/go2_nixo_config.py").read_text()
-    common_relay_utils = (ROOT / "src/common/relay_pin_utils.h").read_text()
+    shared_relay_utils = (ROOT / "lib/bb_esp_hw/src/bb_esp_hw/relay_pin_utils.h").read_text()
+    compat_relay_utils = (ROOT / "src/common/relay_pin_utils.h").read_text()
 
-    assert robots["nixo_relay1_pin"] == 23
-    assert robots["nixo_relay2_pin"] == -1
-    assert robots["nixo_relay_on_level"] == 1
-    assert robots["nixo_relay_off_level"] == 0
-    assert robots["nixo_relay_delay1_ms"] == 800
+    assert defaults["nixo_relay1_pin"] == 23
+    assert defaults["nixo_relay2_pin"] == -1
+    assert defaults["nixo_relay_on_level"] == 1
+    assert defaults["nixo_relay_off_level"] == 0
+    assert defaults["nixo_relay_delay1_ms"] == 800
 
     assert relay_1ch["nixo_relay1_pin"] == 23
     assert relay_1ch["nixo_relay2_pin"] == -1
@@ -278,15 +671,18 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
 
     assert "custom_nixo_variant = relay_1ch" in platformio
     assert "custom_nixo_variant = relay_2ch" in platformio
-    assert "[env:esp32dev_go2_nixo_1ch_go2_06]" in platformio
-    assert "[env:esp32dev_go2_nixo_2ch_go2_06]" in platformio
+    assert "[env:esp32dev_go2_nixo_1ch]" in platformio
+    assert "[env:esp32dev_go2_nixo_2ch]" in platformio
+    assert "esp32dev_go2_nixo_1ch_go2_" not in platformio
+    assert "esp32dev_go2_nixo_2ch_go2_" not in platformio
 
     assert "def load_relay_variant" in config_script
     assert '"GO2_NIXO_RELAY_VARIANT"' in config_script
-    assert '"nixo_variant"' in config_script
+    assert '"GO2_NIXO_RELAY_VARIANT"' in config_script
     assert '"custom_nixo_variant"' in config_script
-    assert "def clean_optional_string_value" in config_script
-    assert 'clean_optional_string_value((robot_entry or {}).get("nixo_variant"))' in config_script
+    assert "detect_robot_id" not in config_script
+    assert "custom_robot_id" not in config_script
+    assert "BATTLEBANG_BUILD_ROBOT_ID" not in config_script
     assert '"nixo_relay_delay1_ms": "BATTLEBANG_BUILD_NIXO_RELAY_DELAY1_MS"' in config_script
     assert "#define BATTLEBANG_NIXO_RELAY1_PIN 23" in build_config
     assert "#define BATTLEBANG_NIXO_RELAY2_PIN -1" in build_config
@@ -295,13 +691,14 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert "#define BATTLEBANG_NIXO_RELAY_DELAY1_MS 800" in build_config
     assert "static constexpr uint32_t NIXO_RELAY_DELAY1_MS =\n    BATTLEBANG_NIXO_RELAY_DELAY1_MS;" in build_config
 
-    assert '#include "common/relay_pin_utils.h"' in fire_source
+    assert "#include <bb_esp_hw/relay_pin_utils.h>" in fire_source
     assert "void configureRelayPinOff(int pin)" not in fire_source
-    assert "void configureRelayPinOff(int pin)" not in (ROOT / "src/go2_nixo/nixo/nixo_fire_client.h").read_text()
-    assert "battlebang::configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
-    assert "battlebang::configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
-    assert "inline void configureRelayPinOffWithLevel(int pin, int offLevel)" in common_relay_utils
-    assert "pinMode(pin, offLevel == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);" in common_relay_utils
+    assert "void configureRelayPinOff(int pin)" not in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    assert "battlebang::esp::hw::configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "battlebang::esp::hw::configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "inline void configureRelayPinOffWithLevel(int pin, int offLevel)" in shared_relay_utils
+    assert "pinMode(pin, offLevel == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN);" in shared_relay_utils
+    assert "#include <bb_esp_hw/relay_pin_utils.h>" in compat_relay_utils
     begin_block = fire_source.split("void NixoFireClient::begin()", 1)[1].split("mqttClient_.setServer", 1)[0]
     assert begin_block.index("configureRelayPinOffWithLevel(NIXO_RELAY2_PIN_VALUE") < begin_block.index(
         "configureRelayPinOffWithLevel(NIXO_RELAY1_PIN_VALUE"
@@ -334,10 +731,10 @@ def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
     assert "uint32_t remainingMs = cooldownRemainingMs(now);" in source
     assert "lastFireStartMs" not in source
     assert "beginCooldown(millis());" in stop_block
-    assert '#include "common/relay_pin_utils.h"' in source
+    assert "#include <bb_esp_hw/relay_pin_utils.h>" in source
     assert "void configureRelayPinOff(int pin)" not in source
-    assert "battlebang::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);" in source
-    assert "battlebang::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);" in source
+    assert "battlebang::esp::hw::configureRelayPinOffWithLevel(RELAY1_PIN, RELAY_OFF);" in source
+    assert "battlebang::esp::hw::configureRelayPinOffWithLevel(RELAY2_PIN, RELAY_OFF);" in source
     assert "stopFireSequence(\"mqtt\")" in source
     assert 'doc["enabled"].is<bool>()' in source
     assert 'const bool enabled = doc["enabled"].as<bool>();' in source

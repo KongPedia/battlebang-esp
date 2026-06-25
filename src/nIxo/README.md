@@ -36,16 +36,17 @@ Field observation showed the physical order was reversed with the previous mappi
 From the `battlebang-esp` repo root:
 
 ```bash
-pio run -e esp32dev_nixo_1ch_go2_03
-pio run -e esp32dev_nixo_2ch_go2_03
+pio run -e esp32dev_nixo_1ch
+pio run -e esp32dev_nixo_2ch
 ```
 
-Legacy env names (`esp32dev_nixo_go2_03`, `05`, `06`, `07`) are kept and still build the `relay_1ch` variant.
+`go2_03` is not part of the build env name. For this retired standalone path, set `NIXO_ID=nixo_go2_03`
+through `src/nIxo/local_secrets.h` or shell env if you need compatibility testing.
 
 Upload only when the correct Nixo ESP32 is connected:
 
 ```bash
-pio run -e esp32dev_nixo_2ch_go2_03 -t upload --upload-port /dev/cu.usbserial-1130
+pio run -e esp32dev_nixo_2ch -t upload --upload-port /dev/cu.usbserial-1130
 pio device monitor -p /dev/cu.usbserial-1130 -b 115200
 ```
 
@@ -76,7 +77,7 @@ NIXO_ID=nixo_go2_03 \
 NIXO_WIFI_SSID='...' \
 NIXO_WIFI_PASSWORD='...' \
 NIXO_MQTT_HOST=<BROKER_IP> \
-pio run -e esp32dev_nixo_2ch_go2_03
+pio run -e esp32dev_nixo_2ch
 ```
 
 Relay variant and pin overrides are also available for bench probing:
@@ -84,7 +85,7 @@ Relay variant and pin overrides are also available for bench probing:
 ```bash
 NIXO_RELAY_VARIANT=relay_2ch \
 NIXO_RELAY_DELAY1_MS=200 \
-pio run -e esp32dev_nixo_2ch_go2_03
+pio run -e esp32dev_nixo_2ch
 ```
 
 ## MQTT command
