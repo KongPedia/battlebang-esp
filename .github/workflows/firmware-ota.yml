@@ -50,6 +50,11 @@ on:
         required: true
         type: boolean
         default: true
+      update_stable_latest:
+        description: "Update firmware-specific stable latest tags. Keep false for branch smoke tests; main pushes always update latest."
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -262,13 +267,15 @@ jobs:
             PUBLIC_REPO="${{ inputs.public_release_repo }}"
             TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
             CREATE_RELEASE="${{ inputs.create_release }}"
+            UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"
           else
-            VERSION="0.1.${GITHUB_RUN_NUMBER}-main"
-            BUILD="${GITHUB_RUN_NUMBER}"
+            VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            BUILD="$((1000 + GITHUB_RUN_NUMBER))"
             FIRMWARE_BASE_URL=""
             PUBLIC_REPO="${GITHUB_REPOSITORY}"
             TARGET_BRANCH="${GITHUB_REF_NAME}"
             CREATE_RELEASE="true"
+            UPDATE_STABLE_LATEST="true"
           fi
 
           if ! [[ "${BUILD}" =~ ^[0-9]+$ ]]; then
@@ -282,6 +289,7 @@ jobs:
           echo "public_release_repo=${PUBLIC_REPO}" >> "$GITHUB_OUTPUT"
           echo "public_release_target_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
           echo "create_release=${CREATE_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "update_stable_latest=${UPDATE_STABLE_LATEST}" >> "$GITHUB_OUTPUT"
 
       - name: Generate firmware version header
         shell: bash
@@ -341,6 +349,7 @@ jobs:
           STABLE_TAG="${{ matrix.stable_tag }}"
           PUBLIC_REPO="${{ steps.version.outputs.public_release_repo }}"
           TARGET_BRANCH="${{ steps.version.outputs.public_release_target_branch }}"
+          UPDATE_STABLE_LATEST="${{ steps.version.outputs.update_stable_latest }}"
           if [[ "${PUBLIC_REPO}" == "${GITHUB_REPOSITORY}" ]]; then
             export GH_TOKEN="${DEFAULT_GITHUB_TOKEN}"
           else
@@ -357,17 +366,65 @@ jobs:
             exit 2
           fi
 
+          target_branch_sha() {
+            gh api "repos/${PUBLIC_REPO}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha'
+          }
+
+          RELEASE_TARGET_SHA="${GITHUB_SHA}"
+          if [[ "${PUBLIC_REPO}" != "${GITHUB_REPOSITORY}" ]]; then
+            RELEASE_TARGET_SHA="$(target_branch_sha)"
+          fi
+
+          tag_sha() {
+            local tag="$1"
+            gh api "repos/${PUBLIC_REPO}/git/ref/tags/${tag}" --jq '.object.sha' 2>/dev/null || true
+          }
+
+          ensure_version_tag_available() {
+            local tag="$1"
+            local target_sha="$2"
+            local existing_sha
+            existing_sha="$(tag_sha "${tag}")"
+            if [[ -n "${existing_sha}" && "${existing_sha}" != "${target_sha}" ]]; then
+              echo "Version tag ${tag} already points at ${existing_sha}; refusing to overwrite immutable audit tag for ${target_sha}." >&2
+              exit 2
+            fi
+          }
+
+          move_tag_to_target() {
+            local tag="$1"
+            local target_sha="$2"
+            local existing_sha
+            existing_sha="$(tag_sha "${tag}")"
+            if [[ -n "${existing_sha}" ]]; then
+              gh api -X PATCH "repos/${PUBLIC_REPO}/git/refs/tags/${tag}" \
+                -f sha="${target_sha}" \
+                -F force=true >/dev/null
+            else
+              gh api -X POST "repos/${PUBLIC_REPO}/git/refs" \
+                -f ref="refs/tags/${tag}" \
+                -f sha="${target_sha}" >/dev/null
+            fi
+          }
+
           upload_release() {
             local tag="$1"
             local title="$2"
             local notes="$3"
+            local mutable_tag="${4:-false}"
+            if [[ "${mutable_tag}" == "true" ]]; then
+              move_tag_to_target "${tag}" "${RELEASE_TARGET_SHA}"
+            else
+              ensure_version_tag_available "${tag}" "${RELEASE_TARGET_SHA}"
+            fi
+
             if gh release view "${tag}" -R "${PUBLIC_REPO}" >/dev/null 2>&1; then
               gh release upload "${tag}" dist/* -R "${PUBLIC_REPO}" --clobber
-              gh release edit "${tag}" -R "${PUBLIC_REPO}" --latest=false --notes "${notes}"
+              gh release edit "${tag}" -R "${PUBLIC_REPO}" --target "${RELEASE_TARGET_SHA}" --latest=false --title "${title}" --notes "${notes}"
             else
               gh release create "${tag}" dist/* \
                 -R "${PUBLIC_REPO}" \
-                --target "${TARGET_BRANCH}" \
+                --target "${RELEASE_TARGET_SHA}" \
                 --title "${title}" \
                 --latest=false \
                 --notes "${notes}"
@@ -375,6 +432,12 @@ jobs:
           }
 
           upload_release "${VERSION_TAG}" "BattleBang ${{ matrix.id }} ${{ steps.version.outputs.version }}" \
-            "BattleBang ${{ matrix.id }} firmware version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }} built from private source commit ${GITHUB_SHA}."
-          upload_release "${STABLE_TAG}" "BattleBang ${{ matrix.id }} latest (${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }})" \
-            "Stable ${{ matrix.channel }} OTA manifest for version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }}. Devices poll /releases/download/${STABLE_TAG}/${{ matrix.manifest_name }}; firmware URLs inside the manifest still point at versioned release assets."
+            "BattleBang ${{ matrix.id }} firmware version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }} built from private source commit ${GITHUB_SHA}." \
+            "false"
+          if [[ "${UPDATE_STABLE_LATEST}" == "true" ]]; then
+            upload_release "${STABLE_TAG}" "BattleBang ${{ matrix.id }} latest (${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }})" \
+              "Stable ${{ matrix.channel }} OTA manifest for version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }}. Devices poll /releases/download/${STABLE_TAG}/${{ matrix.manifest_name }}; firmware URLs inside the manifest still point at versioned release assets." \
+              "true"
+          else
+            echo "Skipping ${STABLE_TAG}; update_stable_latest=false keeps branch smoke builds from moving device polling pointers."
+          fi

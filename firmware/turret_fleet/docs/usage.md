@@ -377,8 +377,8 @@ After PR merge to `main`, the unified `Firmware OTA Releases` workflow (`.github
 automatically when fleet firmware/workflow files change. The push build creates
 a public GitHub Release in this repo with:
 
-- tag `turret-fleet-v0.1.${GITHUB_RUN_NUMBER}-main`
-- firmware build `${GITHUB_RUN_NUMBER}`
+- tag `turret-fleet-v0.2.${GITHUB_RUN_NUMBER}-main`
+- firmware build `$((1000 + GITHUB_RUN_NUMBER))`
 - assets `manifest.json`, `battlebang-turret-fleet-{version}.bin`, `sha256.txt`
 
 Manual `workflow_dispatch` still exists for PR smoke tests or one-off builds:
@@ -392,10 +392,16 @@ gh workflow run firmware-ota.yml \
   -f firmware_base_url="" \
   -f public_release_repo=KongPedia/battlebang-esp \
   -f public_release_target_branch=feature/BTB-721-turret-fleet-rebuild-plan \
-  -f create_release=true
+  -f create_release=true \
+  -f update_stable_latest=false
 ```
 
-Release assets are reachable through either the exact tag or the stable latest URL:
+Keep `update_stable_latest=false` for branch smoke runs so they do not move the
+stable device polling tag. Main push builds update stable latest automatically;
+manual stable releases must opt in with `update_stable_latest=true`.
+
+Release assets are reachable through the exact tag. Stable latest URLs are for
+main/stable releases only:
 
 ```text
 https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/manifest.json

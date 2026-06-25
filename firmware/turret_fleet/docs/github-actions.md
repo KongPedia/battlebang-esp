@@ -25,14 +25,14 @@ scripts/turret_fleet/**
 For push builds the workflow derives release identity from the GitHub run number:
 
 ```text
-version = 0.1.${GITHUB_RUN_NUMBER}-main
-build   = ${GITHUB_RUN_NUMBER}
-tag     = turret-fleet-v0.1.${GITHUB_RUN_NUMBER}-main
+version = 0.2.${GITHUB_RUN_NUMBER}-main
+build   = 1000 + ${GITHUB_RUN_NUMBER}
+tag     = turret-fleet-v0.2.${GITHUB_RUN_NUMBER}-main
 ```
 
 The build number is what the ESP compares during OTA. It must be greater than the
-currently running `firmware_build`; current workflow run numbers are already above
-the local build-5 smoke-test firmware.
+currently running `firmware_build`; the main push build is offset by 1000 so it
+stays above older manual/PR smoke builds.
 
 ### Manual workflow dispatch
 
@@ -47,8 +47,14 @@ gh workflow run firmware-ota.yml \
   -f firmware_base_url="" \
   -f public_release_repo=KongPedia/battlebang-esp \
   -f public_release_target_branch=feature/BTB-721-turret-fleet-rebuild-plan \
-  -f create_release=true
+  -f create_release=true \
+  -f update_stable_latest=false
 ```
+
+Manual branch smoke runs must keep `update_stable_latest=false` so they publish
+only versioned test assets and do not move device polling pointers. Main push
+builds always update stable latest tags. Set `update_stable_latest=true` only for
+an intentional manual stable release.
 
 For same-repo releases to `KongPedia/battlebang-esp`, no extra secret is needed;
 the workflow uses the built-in `GITHUB_TOKEN`. `PUBLIC_RELEASE_REPO_TOKEN` is
@@ -57,8 +63,8 @@ only needed when `public_release_repo` points to a different repository.
 ## GitHub Release as the firmware host
 
 If `create_release=true` and `firmware_base_url` is empty, the workflow publishes
-release assets to `KongPedia/battlebang-esp` and writes the `.bin` URL in
-`manifest.json` as a public GitHub Release asset URL:
+versioned release assets to `KongPedia/battlebang-esp` and writes the `.bin` URL
+in `manifest.json` as a public GitHub Release asset URL:
 
 ```text
 https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-v{version}/battlebang-turret-fleet-{version}.bin
