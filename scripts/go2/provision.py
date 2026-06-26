@@ -155,6 +155,8 @@ def build_payload(env: dict[str, str], action: str, robot_id: str) -> dict[str, 
         "piezo_ao_capture_window_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_CAPTURE_WINDOW_MS"), 30),
         "piezo_ao_debug_period_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_DEBUG_PERIOD_MS"), 100),
         "piezo_ao_rearm_stable_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_REARM_STABLE_MS"), 300),
+        "max_hits": env_int(env, (*prefixed_tuning_keys("MAX_HITS"), *prefixed_tuning_keys("HITS_TO_DOWN")), 14),
+        "hit_flash_ms": env_int(env, prefixed_tuning_keys("HIT_FLASH_MS"), 900),
     }
     return doc
 

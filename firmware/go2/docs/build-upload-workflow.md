@@ -56,4 +56,4 @@ cp firmware/go2/.env.go2.example firmware/go2/.env.go2
 - MQTT/device-management bridge: `firmware/go2/mqtt/`
 - Host provisioning helper: `scripts/go2/provision.py`
 
-Scoring/down policy remains in Command Center. The ESP only publishes piezo AO `hit_candidate` events and renders Command Center display commands.
+Hit/down and HP bar display policy now runs locally on the ESP. The ESP publishes `hit_event` plus device status fields (`accepted_hit_count`, `hp_remaining`, `max_hits`, `down`) for Command Center ingestion; `ring_display` is retained only for reset/debug compatibility.

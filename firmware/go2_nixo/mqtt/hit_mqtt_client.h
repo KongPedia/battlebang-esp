@@ -15,15 +15,19 @@ struct BarDisplayUpdate {
   bool down = false;
   uint32_t ttlMs = 1000;
   bool resetHitState = false;
+  bool debugOverride = false;
 };
 
-struct QueuedHitCandidate {
+struct QueuedHitEvent {
   int targetId = 0;
-  bool hit = false;
   uint32_t sequence = 0;
   uint32_t firmwareTsMs = 0;
   int peakRaw = -1;
   int thresholdRaw = -1;
+  uint16_t acceptedHitCount = 0;
+  uint16_t hpRemaining = 0;
+  uint16_t maxHits = 1;
+  bool down = false;
 };
 
 using BarDisplayHandler = void (*)(const BarDisplayUpdate& update);
@@ -37,21 +41,27 @@ class HitMqttClient {
   void tick(uint32_t now, bool remoteDisplayActive);
   bool configured() const;
   bool connected();
-  bool publishHitCandidate(int targetId,
-                           bool hit,
-                           uint32_t sequence,
-                           uint32_t firmwareTsMs,
-                           bool queued = false,
-                           uint32_t queuedForMs = 0,
-                           uint8_t queueDepth = 0,
-                           int peakRaw = -1,
-                           int thresholdRaw = -1);
-  void queueHitCandidate(int targetId,
-                         bool hit,
-                         uint32_t sequence,
-                         uint32_t firmwareTsMs,
-                         int peakRaw = -1,
-                         int thresholdRaw = -1);
+  bool publishHitEvent(int targetId,
+                       uint32_t sequence,
+                       uint32_t firmwareTsMs,
+                       bool queued = false,
+                       uint32_t queuedForMs = 0,
+                       uint8_t queueDepth = 0,
+                       int peakRaw = -1,
+                       int thresholdRaw = -1,
+                       uint16_t acceptedHitCount = 0,
+                       uint16_t hpRemaining = 0,
+                       uint16_t maxHits = 1,
+                       bool down = false);
+  void queueHitEvent(int targetId,
+                     uint32_t sequence,
+                     uint32_t firmwareTsMs,
+                     int peakRaw = -1,
+                     int thresholdRaw = -1,
+                     uint16_t acceptedHitCount = 0,
+                     uint16_t hpRemaining = 0,
+                     uint16_t maxHits = 1,
+                     bool down = false);
   void clearOfflineQueue();
   uint8_t offlineQueueCount() const;
   bool publishDeviceStatus(const char* payload);
@@ -67,7 +77,7 @@ class HitMqttClient {
   BarDisplayHandler barHandler_ = nullptr;
   ManagementMessageHandler configHandler_ = nullptr;
   ManagementMessageHandler otaHandler_ = nullptr;
-  QueuedHitCandidate offlineQueue_[OFFLINE_HIT_QUEUE_CAPACITY] = {};
+  QueuedHitEvent offlineQueue_[OFFLINE_HIT_QUEUE_CAPACITY] = {};
   uint8_t offlineQueueHead_ = 0;
   uint8_t offlineQueueCount_ = 0;
   uint8_t offlineQueueCapacity_ = OFFLINE_HIT_QUEUE_CAPACITY;

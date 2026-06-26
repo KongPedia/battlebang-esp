@@ -20,6 +20,8 @@ struct HitRuntimeConfig {
   uint32_t piezoAoCaptureWindowMs = PIEZO_AO_CAPTURE_WINDOW_MS;
   uint32_t piezoAoDebugPeriodMs = PIEZO_AO_DEBUG_PERIOD_MS;
   uint32_t piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
+  uint16_t maxHits = MAX_HITS;
+  uint32_t hitFlashMs = HIT_FLASH_MS;
 };
 
 struct RuntimeConfig {

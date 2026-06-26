@@ -25,4 +25,4 @@ cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
 ./.venv-pio/bin/python scripts/go2_nixo/provision.py --serial-port /dev/cu.usbserial-xxxx
 ```
 
-Runtime config owns identity/stage/network/MQTT/OTA, hit/display tuning, and Nixo fire timing/envelope. Hardware profiles own GPIO pins, relay polarity/channel count, and LED physical capacity.
+Runtime config owns identity/stage/network/MQTT/OTA, hit/display tuning including local HP count/flash, and Nixo fire timing/envelope. Hardware profiles own GPIO pins, relay polarity/channel count, and LED physical capacity.
