@@ -16,6 +16,27 @@
 #ifndef BTB782_NUM_LEDS
 #define BTB782_NUM_LEDS 84
 #endif
+#ifndef BTB782_HP_BAR_GROUP_COUNT
+#define BTB782_HP_BAR_GROUP_COUNT 28
+#endif
+#ifndef BTB782_HP_BAR_LEDS_PER_GROUP
+#define BTB782_HP_BAR_LEDS_PER_GROUP 3
+#endif
+#ifndef BTB782_LED_SHOW_PERIOD_MS
+#define BTB782_LED_SHOW_PERIOD_MS 16
+#endif
+#ifndef BTB782_LED_BLINK_MS
+#define BTB782_LED_BLINK_MS 250
+#endif
+#ifndef BTB782_LED_DEAD_BLINK_MS
+#define BTB782_LED_DEAD_BLINK_MS 300
+#endif
+#ifndef BTB782_LED_MAX_VOLTS
+#define BTB782_LED_MAX_VOLTS 5
+#endif
+#ifndef BTB782_LED_MAX_MA
+#define BTB782_LED_MAX_MA 900
+#endif
 #ifndef BTB782_LED_BRIGHTNESS
 #define BTB782_LED_BRIGHTNESS 120
 #endif
@@ -44,6 +65,10 @@
 #define BTB782_DEBUG_PERIOD_MS 1000
 #endif
 
+static_assert(BTB782_NUM_LEDS == BTB782_HP_BAR_GROUP_COUNT * BTB782_HP_BAR_LEDS_PER_GROUP,
+              "BTB782_NUM_LEDS must equal HP bar groups * LEDs per group");
+static_assert(BTB782_HP_BAR_LEDS_PER_GROUP == 3, "Legacy Go2 HP bar mapping expects 3 LEDs per group");
+
 static HardwareSerial& JetsonSerial = Serial2;
 static CRGB leds[BTB782_NUM_LEDS];
 
@@ -60,39 +85,88 @@ static uint32_t last_hit_flash_ms = 0;
 static uint32_t last_hp_tx_ms = 0;
 static uint32_t last_debug_ms = 0;
 
+static uint32_t last_led_show_ms = 0;
+static uint32_t last_blink_ms = 0;
+static uint32_t last_down_blink_ms = 0;
+static bool blink_on = false;
+static bool down_blink_on = false;
+static bool led_dirty = true;
+
 static String usb_line;
 static String jetson_line;
 
-static CRGB hpColor() {
-  if (down || hp_remaining <= 0) return CRGB::Red;
-  const float ratio = static_cast<float>(hp_remaining) / static_cast<float>(BTB782_HP_MAX);
-  if (ratio > 0.60f) return CRGB::Green;
-  if (ratio > 0.30f) return CRGB::Yellow;
-  return CRGB::Red;
+static void markLedDirty() {
+  led_dirty = true;
 }
 
-static void renderHpBar(uint32_t now) {
-  if (down || hp_remaining <= 0) {
-    const bool blink_on = ((now / 250U) % 2U) == 0U;
-    fill_solid(leds, BTB782_NUM_LEDS, blink_on ? CRGB::Red : CRGB::Black);
-    FastLED.show();
-    return;
+static float hpFillRatio() {
+  if (BTB782_HP_MAX < 1) return 1.0f;
+  return constrain(static_cast<float>(hp_remaining) / static_cast<float>(BTB782_HP_MAX), 0.0f, 1.0f);
+}
+
+static void setHpBarGroup(int group1Based, const CRGB& color) {
+  if (group1Based < 1 || group1Based > BTB782_HP_BAR_GROUP_COUNT) return;
+
+  // Same 84-LED HP harness mapping as firmware/go2/display/bar_display.cpp:
+  // group 1  -> LEDs 1, 56, 57
+  // group 2  -> LEDs 2, 55, 58
+  // ...
+  // group 28 -> LEDs 28, 29, 84
+  const int row1Index = group1Based - 1;
+  const int row2Index = 2 * BTB782_HP_BAR_GROUP_COUNT - group1Based;
+  const int row3Index = 2 * BTB782_HP_BAR_GROUP_COUNT - 1 + group1Based;
+
+  leds[row1Index] = color;
+  leds[row2Index] = color;
+  leds[row3Index] = color;
+}
+
+static void renderGroupedHpBar(float fillRatio, const CRGB& healthyColor, const CRGB& damagedColor) {
+  const int healthyGroups = constrain(static_cast<int>(fillRatio * BTB782_HP_BAR_GROUP_COUNT + 0.5f),
+                                      0,
+                                      BTB782_HP_BAR_GROUP_COUNT);
+  for (int group = 1; group <= BTB782_HP_BAR_GROUP_COUNT; ++group) {
+    setHpBarGroup(group, group <= healthyGroups ? healthyColor : damagedColor);
+  }
+}
+
+static void renderHpBar(uint32_t now, bool force = false) {
+  if (now - last_blink_ms >= BTB782_LED_BLINK_MS) {
+    last_blink_ms = now;
+    blink_on = !blink_on;
+    markLedDirty();
   }
 
-  const int lit = constrain(
-      (hp_remaining * BTB782_NUM_LEDS + BTB782_HP_MAX - 1) / BTB782_HP_MAX,
-      0,
-      BTB782_NUM_LEDS);
-  const CRGB color = hpColor();
-  const bool flash = now - last_hit_flash_ms < 80U;
-  for (int i = 0; i < BTB782_NUM_LEDS; ++i) {
-    if (i < lit) {
-      leds[i] = flash ? CRGB::White : color;
-    } else {
-      leds[i] = CRGB::Black;
+  if (down || hp_remaining <= 0) {
+    if (now - last_down_blink_ms >= BTB782_LED_DEAD_BLINK_MS) {
+      last_down_blink_ms = now;
+      down_blink_on = !down_blink_on;
+      markLedDirty();
     }
+    fill_solid(leds, BTB782_NUM_LEDS, down_blink_on ? CRGB::Red : CRGB::Black);
+  } else {
+    CRGB healthyColor = CRGB::Green;
+    CRGB damagedColor = CRGB::Red;
+    if (now - last_hit_flash_ms < 80U) {
+      healthyColor = blink_on ? CRGB::White : CRGB::Green;
+      damagedColor = blink_on ? CRGB::White : CRGB::Red;
+    } else if (hpFillRatio() <= 0.25f) {
+      healthyColor = CRGB::Orange;
+    }
+    renderGroupedHpBar(hpFillRatio(), healthyColor, damagedColor);
   }
+
+  if (!force && !led_dirty) return;
+  if (!force && now - last_led_show_ms < BTB782_LED_SHOW_PERIOD_MS) return;
   FastLED.show();
+  last_led_show_ms = now;
+  led_dirty = false;
+}
+
+static void markHitFlash(uint32_t now) {
+  last_hit_flash_ms = now;
+  blink_on = true;
+  markLedDirty();
 }
 
 static void sendHpToJetson(uint32_t now, bool force = false) {
@@ -118,6 +192,8 @@ static void printStatusTo(Stream& out, const char* source) {
   out.print(BTB782_UART_RX_PIN);
   out.print(",\"uart_tx_pin\":");
   out.print(BTB782_UART_TX_PIN);
+  out.print(",\"led_type\":\"WS2815\",\"color_order\":\"RGB\",\"hp_bar_groups\":");
+  out.print(BTB782_HP_BAR_GROUP_COUNT);
   out.println("}");
 }
 
@@ -133,7 +209,8 @@ static void resetHp(const char* source) {
   piezo_armed = true;
   capture_active = false;
   quiet_started_ms = millis();
-  last_hit_flash_ms = millis();
+  down_blink_on = false;
+  markHitFlash(millis());
   sendHpToJetson(millis(), true);
   Serial.printf("[reset] source=%s hp=%d\n", source, hp_remaining);
   if (strcmp(source, "jetson") == 0) JetsonSerial.println(hp_remaining);
@@ -144,7 +221,7 @@ static void acceptHit(int peak_raw, const char* source) {
   accepted_hit_count++;
   hp_remaining = max(0, hp_remaining - 1);
   down = hp_remaining <= 0;
-  last_hit_flash_ms = millis();
+  markHitFlash(millis());
   sendHpToJetson(millis(), true);
   Serial.printf("[hit] source=%s peak=%d hp=%d/%d down=%d count=%lu\n",
                 source,
@@ -249,22 +326,25 @@ void setup() {
   analogReadResolution(12);
   pinMode(BTB782_PIEZO_AO_PIN, INPUT);
 
-  FastLED.addLeds<WS2812B, BTB782_LED_PIN, GRB>(leds, BTB782_NUM_LEDS);
+  FastLED.addLeds<WS2815, BTB782_LED_PIN, RGB>(leds, BTB782_NUM_LEDS);
   FastLED.setBrightness(BTB782_LED_BRIGHTNESS);
+  FastLED.setMaxPowerInVoltsAndMilliamps(BTB782_LED_MAX_VOLTS, BTB782_LED_MAX_MA);
   fill_solid(leds, BTB782_NUM_LEDS, CRGB::Black);
   FastLED.show();
 
   quiet_started_ms = millis();
-  renderHpBar(millis());
+  renderHpBar(millis(), true);
   sendHpToJetson(millis(), true);
 
   Serial.println("[btb782] standalone ESP UART HP sketch booted");
-  Serial.printf("[pin] uart2 rx=D%d tx=D%d baud=%lu | led=D%d count=%d brightness=%d | piezo_ao=D%d threshold=%d rearm=%d | hp_max=%d\n",
+  Serial.printf("[pin] uart2 rx=D%d tx=D%d baud=%lu | led=D%d type=WS2815 order=RGB count=%d groups=%d leds_per_group=%d brightness=%d | piezo_ao=D%d threshold=%d rearm=%d | hp_max=%d\n",
                 BTB782_UART_RX_PIN,
                 BTB782_UART_TX_PIN,
                 static_cast<unsigned long>(BTB782_UART_BAUD),
                 BTB782_LED_PIN,
                 BTB782_NUM_LEDS,
+                BTB782_HP_BAR_GROUP_COUNT,
+                BTB782_HP_BAR_LEDS_PER_GROUP,
                 BTB782_LED_BRIGHTNESS,
                 BTB782_PIEZO_AO_PIN,
                 BTB782_PIEZO_THRESHOLD_RAW,

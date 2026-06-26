@@ -5,8 +5,8 @@ Standalone ESP32 sketch for the Go2 hit board. It does **not** modify or depend 
 Behavior:
 
 - Reads piezo AO on `D34`/`GPIO34`.
-- Drives HP LED bar on `D18`/`GPIO18`, `84` WS2812B LEDs.
-- Owns local HP, default `14`.
+- Drives HP LED bar on `D18`/`GPIO18`, `84` WS2815 LEDs with the legacy Go2 `RGB` color order.
+- Owns local HP, default `14`. LED rendering follows the legacy Go2 `BarDisplay`: 28 vertical HP groups × 3 LEDs (`1,56,57`, `2,55,58`, …), healthy green, damaged red, low HP orange, down red blink.
 - Sends newline-delimited `hp_remaining` to Jetson over UART2 every `100 ms`.
 - Accepts reset/status commands over USB serial and Jetson UART.
 
