@@ -1,366 +1,624 @@
+// HIT 순간 깨짐 줄이기용
+#define FASTLED_ALLOW_INTERRUPTS 0
+
 #include <FastLED.h>
+#include "esp_system.h"
 
-// ================= LED 설정 =================
-#define RING_NUM_LEDS   40
-#define HP_NUM_LEDS     100
+#define NUM_SETS      4
+#define NUM_LEDS      60
 
-#define BRIGHTNESS      80
-#define LED_TYPE        WS2811
-#define COLOR_ORDER     RGB
+// 4개 원형 링 LED 핀
+#define RING1_PIN     23
+#define RING2_PIN     21
+#define RING3_PIN     18
+#define RING4_PIN     17
 
-// 원형 LED 4개 데이터 핀
-#define RING1_PIN       23
-#define RING2_PIN       21
-#define RING3_PIN       18
-#define RING4_PIN       17
+// HP바 LED 핀
+#define HP_BAR_PIN    12
+#define HP_LEDS       300
 
-// HP 선형 LED 데이터 핀
-#define HP_LED_PIN      12
+// 300개 LED를 3개씩 묶어서 100칸 HP바처럼 사용
+#define HP_SEGMENTS   100
 
-// 피에조 DO 핀 4개
-#define PIEZO1_DO_PIN   34
-#define PIEZO2_DO_PIN   35
-#define PIEZO3_DO_PIN   32
-#define PIEZO4_DO_PIN   33
+// 피에조 AO 핀 4개
+#define PIEZO_AO_1    34
+#define PIEZO_AO_2    35
+#define PIEZO_AO_3    32
+#define PIEZO_AO_4    33
 
-// ================= 게임 설정 =================
-constexpr int HP_MAX = 3000;
-constexpr int HP_PER_STAGE = 1000;
-constexpr int DAMAGE = 300;
+#define LED_TYPE          WS2812B
 
-constexpr uint32_t TARGET_DURATION_MS = 2500;
-constexpr uint32_t HIT_COOLDOWN_MS = 300;
-constexpr uint32_t ISR_DEBOUNCE_US = 20000;
+// 링 LED 색상 순서
+#define RING_COLOR_ORDER  GRB
 
-constexpr uint32_t HIT_FLASH_MS = 60;
-constexpr uint32_t BLINK_MS = 250;
-constexpr uint32_t DEAD_BLINK_MS = 300;
+// HP바 빨강/초록 반대 수정용
+#define HP_COLOR_ORDER    RGB
 
-// ================= LED 배열 =================
-CRGB ring1[RING_NUM_LEDS];
-CRGB ring2[RING_NUM_LEDS];
-CRGB ring3[RING_NUM_LEDS];
-CRGB ring4[RING_NUM_LEDS];
+#define BRIGHTNESS        80
 
-CRGB hpLeds[HP_NUM_LEDS];
+// 피에조 감지 기준
+#define ADC_HIT_THRESHOLD      3000
+#define ADC_RELEASE_THRESHOLD  1200
 
-// ================= HP 상태 =================
-int hp = HP_MAX;
+// 0이면 가장 큰 ADC 채널이 현재 타겟이면 인정
+// 오검출 심하면 200~500 정도로 올려보기
+#define ADC_WIN_MARGIN         0
 
-bool blinkMask[HP_NUM_LEDS];
+// HP 설정
+#define HP_MAX        1000
+#define HP_DAMAGE     50
+
+#define GLOBAL_LOCKOUT_TIME    250
+#define ADC_SAMPLE_INTERVAL    2
+#define ADC_SETTLE_US          80
+
+#define HP_DEAD_BLINK_INTERVAL 300
+
+// 랜덤 타겟 설정
+#define TARGET_DURATION        5000  // ms, 한 타겟 유지 시간
+
+// HIT 순간 바로 LED show하지 않고 잠깐 기다린 뒤 업데이트
+#define HIT_LED_UPDATE_DELAY   30    // ms
+#define LED_SHOW_GAP_DELAY     5     // ms
+
+// HIT 성공 시 링 깜빡임
+#define HIT_BLINK_INTERVAL     120   // ms
+#define HIT_BLINK_TOGGLES      6     // 6번 토글 = 약 3번 깜빡임
+
+CRGB ringLeds[NUM_SETS][NUM_LEDS];
+CRGB hpLeds[HP_LEDS];
+
+CLEDController* ringCtrl[NUM_SETS];
+CLEDController* hpCtrl;
+
+const int piezoPins[NUM_SETS] = {
+  PIEZO_AO_1,
+  PIEZO_AO_2,
+  PIEZO_AO_3,
+  PIEZO_AO_4
+};
+
+int adcValue[NUM_SETS] = {
+  0, 0, 0, 0
+};
+
+bool globalArmed = true;
+
+unsigned long lastAdcSampleTime = 0;
+unsigned long lastHitTime = 0;
+
+int currentHp = HP_MAX;
+bool hpDead = false;
+bool hpBlinkOn = false;
+unsigned long lastHpBlinkTime = 0;
+
+// 랜덤 타겟 상태
+int currentTarget = -1;
+bool targetActive = false;
+unsigned long targetStartTime = 0;
+
+// HIT 예약 처리용
+bool hitPending = false;
+int pendingHitIndex = 0;
+int pendingHitAdc = 0;
+unsigned long pendingHitTime = 0;
+
+// HIT 성공 링 깜빡임 상태
+bool hitBlinking = false;
+int blinkRingIndex = -1;
 bool blinkOn = false;
-uint32_t lastBlinkMs = 0;
+int blinkToggleCount = 0;
+unsigned long lastBlinkTime = 0;
 
-bool hpFlashActive = false;
-uint32_t hpFlashStartMs = 0;
+int readAdcStable(int pin) {
+  // ESP32 ADC mux 잔류값 제거용 dummy read
+  analogRead(pin);
+  delayMicroseconds(ADC_SETTLE_US);
 
-bool deadBlinkOn = false;
-uint32_t lastDeadBlinkMs = 0;
+  int sum = 0;
 
-// ================= 타겟 상태 =================
-int activeTarget = -1;
-uint32_t targetStartMs = 0;
+  for (int i = 0; i < 3; i++) {
+    sum += analogRead(pin);
+    delayMicroseconds(20);
+  }
 
-bool targetFlashActive = false;
-uint32_t targetFlashStartMs = 0;
-int flashTarget = -1;
-
-// ================= 인터럽트 상태 =================
-volatile bool piezoTriggered[4] = {false, false, false, false};
-volatile uint32_t lastIsrUs[4] = {0, 0, 0, 0};
-
-uint32_t lastHitMs[4] = {0, 0, 0, 0};
-
-// ================= 인터럽트 함수 =================
-void IRAM_ATTR piezoISR0() {
-  uint32_t nowUs = micros();
-  if (nowUs - lastIsrUs[0] < ISR_DEBOUNCE_US) return;
-  lastIsrUs[0] = nowUs;
-  piezoTriggered[0] = true;
+  return sum / 3;
 }
 
-void IRAM_ATTR piezoISR1() {
-  uint32_t nowUs = micros();
-  if (nowUs - lastIsrUs[1] < ISR_DEBOUNCE_US) return;
-  lastIsrUs[1] = nowUs;
-  piezoTriggered[1] = true;
+void showRingOnly(int index) {
+  ringCtrl[index]->showLeds(BRIGHTNESS);
 }
 
-void IRAM_ATTR piezoISR2() {
-  uint32_t nowUs = micros();
-  if (nowUs - lastIsrUs[2] < ISR_DEBOUNCE_US) return;
-  lastIsrUs[2] = nowUs;
-  piezoTriggered[2] = true;
+void showHpOnly() {
+  hpCtrl->showLeds(BRIGHTNESS);
 }
 
-void IRAM_ATTR piezoISR3() {
-  uint32_t nowUs = micros();
-  if (nowUs - lastIsrUs[3] < ISR_DEBOUNCE_US) return;
-  lastIsrUs[3] = nowUs;
-  piezoTriggered[3] = true;
+void setRingBuffer(int index, CRGB color) {
+  fill_solid(ringLeds[index], NUM_LEDS, color);
 }
 
-// ================= 유틸 =================
-CRGB* getRing(int index) {
-  if (index == 0) return ring1;
-  if (index == 1) return ring2;
-  if (index == 2) return ring3;
-  return ring4;
-}
-
-void fillRing(int index, CRGB color) {
-  CRGB* ring = getRing(index);
-  fill_solid(ring, RING_NUM_LEDS, color);
-}
-
-void showAll() {
-  FastLED.show();
-}
-
-// ================= HP 계산 =================
-int hpToBand(int hpVal) {
-  if (hpVal <= 0) return -1;
-  return (hpVal - 1) / HP_PER_STAGE;
-}
-
-int hpToStageHp(int hpVal) {
-  if (hpVal <= 0) return 0;
-
-  int r = hpVal % HP_PER_STAGE;
-  return (r == 0) ? HP_PER_STAGE : r;
-}
-
-int stageHpToLit(int stageHp) {
-  stageHp = constrain(stageHp, 0, HP_PER_STAGE);
-  return (long)stageHp * HP_NUM_LEDS / HP_PER_STAGE;
-}
-
-CRGB hpColor(int band) {
-  if (band >= 2) return CRGB::Green;
-  if (band == 1) return CRGB::Yellow;
-  if (band == 0) return CRGB::Red;
-  return CRGB::Black;
-}
-
-CRGB nextHpColor(int band) {
-  if (band >= 2) return CRGB::Yellow;
-  if (band == 1) return CRGB::Red;
-  if (band == 0) return CRGB::Red;
-  return CRGB::Black;
-}
-
-void clearBlinkMask() {
-  for (int i = 0; i < HP_NUM_LEDS; i++) {
-    blinkMask[i] = false;
+void showAllRings() {
+  for (int i = 0; i < NUM_SETS; i++) {
+    showRingOnly(i);
+    delay(3);
   }
 }
 
-void addBlinkSegment(int oldHp, int newHp) {
-  int oldLit = stageHpToLit(hpToStageHp(oldHp));
-  int newLit = stageHpToLit(hpToStageHp(newHp));
-
-  for (int i = newLit; i < oldLit; i++) {
-    if (i >= 0 && i < HP_NUM_LEDS) {
-      blinkMask[i] = true;
-    }
+void showAllRingsOff() {
+  for (int i = 0; i < NUM_SETS; i++) {
+    setRingBuffer(i, CRGB::Black);
   }
+
+  showAllRings();
 }
 
-// ================= 타겟 =================
-void selectNewTarget() {
-  int nextTarget;
+void showTargetRing() {
+  for (int i = 0; i < NUM_SETS; i++) {
+    setRingBuffer(i, CRGB::Black);
+  }
 
-  do {
-    nextTarget = random(0, 4);
-  } while (nextTarget == activeTarget);
+  if (currentTarget >= 0 && currentTarget < NUM_SETS) {
+    setRingBuffer(currentTarget, CRGB::Red);
+  }
 
-  activeTarget = nextTarget;
-  targetStartMs = millis();
-
-  Serial.print("ACTIVE TARGET: ");
-  Serial.println(activeTarget + 1);
+  showAllRings();
 }
 
-void renderTargets() {
-  for (int i = 0; i < 4; i++) {
-    fillRing(i, CRGB::Black);
-  }
-
-  if (activeTarget >= 0 && activeTarget < 4) {
-    fillRing(activeTarget, CRGB::Blue);
-  }
-
-  if (targetFlashActive) {
-    if (millis() - targetFlashStartMs < HIT_FLASH_MS) {
-      fillRing(flashTarget, CRGB::White);
-    } else {
-      targetFlashActive = false;
-    }
-  }
-}
-
-// ================= HP LED 렌더 =================
-void renderHpLed() {
-  uint32_t now = millis();
-
-  if (hpFlashActive) {
-    if (now - hpFlashStartMs < HIT_FLASH_MS) {
-      fill_solid(hpLeds, HP_NUM_LEDS, CRGB::White);
-      return;
-    } else {
-      hpFlashActive = false;
-    }
-  }
-
-  if (now - lastBlinkMs >= BLINK_MS) {
-    lastBlinkMs = now;
-    blinkOn = !blinkOn;
-  }
-
-  if (hp <= 0) {
-    if (now - lastDeadBlinkMs >= DEAD_BLINK_MS) {
-      lastDeadBlinkMs = now;
-      deadBlinkOn = !deadBlinkOn;
-    }
-
-    fill_solid(hpLeds, HP_NUM_LEDS, deadBlinkOn ? CRGB::Red : CRGB::Black);
+void chooseNewTarget(unsigned long now) {
+  if (hpDead) {
     return;
   }
 
-  int band = hpToBand(hp);
-  int lit = stageHpToLit(hpToStageHp(hp));
+  int oldTarget = currentTarget;
+  int newTarget = random(NUM_SETS);
 
-  CRGB base = hpColor(band);
-  CRGB blinkColor = nextHpColor(band);
+  if (NUM_SETS > 1) {
+    while (newTarget == oldTarget) {
+      newTarget = random(NUM_SETS);
+    }
+  }
 
-  for (int i = 0; i < HP_NUM_LEDS; i++) {
-    if (i < lit) {
-      hpLeds[i] = base;
-    }
-    else if (blinkMask[i]) {
-      hpLeds[i] = blinkOn ? blinkColor : CRGB::Black;
-    }
-    else {
-      hpLeds[i] = CRGB::Black;
+  currentTarget = newTarget;
+  targetStartTime = now;
+  targetActive = true;
+
+  showTargetRing();
+
+  Serial.print("NEW TARGET: SET ");
+  Serial.println(currentTarget + 1);
+}
+
+// 300개 물리 LED 중 3개를 1개의 HP칸으로 묶는 함수
+// 사용자 기준:
+// 1번 칸 = LED 1, LED 200, LED 201
+// 2번 칸 = LED 2, LED 199, LED 202
+// 3번 칸 = LED 3, LED 198, LED 203
+// ...
+// 100번 칸 = LED 100, LED 101, LED 300
+void setHpSegment(int segmentIndex, CRGB color) {
+  // segmentIndex: 0 ~ 99
+
+  int ledA = segmentIndex;        // 0, 1, 2, ... 99
+  int ledB = 199 - segmentIndex;  // 199, 198, ... 100
+  int ledC = 200 + segmentIndex;  // 200, 201, ... 299
+
+  hpLeds[ledA] = color;
+  hpLeds[ledB] = color;
+  hpLeds[ledC] = color;
+}
+
+void drawHpBarBufferOnly() {
+  if (hpDead) {
+    return;
+  }
+
+  int litSegments = 0;
+
+  if (currentHp > 0) {
+    litSegments = (currentHp * HP_SEGMENTS + HP_MAX - 1) / HP_MAX;
+  }
+
+  litSegments = constrain(litSegments, 0, HP_SEGMENTS);
+
+  for (int i = 0; i < HP_SEGMENTS; i++) {
+    // HP 감소 방향: 우 -> 좌
+    if (i >= HP_SEGMENTS - litSegments) {
+      setHpSegment(i, CRGB::Green);
+    } else {
+      setHpSegment(i, CRGB::Black);
     }
   }
 }
 
-// ================= 데미지 =================
-void applyDamage(int targetIndex) {
-  if (hp <= 0) return;
+void drawHpBar() {
+  drawHpBarBufferOnly();
+  showHpOnly();
+}
 
-  int oldHp = hp;
-  int oldBand = hpToBand(hp);
+void startDeathBlinkBufferOnly(unsigned long now) {
+  hpDead = true;
+  hpBlinkOn = true;
+  lastHpBlinkTime = now;
 
-  hp -= DAMAGE;
-  if (hp < 0) hp = 0;
+  targetActive = false;
+  hitPending = false;
 
-  int newBand = hpToBand(hp);
+  fill_solid(hpLeds, HP_LEDS, CRGB::Red);
+}
 
-  if (newBand != oldBand) {
-    clearBlinkMask();
+void updateDeathBlink(unsigned long now) {
+  if (!hpDead) {
+    return;
   }
 
-  if (hp > 0) {
-    addBlinkSegment(oldHp, hp);
+  if (now - lastHpBlinkTime >= HP_DEAD_BLINK_INTERVAL) {
+    lastHpBlinkTime = now;
+    hpBlinkOn = !hpBlinkOn;
+
+    if (hpBlinkOn) {
+      fill_solid(hpLeds, HP_LEDS, CRGB::Red);
+    } else {
+      fill_solid(hpLeds, HP_LEDS, CRGB::Black);
+    }
+
+    showHpOnly();
+  }
+}
+
+void startHitBlink(int index, unsigned long now) {
+  hitBlinking = true;
+  blinkRingIndex = index;
+  blinkOn = true;
+  blinkToggleCount = 0;
+  lastBlinkTime = now;
+
+  setRingBuffer(index, CRGB::White);
+  showRingOnly(index);
+}
+
+void updateHitBlink(unsigned long now) {
+  if (!hitBlinking) {
+    return;
   }
 
-  hpFlashActive = true;
-  hpFlashStartMs = millis();
+  if (now - lastBlinkTime < HIT_BLINK_INTERVAL) {
+    return;
+  }
 
-  targetFlashActive = true;
-  targetFlashStartMs = millis();
-  flashTarget = targetIndex;
+  lastBlinkTime = now;
+  blinkOn = !blinkOn;
+  blinkToggleCount++;
 
-  Serial.print("HIT TARGET ");
-  Serial.print(targetIndex + 1);
-  Serial.print(" / HP = ");
-  Serial.println(hp);
+  if (blinkOn) {
+    setRingBuffer(blinkRingIndex, CRGB::White);
+  } else {
+    setRingBuffer(blinkRingIndex, CRGB::Black);
+  }
 
-  if (hp > 0) {
-    selectNewTarget();
+  showRingOnly(blinkRingIndex);
+
+  if (blinkToggleCount >= HIT_BLINK_TOGGLES) {
+    hitBlinking = false;
+
+    showAllRingsOff();
+
+    if (!hpDead) {
+      chooseNewTarget(now);
+    }
+  }
+}
+
+bool allPiezoReleased() {
+  for (int i = 0; i < NUM_SETS; i++) {
+    if (adcValue[i] > ADC_RELEASE_THRESHOLD) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void printAdcValues() {
+  Serial.print("adc = ");
+  Serial.print(adcValue[0]);
+  Serial.print(", ");
+  Serial.print(adcValue[1]);
+  Serial.print(", ");
+  Serial.print(adcValue[2]);
+  Serial.print(", ");
+  Serial.println(adcValue[3]);
+}
+
+void queueHit(int hitIndex, int hitAdc, unsigned long now) {
+  if (hitPending) {
+    return;
+  }
+
+  hitPending = true;
+  pendingHitIndex = hitIndex;
+  pendingHitAdc = hitAdc;
+  pendingHitTime = now;
+
+  Serial.print("SET ");
+  Serial.print(hitIndex + 1);
+  Serial.print(" hit queued adc: ");
+  Serial.println(hitAdc);
+}
+
+void processPendingHit(unsigned long now) {
+  if (!hitPending) {
+    return;
+  }
+
+  // 피에조 충격 직후 노이즈가 가라앉을 시간
+  if (now - pendingHitTime < HIT_LED_UPDATE_DELAY) {
+    return;
+  }
+
+  hitPending = false;
+
+  if (hpDead) {
+    return;
+  }
+
+  int hitIndex = pendingHitIndex;
+  int hitAdc = pendingHitAdc;
+
+  // 현재 켜진 타겟이 아니면 무시
+  if (!targetActive || hitIndex != currentTarget) {
+    Serial.print("IGNORED HIT / target SET ");
+    Serial.print(currentTarget + 1);
+    Serial.print(" / hit SET ");
+    Serial.println(hitIndex + 1);
+    return;
+  }
+
+  targetActive = false;
+
+  currentHp -= HP_DAMAGE;
+
+  if (currentHp < 0) {
+    currentHp = 0;
+  }
+
+  Serial.print("CORRECT HIT SET ");
+  Serial.print(hitIndex + 1);
+  Serial.print(" / damage ");
+  Serial.print(HP_DAMAGE);
+  Serial.print(" / adc ");
+  Serial.print(hitAdc);
+  Serial.print(" / HP: ");
+  Serial.print(currentHp);
+  Serial.print(" / ");
+  Serial.println(HP_MAX);
+
+  if (currentHp <= 0) {
+    startDeathBlinkBufferOnly(now);
+  } else {
+    drawHpBarBufferOnly();
+  }
+
+  // 중요:
+  // HIT 순간 깨짐 줄이기 위해 HP바 먼저 출력
+  showHpOnly();
+
+  delay(LED_SHOW_GAP_DELAY);
+
+  // 그 다음 맞은 링만 흰색 깜빡임 시작
+  startHitBlink(hitIndex, millis());
+
+  if (currentHp <= 0) {
+    Serial.println("HP DEAD");
+  }
+}
+
+void simulateTargetHit(unsigned long now) {
+  if (hpDead) {
+    return;
+  }
+
+  if (!targetActive) {
+    return;
+  }
+
+  if (hitPending || hitBlinking) {
+    return;
+  }
+
+  Serial.println("SERIAL TEST HIT");
+
+  lastHitTime = now;
+  globalArmed = false;
+
+  queueHit(currentTarget, 4095, now);
+}
+
+void handlePiezo(unsigned long now) {
+  if (hpDead) {
+    return;
+  }
+
+  if (!targetActive) {
+    return;
+  }
+
+  if (hitPending || hitBlinking) {
+    return;
+  }
+
+  if (now - lastAdcSampleTime < ADC_SAMPLE_INTERVAL) {
+    return;
+  }
+
+  lastAdcSampleTime = now;
+
+  // 4개 ADC 읽기
+  for (int i = 0; i < NUM_SETS; i++) {
+    adcValue[i] = readAdcStable(piezoPins[i]);
+  }
+
+  // 한 번 HIT 후에는 모든 피에조 값이 충분히 내려와야 다시 감지
+  if (!globalArmed) {
+    if (allPiezoReleased()) {
+      globalArmed = true;
+    }
+
+    return;
+  }
+
+  if (now - lastHitTime < GLOBAL_LOCKOUT_TIME) {
+    return;
+  }
+
+  // 4개 중 가장 큰 ADC 값 찾기
+  int maxIndex = 0;
+  int maxValue = adcValue[0];
+  int secondValue = 0;
+
+  for (int i = 1; i < NUM_SETS; i++) {
+    if (adcValue[i] > maxValue) {
+      secondValue = maxValue;
+      maxValue = adcValue[i];
+      maxIndex = i;
+    } else if (adcValue[i] > secondValue) {
+      secondValue = adcValue[i];
+    }
+  }
+
+  if (maxValue > ADC_HIT_THRESHOLD) {
+    lastHitTime = now;
+    globalArmed = false;
+
+    Serial.print("HIT CANDIDATE / target SET ");
+    Serial.print(currentTarget + 1);
+    Serial.print(" / max SET ");
+    Serial.print(maxIndex + 1);
+    Serial.print(" / max adc ");
+    Serial.print(maxValue);
+    Serial.print(" / second ");
+    Serial.print(secondValue);
+    Serial.print(" / ");
+    printAdcValues();
+
+    // 현재 켜진 타겟 링의 피에조가 가장 크게 들어왔을 때만 인정
+    if (maxIndex == currentTarget && (maxValue - secondValue >= ADC_WIN_MARGIN)) {
+      queueHit(maxIndex, maxValue, now);
+    } else {
+      Serial.print("WRONG OR AMBIGUOUS HIT IGNORED / target SET ");
+      Serial.print(currentTarget + 1);
+      Serial.print(" / detected SET ");
+      Serial.println(maxIndex + 1);
+    }
+  }
+}
+
+void updateTarget(unsigned long now) {
+  if (hpDead) {
+    return;
+  }
+
+  if (hitPending || hitBlinking) {
+    return;
+  }
+
+  if (!targetActive) {
+    chooseNewTarget(now);
+    return;
+  }
+
+  if (now - targetStartTime >= TARGET_DURATION) {
+    Serial.print("TARGET TIMEOUT: SET ");
+    Serial.println(currentTarget + 1);
+
+    chooseNewTarget(now);
   }
 }
 
 void resetGame() {
-  hp = HP_MAX;
-  clearBlinkMask();
+  currentHp = HP_MAX;
+  hpDead = false;
+  hpBlinkOn = false;
 
-  hpFlashActive = false;
-  targetFlashActive = false;
-  deadBlinkOn = false;
+  globalArmed = true;
+  hitPending = false;
+  hitBlinking = false;
 
-  selectNewTarget();
+  lastHitTime = 0;
+  currentTarget = -1;
+  targetActive = false;
 
-  Serial.println("GAME RESET");
+  showAllRingsOff();
+  drawHpBar();
+
+  chooseNewTarget(millis());
+
+  Serial.println("RESET");
+  Serial.print("HP: ");
+  Serial.print(currentHp);
+  Serial.print(" / ");
+  Serial.println(HP_MAX);
 }
 
-// ================= SETUP =================
-void setup() {
-  Serial.begin(115200);
-
-  FastLED.addLeds<LED_TYPE, RING1_PIN, COLOR_ORDER>(ring1, RING_NUM_LEDS);
-  FastLED.addLeds<LED_TYPE, RING2_PIN, COLOR_ORDER>(ring2, RING_NUM_LEDS);
-  FastLED.addLeds<LED_TYPE, RING3_PIN, COLOR_ORDER>(ring3, RING_NUM_LEDS);
-  FastLED.addLeds<LED_TYPE, RING4_PIN, COLOR_ORDER>(ring4, RING_NUM_LEDS);
-  FastLED.addLeds<LED_TYPE, HP_LED_PIN, COLOR_ORDER>(hpLeds, HP_NUM_LEDS);
-
-  FastLED.setBrightness(BRIGHTNESS);
-
-  pinMode(PIEZO1_DO_PIN, INPUT_PULLDOWN);
-  pinMode(PIEZO2_DO_PIN, INPUT_PULLDOWN);
-  pinMode(PIEZO3_DO_PIN, INPUT_PULLDOWN);
-  pinMode(PIEZO4_DO_PIN, INPUT_PULLDOWN);
-
-  attachInterrupt(digitalPinToInterrupt(PIEZO1_DO_PIN), piezoISR0, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIEZO2_DO_PIN), piezoISR1, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIEZO3_DO_PIN), piezoISR2, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIEZO4_DO_PIN), piezoISR3, RISING);
-
-  randomSeed(esp_random());
-
-  clearBlinkMask();
-  selectNewTarget();
-
-  Serial.println("4 Target Piezo Boss HP Test Ready");
-  Serial.println("r = reset");
-}
-
-// ================= LOOP =================
-void loop() {
-  uint32_t now = millis();
-
-  if (hp > 0 && now - targetStartMs >= TARGET_DURATION_MS) {
-    selectNewTarget();
-  }
-
-  for (int i = 0; i < 4; i++) {
-    if (piezoTriggered[i]) {
-      piezoTriggered[i] = false;
-
-      if (now - lastHitMs[i] >= HIT_COOLDOWN_MS) {
-        lastHitMs[i] = now;
-
-        if (i == activeTarget && hp > 0) {
-          applyDamage(i);
-        } else {
-          Serial.print("WRONG TARGET: ");
-          Serial.println(i + 1);
-        }
-      }
-    }
-  }
-
-  renderTargets();
-  renderHpLed();
-  showAll();
-
-  if (Serial.available()) {
+void handleSerial(unsigned long now) {
+  if (Serial.available() > 0) {
     char c = Serial.read();
 
     if (c == 'r' || c == 'R') {
       resetGame();
     }
+
+    if (c == 'f' || c == 'F') {
+      simulateTargetHit(now);
+    }
+
+    if (c == 'p' || c == 'P') {
+      for (int i = 0; i < NUM_SETS; i++) {
+        adcValue[i] = readAdcStable(piezoPins[i]);
+      }
+
+      printAdcValues();
+    }
   }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  randomSeed(esp_random());
+
+  ringCtrl[0] = &FastLED.addLeds<LED_TYPE, RING1_PIN, RING_COLOR_ORDER>(ringLeds[0], NUM_LEDS);
+  ringCtrl[1] = &FastLED.addLeds<LED_TYPE, RING2_PIN, RING_COLOR_ORDER>(ringLeds[1], NUM_LEDS);
+  ringCtrl[2] = &FastLED.addLeds<LED_TYPE, RING3_PIN, RING_COLOR_ORDER>(ringLeds[2], NUM_LEDS);
+  ringCtrl[3] = &FastLED.addLeds<LED_TYPE, RING4_PIN, RING_COLOR_ORDER>(ringLeds[3], NUM_LEDS);
+
+  hpCtrl = &FastLED.addLeds<LED_TYPE, HP_BAR_PIN, HP_COLOR_ORDER>(hpLeds, HP_LEDS);
+
+  FastLED.setBrightness(BRIGHTNESS);
+
+  analogReadResolution(12);
+
+  for (int i = 0; i < NUM_SETS; i++) {
+    pinMode(piezoPins[i], INPUT);
+    analogSetPinAttenuation(piezoPins[i], ADC_11db);
+  }
+
+  resetGame();
+
+  Serial.println("Random Target Game Start");
+  Serial.println("One ring turns ON for 5 seconds");
+  Serial.println("Hit correct piezo -> blink + HP -50");
+  Serial.println("Serial 'f' -> simulate current target hit");
+  Serial.println("Serial 'r' -> reset");
+  Serial.println("Serial 'p' -> print ADC");
+}
+
+void loop() {
+  unsigned long now = millis();
+
+  handleSerial(now);
+  updateDeathBlink(now);
+  updateHitBlink(now);
+  processPendingHit(now);
+  updateTarget(now);
+  handlePiezo(now);
 }
