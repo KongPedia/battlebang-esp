@@ -57,9 +57,11 @@ uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
 bool hasSeenMqttConnection = false;
+uint32_t lastJetsonHpTxMs = 0;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
+constexpr uint32_t JETSON_HP_TX_PERIOD_MS = 100;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -492,6 +494,12 @@ static void replyToSource(const char* source, const String& line) {
   Serial.println(line);
   if (String(source) == "bt" && SerialBT.hasClient()) SerialBT.println(line);
   if (String(source) == "jetson") JetsonSerial.println(line);
+}
+
+static void sendHpToJetson(uint32_t now, bool force = false) {
+  if (!force && now - lastJetsonHpTxMs < JETSON_HP_TX_PERIOD_MS) return;
+  lastJetsonHpTxMs = now;
+  JetsonSerial.println(localHitState.hpRemaining);
 }
 
 static void addHitTuningStatus(JsonObject doc) {
@@ -951,10 +959,12 @@ void setup() {
   ringDisplay.markDirty();
   barDisplay.tick(millis());
   ringDisplay.tick(millis());
+  sendHpToJetson(millis(), true);
 
-  Serial.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d\n",
+  Serial.printf("[PIN] UART2 RX=%d TX=%d baud=%lu | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d\n",
                 UART_RX_PIN,
                 UART_TX_PIN,
+                (unsigned long)UART_BAUD,
                 HP_BAR_LED_PIN,
                 HP_BAR_NUM_LEDS,
                 HP_BAR_GROUP_COUNT,
@@ -971,6 +981,8 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
   Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state, '1'/'f'=Nixo fire.\n",
                 CMD_RESET_HIT_DISPLAY);
+  Serial.printf("[UART] Jetson HP stream: Serial2.println(hp_remaining) every %lu ms.\n",
+                (unsigned long)JETSON_HP_TX_PERIOD_MS);
   Serial.println("USB/BT/Jetson line commands: s/status/show-status, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   Serial.print("release_repo=");
   Serial.println(BB_GO2_NIXO_RELEASE_REPO);
@@ -1017,6 +1029,7 @@ void loop() {
                                nixoFire.fireInhibited());
   barDisplay.tick(now);
   ringDisplay.tick(now);
+  sendHpToJetson(now);
 
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   publishMqttReconnectStatus(now);

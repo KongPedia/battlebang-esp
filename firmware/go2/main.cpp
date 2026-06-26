@@ -22,6 +22,7 @@ using namespace go2;
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
+HardwareSerial& JetsonSerial = Serial2;
 
 BarDisplay barDisplay;
 HitMqttClient hitMqtt;
@@ -38,6 +39,7 @@ struct LocalHitState {
 };
 
 LocalHitState localHitState;
+String jetsonCommandLine;
 String usbCommandLine;
 String btCommandLine;
 String pendingMqttConfigJson;
@@ -49,9 +51,11 @@ uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
 bool hasSeenMqttConnection = false;
+uint32_t lastJetsonHpTxMs = 0;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
+constexpr uint32_t JETSON_HP_TX_PERIOD_MS = 100;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -474,6 +478,13 @@ static void handleCommandChar(char c, const char* source) {
 static void replyToSource(const char* source, const String& line) {
   Serial.println(line);
   if (String(source) == "bt" && SerialBT.hasClient()) SerialBT.println(line);
+  if (String(source) == "jetson") JetsonSerial.println(line);
+}
+
+static void sendHpToJetson(uint32_t now, bool force = false) {
+  if (!force && now - lastJetsonHpTxMs < JETSON_HP_TX_PERIOD_MS) return;
+  lastJetsonHpTxMs = now;
+  JetsonSerial.println(localHitState.hpRemaining);
 }
 
 static void addHitTuningStatus(JsonObject doc) {
@@ -790,6 +801,7 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
 }
 
 static void pollCommands() {
+  pollCommandStream(JetsonSerial, jetsonCommandLine, "jetson");
   pollCommandStream(Serial, usbCommandLine, "usb");
   pollCommandStream(SerialBT, btCommandLine, "bt");
 }
@@ -874,6 +886,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
+  JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
   SerialBT.begin(BT_NAME);
 
   postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
@@ -887,9 +900,13 @@ void setup() {
 
   barDisplay.markDirty();
   barDisplay.tick(millis());
+  sendHpToJetson(millis(), true);
 
   Serial.println("[MODE] go2 local ADC hit_event + ESP-owned HP bar display; D0 is debug-only");
-  Serial.printf("[PIN] HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d | BT=%s\n",
+  Serial.printf("[PIN] UART2 RX=%d TX=%d baud=%lu | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d | BT=%s\n",
+                UART_RX_PIN,
+                UART_TX_PIN,
+                (unsigned long)UART_BAUD,
                 HP_BAR_LED_PIN,
                 HP_BAR_NUM_LEDS,
                 HP_BAR_GROUP_COUNT,
@@ -907,7 +924,10 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.hitFlashMs);
   Serial.printf("[CMD] USB/BT: '%c' or 'r'=reset local ADC latch/display queue.\n",
                 CMD_RESET_HIT_DISPLAY);
-  Serial.println("[CMD] USB/BT line commands: s/status/show-status, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  Serial.printf("[UART] Jetson HP stream: Serial2.println(hp_remaining) every %lu ms. Jetson CMD: '%c'/r reset, s status.\n",
+                (unsigned long)JETSON_HP_TX_PERIOD_MS,
+                CMD_RESET_HIT_DISPLAY);
+  Serial.println("[CMD] USB/BT/Jetson line commands: s/status/show-status, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   Serial.print("release_repo=");
   Serial.println(BB_GO2_RELEASE_REPO);
   Serial.print("latest_manifest=");
@@ -931,6 +951,7 @@ void loop() {
   pollCommands();
   pollAnalogPiezo(now);
   barDisplay.tick(now);
+  sendHpToJetson(now);
 
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   processPendingMqttManagement();
