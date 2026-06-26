@@ -260,7 +260,11 @@ static void handleCommandLine(String line, const char* source) {
   }
 
   Serial.printf("[cmd] ignored source=%s line=%s\n", source, line.c_str());
-  if (strcmp(source, "jetson") == 0) JetsonSerial.println("{\"event\":\"command_ignored\"}");
+  if (strcmp(source, "jetson") == 0) {
+    JetsonSerial.print("{\"event\":\"command_ignored\",\"source\":\"");
+    JetsonSerial.print(source);
+    JetsonSerial.println("\"}");
+  }
 }
 
 static void pollCommandStream(Stream& stream, String& line, const char* source) {
@@ -289,9 +293,6 @@ static void pollPiezo(uint32_t now) {
     if (raw > capture_peak_raw) capture_peak_raw = raw;
     if (now - capture_started_ms >= BTB782_CAPTURE_WINDOW_MS) {
       capture_active = false;
-      piezo_armed = false;
-      quiet_started_ms = 0;
-      acceptHit(capture_peak_raw, "piezo");
     }
     return;
   }
@@ -312,6 +313,9 @@ static void pollPiezo(uint32_t now) {
     capture_active = true;
     capture_started_ms = now;
     capture_peak_raw = raw;
+    piezo_armed = false;
+    quiet_started_ms = 0;
+    acceptHit(raw, "piezo");
   }
 }
 
