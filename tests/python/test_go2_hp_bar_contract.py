@@ -355,6 +355,15 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "publishMqttReconnectStatus" in main
     assert 'publishDeviceStatusIfConnected("mqtt_reconnected")' in main
 
+    publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
+        "static void updateAnalogDebugStats", 1
+    )[0]
+    assert "if (localHitState.down || localHitState.hpRemaining == 0)" in publish_function
+    assert 'publishDeviceStatusIfConnected("local_hit_ignored_down");' in publish_function
+    assert publish_function.index("local_hit_ignored_down") < publish_function.index(
+        "uint32_t sequence = ++hitSequence;"
+    )
+
     reset_function = main.split("static void resetLocalHitState()", 1)[1].split("static float localHpFillRatio", 1)[0]
     assert "localHitState.maxHits = runtimeConfig.hit.maxHits" in reset_function
     assert "localHitState.hpRemaining = localHitState.maxHits;" in reset_function
@@ -428,6 +437,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "hit_event" in mqtt_contract
     assert "decision_owner" in mqtt_contract
     assert "display_owner" in mqtt_contract
+    assert "local_hit_ignored_down" in mqtt_contract
     assert "reset/debug compatibility" in mqtt_contract
     assert "hit_candidate" not in mqtt_contract
 
@@ -448,6 +458,9 @@ def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_cooldo
     assert "renderCooldown" in ring_source
     assert "cooldownStartedMs_" in nixo_fire_source
     assert 'nixoFire.stopFire("mqtt-hit-reset")' not in main
+    bar_update_block = main.split("static void onBarDisplayUpdate", 1)[1].split("void setup()", 1)[0]
+    debug_override_block = bar_update_block.split("if (!update.debugOverride) return;", 1)[1]
+    assert "nixoFire.setFireInhibited" not in debug_override_block
     tick_block = nixo_fire_source.split("void NixoFireClient::tick", 1)[1].split(
         "bool NixoFireClient::configured", 1
     )[0]

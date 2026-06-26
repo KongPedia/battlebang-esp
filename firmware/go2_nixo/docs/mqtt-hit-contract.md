@@ -55,6 +55,8 @@ When piezo AO ADC crosses threshold, ESP immediately accepts one local hit, decr
 
 Queued retransmits keep the original `firmware_ts_ms` and add queue metadata. They are still already-accepted ESP-local hits; Command Center should not re-score them.
 
+After `down=true`, additional piezo triggers are not published as new accepted hits until reset. The ESP keeps local HP/down state and, when MQTT is connected, publishes device status with reason `local_hit_ignored_down`.
+
 ## ESP -> Command Center: device status
 
 `show-status` and MQTT device status include the same local combat facet:

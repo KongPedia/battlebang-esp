@@ -68,6 +68,8 @@ MQTT가 끊긴 동안의 hit는 HP/down 상태가 이미 로컬에 반영되고,
 
 재전송 event는 같은 schema에 `queued`, `queued_for_ms`, `queue_depth`, `queue_dropped` metadata를 추가합니다. 서버는 같은 `sequence`를 idempotency key로 취급해야 합니다.
 
+`down=true`가 된 뒤에는 reset 전까지 추가 piezo trigger를 새 accepted hit로 publish하지 않습니다. ESP는 로컬 HP/down 상태를 유지하고, MQTT가 연결되어 있으면 device status reason `local_hit_ignored_down`만 publish합니다.
+
 ## ESP -> Command Center: device status / combat facet
 
 ESP는 boot, reset, config 적용, local hit/down, 주기 heartbeat, MQTT reconnect 이후 status를 `{mqtt_root}/devices/{device_id}/status`에 publish합니다. Command Center는 이 payload의 root 필드 또는 nested `combat` 필드를 읽어 현재 HP/down 상태를 동기화합니다.

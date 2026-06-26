@@ -202,6 +202,27 @@ static void beginAnalogPiezo() {
 }
 
 static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
+  if (localHitState.down || localHitState.hpRemaining == 0) {
+    Serial.printf("[PIEZO AO] ignored after down target=%d peak=%d threshold=%d hp=%u/%u ts_ms=%lu mqtt_connected=%s queue=%u\n",
+                  targetId,
+                  peakRaw,
+                  thresholdRaw,
+                  localHitState.hpRemaining,
+                  localHitState.maxHits,
+                  (unsigned long)eventTsMs,
+                  hitMqtt.connected() ? "true" : "false",
+                  hitMqtt.offlineQueueCount());
+    if (SerialBT.hasClient()) {
+      SerialBT.printf("[PIEZO AO] ignored after down peak=%d threshold=%d hp=%u/%u\n",
+                      peakRaw,
+                      thresholdRaw,
+                      localHitState.hpRemaining,
+                      localHitState.maxHits);
+    }
+    publishDeviceStatusIfConnected("local_hit_ignored_down");
+    return;
+  }
+
   uint32_t sequence = ++hitSequence;
   const bool downNow = applyLocalHit(sequence, millis());
 
@@ -903,7 +924,6 @@ static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
     return;
   }
   if (!update.debugOverride) return;
-  nixoFire.setFireInhibited(update.down || update.mode == "down" || update.mode == "disabled");
   barDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
 }
 
