@@ -534,7 +534,7 @@ def cmd_provision(args: argparse.Namespace) -> int:
         pattern_presets_file=args.patterns_file,
         profile_id=args.profile_id,
     )
-    port = args.port or auto_detect_port(args.pio)
+    port = args.port or env_first(env, "TURRET_FLEET_SERIAL_PORT", "TURRET_SERIAL_PORT") or auto_detect_port(args.pio)
     print(f"[fleet_provision] turret={doc['turret_id']} port={port} config_version={doc['config_version']}")
     print("[fleet_provision] payload:", json.dumps(mask_config(doc), ensure_ascii=False, sort_keys=True))
     if args.dry_run:

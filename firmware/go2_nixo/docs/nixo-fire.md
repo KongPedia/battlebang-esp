@@ -2,7 +2,7 @@
 
 `firmware/go2_nixo` is the optional one-ESP integrated fallback path. The same image owns:
 
-- ESP-local hit events/status: `battlebang/hit/{robot_id}/events` and `{mqtt_root}/devices/{device_id}/status`
+- ESP-local hit events/status: `battlebang/hit/{robot_id}/events` and `{mqtt_root}/devices/go2_nixo/{device_id}/status`
 - HP bar reset/debug commands: `battlebang/hit/{robot_id}/ring_display/command`
 - Nixo/game blaster fire commands: `battlebang/nixo/{nixo_id}/command`
 

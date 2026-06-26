@@ -9,7 +9,7 @@ Nixo fire/cooldown is a separate local lane: the original ring LED displays Nixo
 ```text
 ESP -> Command Center
 battlebang/hit/{robot_id}/events
-{mqtt_root}/devices/{device_id}/status
+{mqtt_root}/devices/go2_nixo/{device_id}/status
 
 Command Center -> ESP reset/debug only
 battlebang/hit/{robot_id}/ring_display/command

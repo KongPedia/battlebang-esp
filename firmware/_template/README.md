@@ -217,9 +217,9 @@ Common module ownership:
 Common topic model:
 
 ```text
-{root}/devices/{device_id}/status
-{root}/devices/{device_id}/config
-{root}/devices/{device_id}/ota
+{root}/devices/{device_type}/{device_id}/status
+{root}/devices/{device_type}/{device_id}/config
+{root}/devices/{device_type}/{device_id}/ota
 {root}/{collection}/all/ota
 ```
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Applies to legacy/reference firmware folders under `src/**` unless a deeper `AGENTS.md` overrides it. New active firmware must not be added under `src/`; use `firmware/<name>/` and `firmware/AGENTS.md` instead.
+Applies to all firmware folders under `src/**` that remain in the legacy/reference workspace unless a deeper `AGENTS.md` overrides it. New active firmware must not be added under `src/`; use `firmware/<name>/` and `firmware/AGENTS.md` instead.
 
 ## Folder ownership
 

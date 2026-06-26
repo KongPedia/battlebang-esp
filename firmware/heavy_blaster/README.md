@@ -40,9 +40,9 @@ active-LOW relay modules are not guessed silently.
 
 Default root: `battlebang`.
 
-- Device status: `battlebang/devices/{device_id}/status`
-- Device config: `battlebang/devices/{device_id}/config`
-- Device OTA: `battlebang/devices/{device_id}/ota`
+- Device status: `battlebang/devices/heavy_blaster/{device_id}/status`
+- Device config: `battlebang/devices/heavy_blaster/{device_id}/config`
+- Device OTA: `battlebang/devices/heavy_blaster/{device_id}/ota`
 - Blaster status: `battlebang/heavy-blasters/{blaster_id}/status`
 - Blaster command: `battlebang/heavy-blasters/{blaster_id}/command`
 - Blaster config: `battlebang/heavy-blasters/{blaster_id}/config`

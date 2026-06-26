@@ -277,7 +277,7 @@ void printHelp() {
   Serial.println("[CMD] led-test [#RRGGBB] [duration_ms], led-test-off");
   Serial.println("[CMD] show-config, config {json}, provision {json}, clear-config");
   Serial.println("[CMD] start-network, stop-network, check-ota [url], help");
-  Serial.println("[MQTT] {root}/devices/{device_id}/status|config|ota");
+  Serial.println("[MQTT] {root}/devices/boss_target/{device_id}/status|config|ota");
   Serial.println("[MQTT] {root}/boss_targets/{boss_id}/status|config|command|ota and {root}/boss_targets/all/ota");
 }
 

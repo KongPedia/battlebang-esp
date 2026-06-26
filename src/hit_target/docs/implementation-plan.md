@@ -16,13 +16,13 @@
   - final HP chunk wipe, short HP=0 blackout beat, rainbow defeat sweep, then blackout.
 - Runtime activation:
   - `always_on` keeps standalone/Go2-style targets damageable whenever enabled;
-  - `linked_device` subscribes to a linked device status topic, lights the ring and accepts piezo hits only while that device is active; kind `turret` maps to `{root}/turrets/{linked_device_id}/status`, while other kinds use `{root}/devices/{linked_device_id}/status`.
+  - `linked_device` subscribes to a linked device status topic, lights the ring and accepts piezo hits only while that device is active; kind `turret` maps to `{root}/turrets/{linked_device_id}/status`, while other kinds use `{root}/devices/{linked_device_kind}/{linked_device_id}/status`.
 - Runtime config model:
   - factory defaults still come from `src/hit_target/config.json` via `scripts/hit_target_config.py`;
   - after provisioning, NVS namespace `bb_hit_target` is the source of truth;
   - `show-config`, `config {json}`, `provision {json}`, and `clear-config` allow USB serial provisioning without rebuilding.
 - MQTT model:
-  - device topics: `{root}/devices/{device_id}/status|config|ota`;
+  - device topics: `{root}/devices/hit_target/{device_id}/status|config|ota`;
   - hit-target topics: `{root}/hit_targets/{target_id}/status|config|command|ota`;
   - fleet OTA topic: `{root}/hit_targets/all/ota`.
 - OTA model:

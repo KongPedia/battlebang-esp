@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <bb_esp_core/config/common_runtime_config.h>
+#include <bb_esp_core/config/runtime_config_json.h>
 #include <bb_esp_core/mqtt/topic_utils.h>
 #include <bb_esp_nvs/common_runtime_config_store.h>
 #include <math.h>
@@ -699,6 +700,16 @@ bool applyRuntimeConfigJson(const char* json, RuntimeConfig& config, String& err
   if (!battlebang::esp::mqtt::normalizeConfiguredRoot(next.mqttRoot, error)) return false;
   if (next.mqttPort == 0) {
     error = "mqtt.port must be > 0";
+    return false;
+  }
+  next.otaPublicManifestUrl.trim();
+  next.otaLocalMirrorUrl.trim();
+  if (!battlebang::esp::config::validateOtaManifestUrl(
+          next.otaPublicManifestUrl, "ota.public_manifest_url", error)) {
+    return false;
+  }
+  if (!battlebang::esp::config::validateOtaManifestUrl(
+          next.otaLocalMirrorUrl, "ota.local_mirror_url", error)) {
     return false;
   }
 

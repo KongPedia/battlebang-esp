@@ -242,6 +242,9 @@ def test_boss_target_runtime_config_requires_versions_and_safe_mqtt_topics() -> 
     assert "validateTopicSegment(config.targetId, \"target_id\", error)" in source
     assert "mqtt.root must not contain empty path segments" in source
     assert "mqtt.root must use slash-separated topic segments" in source
+    assert "#include <bb_esp_core/config/runtime_config_json.h>" in source
+    assert 'validateOtaManifestUrl(\n          config.otaPublicManifestUrl, "ota.public_manifest_url", error)' in source
+    assert 'validateOtaManifestUrl(\n          config.otaLocalMirrorUrl, "ota.local_mirror_url", error)' in source
 
     assert "Every provisioning/config update must include a positive `config_version`" in docs
     assert "`boss_id`, `target_id`, and `device_id` are MQTT topic segments" in docs
@@ -263,7 +266,7 @@ def test_boss_target_mqtt_topics_status_and_ota_are_firmware_specific() -> None:
 
     assert "#include <bb_esp_core/mqtt/device_topics.h>" in topics
     assert "normalizeRootOrDefault(config.mqttRoot)" in topics
-    assert "makeDeviceTopicsChecked(root, config.deviceId" in topics
+    assert 'makeDeviceTopicsChecked(root, "boss_target", config.deviceId' in topics
     assert 'makeAllOtaTopicChecked(root, "boss_targets"' in topics
     assert 'makeEntityTopicsChecked(\n            root, "boss_targets", config.bossId' in topics
     assert "topics.bossCommand = entityTopics.command;" in topics

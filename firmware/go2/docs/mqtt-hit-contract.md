@@ -9,11 +9,11 @@ Go2 ESP는 piezo AO ADC threshold를 넘은 입력을 **ESP 로컬에서 즉시 
 ```text
 ESP -> Command Center
 battlebang/hit/{robot_id}/events
-battlebang/devices/{device_id}/status
+battlebang/devices/go2/{device_id}/status
 
 Command Center -> ESP
-battlebang/devices/{device_id}/config
-battlebang/devices/{device_id}/ota
+battlebang/devices/go2/{device_id}/config
+battlebang/devices/go2/{device_id}/ota
 battlebang/hit/{robot_id}/ring_display/command   # reset/debug compatibility only
 ```
 
@@ -72,7 +72,7 @@ MQTT가 끊긴 동안의 hit는 HP/down 상태가 이미 로컬에 반영되고,
 
 ## ESP -> Command Center: device status / combat facet
 
-ESP는 boot, reset, config 적용, local hit/down, 주기 heartbeat, MQTT reconnect 이후 status를 `{mqtt_root}/devices/{device_id}/status`에 publish합니다. Command Center는 이 payload의 root 필드 또는 nested `combat` 필드를 읽어 현재 HP/down 상태를 동기화합니다.
+ESP는 boot, reset, config 적용, local hit/down, 주기 heartbeat, MQTT reconnect 이후 status를 `{mqtt_root}/devices/go2/{device_id}/status`에 publish합니다. Command Center는 이 payload의 root 필드 또는 nested `combat` 필드를 읽어 현재 HP/down 상태를 동기화합니다.
 
 ```json
 {
@@ -141,7 +141,7 @@ Threshold, HP cap, flash 시간 등 현장 튜닝값은 device config topic으�
   --command config \
   --no-serial \
   --print-json-secrets \
-| mosquitto_pub -h <MQTT_HOST> -p 1883 -t "battlebang/devices/go2_05/config" -s
+| mosquitto_pub -h <MQTT_HOST> -p 1883 -t "battlebang/devices/go2/go2_05/config" -s
 ```
 
 주요 hit tuning 필드:

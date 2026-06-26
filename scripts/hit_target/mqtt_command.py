@@ -152,25 +152,36 @@ def clean_root(root: str) -> str:
     return root.strip("/") or "battlebang"
 
 
+def is_safe_topic_segment(value: str) -> bool:
+    return bool(value) and all(ch.isascii() and (ch.isalnum() or ch in "_.-") for ch in value)
+
+
+def require_safe_topic_segment(value: str, field: str) -> str:
+    normalized = value.strip()
+    if not is_safe_topic_segment(normalized):
+        raise HitTargetMqttError(f"{field} must use only A-Z, a-z, 0-9, '_', '-', or '.'")
+    return normalized
+
+
 def topic_for(root: str, kind: str, identifier: str | None, suffix: str, all_ota: bool = False) -> str:
     root = clean_root(root)
     if all_ota:
         return f"{root}/hit_targets/all/ota"
     if not identifier:
         raise HitTargetMqttError(f"missing --{kind}-id for {suffix} topic")
+    identifier = require_safe_topic_segment(identifier, f"{kind}_id")
     if kind == "device":
-        return f"{root}/devices/{identifier}/{suffix}"
+        return f"{root}/devices/hit_target/{identifier}/{suffix}"
     return f"{root}/hit_targets/{identifier}/{suffix}"
 
 
 def linked_device_collection(device_kind: str) -> str:
-    return "turrets" if device_kind.strip().lower() == "turret" else "devices"
+    normalized = require_safe_topic_segment(device_kind, "linked_device_kind").lower()
+    return "turrets" if normalized == "turret" else f"devices/{normalized}"
 
 
 def linked_device_status_topic(root: str, device_kind: str, device_id: str) -> str:
-    device_id = device_id.strip()
-    if not device_id:
-        raise HitTargetMqttError("missing linked device id for status topic")
+    device_id = require_safe_topic_segment(device_id, "linked_device_id")
     return f"{clean_root(root)}/{linked_device_collection(device_kind)}/{device_id}/status"
 
 

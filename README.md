@@ -54,9 +54,9 @@ Go2 hit/LED ESP는 Command Center와 MQTT로 직접 통신합니다. 이 펌웨�
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
   - `hit_event`
   - `heartbeat`
-- ESP → Command Center: `battlebang/devices/{device_id}/status`
+- ESP → Command Center: `battlebang/devices/{device_type}/{device_id}/status`
   - `hp_remaining`, `max_hits`, `down`, nested `combat` facet
-- Command Center → ESP: `battlebang/devices/{device_id}/config|ota`
+- Command Center → ESP: `battlebang/devices/{device_type}/{device_id}/config|ota`
 - Command Center → ESP compatibility: `battlebang/hit/{robot_id}/ring_display/command`
   - `reset_hit_state` or `debug_override` only
 
@@ -143,7 +143,7 @@ Implemented local UX:
 - JSON-line USB serial events with MAC-derived `target_id` / `device_mac` for bench debugging and future controller parsing
 - DO-only piezo input uses configurable multi-edge capture/debounce (`digital_hit_min_edges`, `digital_isr_debounce_us`) to balance sensitivity against idle comparator noise
 - NVS-backed runtime config: `show-config`, `config {json}`, `provision {json}`, and `clear-config` let HP/effect/sensor/network/OTA values change without rebuilding
-- MQTT remote config/status/commands on `battlebang/devices/{device_id}/...` and `battlebang/hit_targets/{target_id}/...` topics
+- MQTT remote config/status/commands on `battlebang/devices/{device_type}/{device_id}/...` and `battlebang/hit_targets/{target_id}/...` topics
 - hit-target-specific OTA manifests use app `battlebang-hit-target`, hardware `esp32dev-hit-target-ring-v1`, stable tag `hit-target-latest`, and asset `hit-target-manifest.json` so they do not collide with turret fleet `turret-fleet-latest/manifest.json`
 
 Build/upload:

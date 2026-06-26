@@ -16,8 +16,8 @@ battlebang/turrets/{turret_id}/status
 Device-wide:
 
 ```text
-battlebang/devices/{device_id}/ota
-battlebang/devices/{device_id}/status
+battlebang/devices/turret/{device_id}/ota
+battlebang/devices/turret/{device_id}/status
 battlebang/turrets/all/ota
 ```
 

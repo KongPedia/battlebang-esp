@@ -100,6 +100,16 @@ def test_core_build_time_config_adapter_is_header_only_and_normalizes_common_fie
     assert "build_time_config.cpp" not in library
 
 
+def test_core_device_topic_helper_namespaces_by_device_type() -> None:
+    header = read("lib/bb_esp_core/src/bb_esp_core/mqtt/device_topics.h")
+
+    assert 'joinTopic(normalizeRootOrDefault(root), "devices", deviceType, deviceId)' in header
+    assert "makeDeviceTopics(const String& root, const String& deviceType, const String& deviceId)" in header
+    assert "makeDeviceTopicsChecked(const String& root," in header
+    assert "isSafeTopicSegment(deviceType)" in header
+    assert '"device_type must use only' in header
+
+
 def test_core_string_buffer_helper_is_header_only_and_reports_truncation_status() -> None:
     header = read("lib/bb_esp_core/src/bb_esp_core/config/string_buffer.h")
     library = read("lib/bb_esp_core/library.json")
@@ -121,6 +131,13 @@ def test_core_runtime_config_json_helper_keeps_common_json_policy_out_of_firmwar
     assert "writeCommonRuntimeConfigJson" in header
     assert "validateCommonRuntimeConfig" in header
     assert "normalizeCommonRuntimeConfig" in header
+    assert "validateOtaManifestUrl" in header
+    assert "isExamplePlaceholderUrl" in header
+    assert "example.invalid" in header
+    assert "example.com" in header
+    assert 'validateOtaManifestUrl(config.otaPublicManifestUrl, "ota.public_manifest_url", error)' in header
+    assert 'validateOtaManifestUrl(config.otaLocalMirrorUrl, "ota.local_mirror_url", error)' in header
+    assert "must use a real release manifest URL, not an example placeholder URL" in header
     assert "config_version is required" in header
     assert "config_version must not go backwards" in header
     assert "wifi.ssid is required when configured=true" in header

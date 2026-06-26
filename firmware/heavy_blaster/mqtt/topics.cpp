@@ -12,7 +12,7 @@ TopicSet buildTopics(const RuntimeConfig& config) {
   battlebang::esp::mqtt::DeviceTopics deviceTopics;
 
   TopicSet topics;
-  if (!battlebang::esp::mqtt::makeDeviceTopicsChecked(root, config.deviceId, deviceTopics, topicError)) {
+  if (!battlebang::esp::mqtt::makeDeviceTopicsChecked(root, "heavy_blaster", config.deviceId, deviceTopics, topicError)) {
     return topics;
   }
   topics.deviceStatus = deviceTopics.status;

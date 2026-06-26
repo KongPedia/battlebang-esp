@@ -83,7 +83,7 @@ For `turret_2` and root `battlebang`:
 - Config: `battlebang/turrets/turret_2/config`
 - OTA job: `battlebang/turrets/turret_2/ota`
 - Fleet OTA broadcast: `battlebang/turrets/all/ota`
-- Status: `battlebang/turrets/turret_2/status` and `battlebang/devices/{device_id}/status`
+- Status: `battlebang/turrets/turret_2/status` and `battlebang/devices/turret/{device_id}/status`
 
 Useful local helper examples:
 

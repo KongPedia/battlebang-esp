@@ -35,17 +35,17 @@ mqtt/      hit_event/heartbeat/status publish, config/ota/reset/debug subscribe
 
 - ESP → Command Center
   - `battlebang/hit/{robot_id}/events`: `hit_event`, `heartbeat`
-  - `battlebang/devices/{device_id}/status`: `hp_remaining`, `max_hits`, `down`, `combat` facet
+  - `battlebang/devices/go2/{device_id}/status`: `hp_remaining`, `max_hits`, `down`, `combat` facet
 - Command Center → ESP
-  - `battlebang/devices/{device_id}/config`: threshold/max_hits/brightness 등 NVS config 갱신
+  - `battlebang/devices/go2/{device_id}/config`: threshold/max_hits/brightness 등 NVS config 갱신
   - `battlebang/hit/{robot_id}/ring_display/command`: `reset_hit_state` 또는 `debug_override` 호환 명령만 사용
 
 예를 들어 `go2_03`용으로 업로드하면 topic은 자동으로 아래처럼 잡힙니다.
 
 ```text
 battlebang/hit/go2_03/events
-battlebang/devices/go2_03/status
-battlebang/devices/go2_03/config
+battlebang/devices/go2/go2_03/status
+battlebang/devices/go2/go2_03/config
 battlebang/hit/go2_03/ring_display/command   # reset/debug compatibility only
 ```
 
@@ -117,7 +117,7 @@ GO2_MQTT_TOPIC_PREFIX=battlebang/hit
 
 `provision`/`config` payload는 공통 `wifi`, `mqtt`, `ota` 필드와 Go2 domain 필드(`robot_id`, `hit_topic_prefix`, hit cooldown, offline queue, LED brightness, piezo threshold/rearm/capture/debug/rearm-stable, `max_hits`, `hit_flash_ms`)를 포함합니다.
 
-Go2 펌웨어는 이제 공통 `bb_esp_ota` HTTP OTA 엔진을 사용합니다. `show-status`와 MQTT device status에는 `ota_supported=true`, `ota_manifest_url`, `ota_channel`, `ota_desired_build`, `post_ota_reboot`가 포함됩니다. Serial/BT `check-ota [manifest-url]`, MQTT `{mqtt_root}/devices/{device_id}/ota`, 그리고 `ota.auto_check_enabled=true`일 때 자동 polling 경로가 모두 같은 manifest 검증/sha256/rollback-marker 흐름을 사용합니다.
+Go2 펌웨어는 이제 공통 `bb_esp_ota` HTTP OTA 엔진을 사용합니다. `show-status`와 MQTT device status에는 `ota_supported=true`, `ota_manifest_url`, `ota_channel`, `ota_desired_build`, `post_ota_reboot`가 포함됩니다. Serial/BT `check-ota [manifest-url]`, MQTT `{mqtt_root}/devices/go2/{device_id}/ota`, 그리고 `ota.auto_check_enabled=true`일 때 자동 polling 경로가 모두 같은 manifest 검증/sha256/rollback-marker 흐름을 사용합니다.
 
 ---
 

@@ -71,7 +71,7 @@ def test_heavy_blaster_mqtt_topics_use_hyphenated_collection() -> None:
 
     assert "#include <bb_esp_core/mqtt/device_topics.h>" in topics
     assert "normalizeRootOrDefault(config.mqttRoot)" in topics
-    assert "makeDeviceTopicsChecked(root, config.deviceId" in topics
+    assert 'makeDeviceTopicsChecked(root, "heavy_blaster", config.deviceId' in topics
     assert 'makeAllOtaTopicChecked(root, "heavy-blasters"' in topics
     assert 'makeEntityTopicsChecked(\n            root, "heavy-blasters", config.blasterId' in topics
     assert "topics.blasterCommand = entityTopics.command;" in topics
@@ -128,6 +128,9 @@ def test_heavy_blaster_commands_status_and_relay_safety_contract() -> None:
     assert "command_rejected" in bus
     assert "relay_active_low" in runtime
     assert "hardware_profile does not match compiled heavy-blaster board profile" in runtime
+    assert "#include <bb_esp_core/config/runtime_config_json.h>" in runtime
+    assert 'validateOtaManifestUrl(\n          config.otaPublicManifestUrl, "ota.public_manifest_url", error)' in runtime
+    assert 'validateOtaManifestUrl(\n          config.otaLocalMirrorUrl, "ota.local_mirror_url", error)' in runtime
     assert "dest.deviceId = source.deviceId;" in runtime
     assert "dest.blasterId = source.blasterId;" in runtime
     assert "relay is forced OFF at boot/reset" in readme
