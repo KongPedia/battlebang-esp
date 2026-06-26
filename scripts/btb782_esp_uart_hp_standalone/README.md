@@ -43,7 +43,7 @@ scripts/btb782_esp_uart_hp_standalone/upload.sh
 scripts/btb782_esp_uart_hp_standalone/monitor.sh /dev/cu.usbserial-0001
 ```
 
-USB/Jetson commands:
+USB/Jetson commands are newline-terminated:
 
 - `s` / `status` / `show-status`: print JSON status.
 - `h` / `hit`: simulate one hit.

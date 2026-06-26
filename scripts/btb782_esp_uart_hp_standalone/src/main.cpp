@@ -143,6 +143,12 @@ static void renderHpBar(uint32_t now, bool force = false) {
       down_blink_on = !down_blink_on;
       markLedDirty();
     }
+  }
+
+  if (!force && !led_dirty) return;
+  if (!force && now - last_led_show_ms < BTB782_LED_SHOW_PERIOD_MS) return;
+
+  if (down || hp_remaining <= 0) {
     fill_solid(leds, BTB782_NUM_LEDS, down_blink_on ? CRGB::Red : CRGB::Black);
   } else {
     CRGB healthyColor = CRGB::Green;
@@ -156,8 +162,6 @@ static void renderHpBar(uint32_t now, bool force = false) {
     renderGroupedHpBar(hpFillRatio(), healthyColor, damagedColor);
   }
 
-  if (!force && !led_dirty) return;
-  if (!force && now - last_led_show_ms < BTB782_LED_SHOW_PERIOD_MS) return;
   FastLED.show();
   last_led_show_ms = now;
   led_dirty = false;
@@ -269,13 +273,6 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
       continue;
     }
     if (line.length() == 0 && isIgnoredLeadingChar(c)) continue;
-    if (line.length() == 0 && (c == '2' || c == 'r' || c == 'R' || c == 's' || c == 'S' || c == 'h' || c == 'H') &&
-        stream.available() == 0) {
-      String one;
-      one += c;
-      handleCommandLine(one, source);
-      continue;
-    }
     if (line.length() < 256) {
       line += c;
     } else {
@@ -372,5 +369,5 @@ void loop() {
                   down ? 1 : 0);
   }
 
-  delay(1);
+  yield();
 }
