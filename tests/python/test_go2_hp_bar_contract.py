@@ -355,10 +355,23 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "publishMqttReconnectStatus" in main
     assert 'publishDeviceStatusIfConnected("mqtt_reconnected")' in main
 
+    reset_function = main.split("static void resetLocalHitState()", 1)[1].split("static float localHpFillRatio", 1)[0]
+    assert "localHitState.maxHits = runtimeConfig.hit.maxHits" in reset_function
+    assert "localHitState.hpRemaining = localHitState.maxHits;" in reset_function
+    assert "localHitState.acceptedHitCount = 0;" in reset_function
+    assert "localHitState.down = false;" in reset_function
+    assert "barDisplay.resetLocalHpState(localHitState.maxHits);" in reset_function
+
     reset_block = main.split("static void resetAll", 1)[1].split("static void handleCommandChar", 1)[0]
     assert "resetAnalogPiezoState();" in reset_block
     assert "hitMqtt.clearOfflineQueue();" in reset_block
     assert "resetLocalHitState();" in reset_block
+
+    setup_block = main.split("void setup()", 1)[1].split("void loop()", 1)[0]
+    assert setup_block.index("runtimeConfig = runtimeConfigFromNvsOrBuild();") < setup_block.index(
+        "resetLocalHitState();"
+    )
+    assert "resetLocalHitState();" in setup_block
 
     loop_block = main.split("void loop()", 1)[1]
     assert loop_block.index("pollAnalogPiezo(now);") < loop_block.index("hitMqtt.tick(now")
@@ -400,6 +413,9 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert 'hitObject["max_hits"] = hit.maxHits;' in runtime_source
     assert 'hitObject["hits_to_down"] = hit.maxHits;' in runtime_source
     assert 'hitObject["hit_flash_ms"] = hit.hitFlashMs;' in runtime_source
+    assert "accepted_hit_count" not in runtime_source
+    assert "hp_remaining" not in runtime_source
+    assert "last_hit_sequence" not in runtime_source
 
     assert "#define BATTLEBANG_MAX_HITS 14" in build_config
     assert "#define BATTLEBANG_HIT_FLASH_MS 900" in build_config

@@ -85,6 +85,8 @@ explicit legacy/factory fallback with `BATTLEBANG_ENABLE_LOCAL_SECRETS`.
 - hit/display tuning: `hit_cooldown_ms`, `offline_queue_capacity`, `offline_queue_flush_interval_ms`, `led_brightness`, `ring_brightness`, `piezo_ao_threshold_raw`, `piezo_ao_rearm_raw`, `piezo_ao_capture_window_ms`, `piezo_ao_debug_period_ms`, `piezo_ao_rearm_stable_ms`, `max_hits`, `hit_flash_ms`
 - Nixo fire timing/envelope: `nixo_fire_default_duration_ms`, `nixo_fire_min_duration_ms`, `nixo_fire_max_duration_ms`, `nixo_fire_cooldown_ms`, `nixo_prefire_delay_ms`, `nixo_relay_delay1_ms` (or the same fields nested under `nixo` without the `nixo_` prefix)
 
+Power cycling the ESP resets local HP state: `accepted_hit_count`, `hp_remaining`, and `down` are not persisted to NVS. On boot the ESP reads the configured `max_hits` rule and starts from full HP.
+
 Do not put relay pins, relay polarity, relay channel count, or physical LED capacity into runtime config; those stay in hardware/variant profiles so Command Center cannot accidentally remap hardware wiring.
 
 ## OTA

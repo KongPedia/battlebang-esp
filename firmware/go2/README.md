@@ -265,6 +265,7 @@ Go2 ESP는 `max_hits`를 full HP로 보고 accepted hit마다 `hp_remaining`을 
 
 - 기본값: `GO2_MAX_HITS=14`, `GO2_HIT_FLASH_MS=900`
 - NVS config로 `max_hits`/`hits_to_down`을 바꾸면 다음 config 적용부터 ESP local HP 모델에 반영됩니다.
+- ESP 전원을 뺐다 꽂거나 재부팅되면 `accepted_hit_count`/`hp_remaining`/`down`은 저장하지 않고 full HP로 초기화됩니다. NVS에는 `max_hits` 같은 룰만 남습니다.
 - reset/recovery는 `reset_hit_state=true`, USB/BT `r`, 또는 `reset` 명령으로 local hit count/HP/down/queue/display를 초기화합니다.
 
 ## 9. 통신 단절 시 hit queue

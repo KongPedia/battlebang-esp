@@ -103,6 +103,8 @@ The MQTT topic and field names stay legacy `ring_display`/`ring_*`, but BTB-779 
 - `debug_override=true`: temporary maintenance override for the HP bar only.
 - Without reset/debug override, ESP logs and ignores the payload.
 
+Power cycle behavior is intentionally reset-based too: the ESP does not persist `accepted_hit_count`, `hp_remaining`, or `down` to NVS. On boot it reads only the configured `max_hits` rule and starts from full HP.
+
 ## Nixo ring LED separation
 
 The ring LED on GPIO4 is not an HP display. It displays only Nixo local fire state: ready green, firing red, cooldown fill. Hit/down HP state is rendered separately on the 84-LED HP bar on GPIO18.

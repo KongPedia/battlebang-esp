@@ -155,6 +155,8 @@ Threshold, HP cap, flash 시간 등 현장 튜닝값은 device config topic으�
 
 Reset/recovery는 legacy topic 이름을 유지하되 `reset_hit_state=true`만 정상 운영 명령으로 사용합니다. 이 명령은 ADC latch, offline queue, local hit count/HP/down, display 상태를 초기화합니다.
 
+Power cycle도 같은 HP 초기화 정책을 따릅니다. ESP는 `accepted_hit_count`/`hp_remaining`/`down`을 NVS에 저장하지 않으며, 부팅할 때 NVS의 `max_hits` 룰만 읽고 full HP 상태로 시작합니다.
+
 ```json
 {
   "schema_version": 1,
