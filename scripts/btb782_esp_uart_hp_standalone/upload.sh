@@ -3,9 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-PIO="${PIO:-${REPO_ROOT}/.venv-pio/bin/pio}"
-if [[ ! -x "${PIO}" ]]; then
-  PIO="${PIO:-pio}"
+if [[ -z "${PIO:-}" ]]; then
+  if [[ -x "${REPO_ROOT}/.venv-pio/bin/pio" ]]; then
+    PIO="${REPO_ROOT}/.venv-pio/bin/pio"
+  else
+    PIO="pio"
+  fi
 fi
 
 port="${1:-${UPLOAD_PORT:-}}"
