@@ -153,6 +153,16 @@
 #define BATTLEBANG_HIT_COOLDOWN_MS BATTLEBANG_BUILD_HIT_COOLDOWN_MS
 #endif
 
+#ifdef BATTLEBANG_BUILD_MAX_HITS
+#undef BATTLEBANG_MAX_HITS
+#define BATTLEBANG_MAX_HITS BATTLEBANG_BUILD_MAX_HITS
+#endif
+
+#ifdef BATTLEBANG_BUILD_HIT_FLASH_MS
+#undef BATTLEBANG_HIT_FLASH_MS
+#define BATTLEBANG_HIT_FLASH_MS BATTLEBANG_BUILD_HIT_FLASH_MS
+#endif
+
 #ifdef BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_CAPACITY
 #undef BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY
 #define BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY                                  \
@@ -305,6 +315,14 @@
 #define BATTLEBANG_HIT_COOLDOWN_MS 0
 #endif
 
+#ifndef BATTLEBANG_MAX_HITS
+#define BATTLEBANG_MAX_HITS 14
+#endif
+
+#ifndef BATTLEBANG_HIT_FLASH_MS
+#define BATTLEBANG_HIT_FLASH_MS 900
+#endif
+
 #ifndef BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY
 #define BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY 32
 #endif
@@ -418,6 +436,8 @@ static constexpr uint32_t PIEZO_AO_DEBUG_PERIOD_MS =
     BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS;
 static constexpr uint32_t ISR_DEBOUNCE_US = 20000;
 static constexpr uint32_t HIT_COOLDOWN_MS = BATTLEBANG_HIT_COOLDOWN_MS;
+static constexpr uint16_t MAX_HITS = BATTLEBANG_MAX_HITS;
+static constexpr uint32_t HIT_FLASH_MS = BATTLEBANG_HIT_FLASH_MS;
 static constexpr uint32_t HIT_REARM_STABLE_MS = 300;
 static constexpr uint32_t HIT_REARM_CHECK_MS = 50;
 static constexpr int OFFLINE_HIT_QUEUE_CAPACITY =
@@ -451,6 +471,10 @@ static_assert(PIEZO_AO_CAPTURE_WINDOW_MS > 0,
               "piezo AO capture window must be positive");
 static_assert(PIEZO_AO_DEBUG_PERIOD_MS > 0,
               "piezo AO debug period must be positive");
+static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000,
+              "max hits must be 1..1000");
+static_assert(HIT_FLASH_MS <= 60000UL,
+              "hit flash duration must be <= 60000ms");
 
 static constexpr const char *ROBOT_ID = BATTLEBANG_ROBOT_ID;
 static constexpr const char *WIFI_SSID = BATTLEBANG_WIFI_SSID;
@@ -461,7 +485,7 @@ static constexpr const char *MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
-static constexpr uint16_t MQTT_BUFFER_SIZE = 1536;
+static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;
 
 static constexpr const char *NIXO_ID_VALUE = BATTLEBANG_NIXO_ID;
 static constexpr const char *NIXO_MQTT_TOPIC_PREFIX_VALUE =

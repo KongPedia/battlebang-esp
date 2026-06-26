@@ -62,6 +62,9 @@ void readHitTuningJson(JsonObjectConst object, HitRuntimeConfig& hit) {
       object, "piezo_ao_debug_period_ms", hit.piezoAoDebugPeriodMs);
   battlebang::esp::config::readUInt32Field(
       object, "piezo_ao_rearm_stable_ms", hit.piezoAoRearmStableMs);
+  readUInt16ConfigField(object, "max_hits", hit.maxHits);
+  readUInt16ConfigField(object, "hits_to_down", hit.maxHits);
+  battlebang::esp::config::readUInt32Field(object, "hit_flash_ms", hit.hitFlashMs);
 }
 
 void readNixoTuningJson(JsonObjectConst object, NixoRuntimeConfig& nixo) {
@@ -117,6 +120,7 @@ void normalizeHitRuntimeConfig(HitRuntimeConfig& hit) {
   if (hit.piezoAoCaptureWindowMs == 0) hit.piezoAoCaptureWindowMs = PIEZO_AO_CAPTURE_WINDOW_MS;
   if (hit.piezoAoDebugPeriodMs == 0) hit.piezoAoDebugPeriodMs = PIEZO_AO_DEBUG_PERIOD_MS;
   if (hit.piezoAoRearmStableMs == 0) hit.piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
+  if (hit.maxHits == 0) hit.maxHits = MAX_HITS;
 }
 
 bool validateHitRuntimeConfig(const HitRuntimeConfig& hit, String& error) {
@@ -158,6 +162,14 @@ bool validateHitRuntimeConfig(const HitRuntimeConfig& hit, String& error) {
   }
   if (hit.piezoAoRearmStableMs == 0) {
     error = "piezo_ao_rearm_stable_ms must be positive";
+    return false;
+  }
+  if (hit.maxHits == 0 || hit.maxHits > 1000) {
+    error = "max_hits must be 1..1000";
+    return false;
+  }
+  if (hit.hitFlashMs > 60000UL) {
+    error = "hit_flash_ms must be <= 60000";
     return false;
   }
   return true;
@@ -263,6 +275,8 @@ void loadHitRuntimeConfigFromNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   hit.piezoAoCaptureWindowMs = prefs.preferences().getUInt("piezo_cap_ms", hit.piezoAoCaptureWindowMs);
   hit.piezoAoDebugPeriodMs = prefs.preferences().getUInt("piezo_dbg_ms", hit.piezoAoDebugPeriodMs);
   hit.piezoAoRearmStableMs = prefs.preferences().getUInt("piezo_arm_ms", hit.piezoAoRearmStableMs);
+  hit.maxHits = prefs.preferences().getUInt("max_hits", hit.maxHits);
+  hit.hitFlashMs = prefs.preferences().getUInt("hit_flash", hit.hitFlashMs);
 }
 
 void loadNixoRuntimeConfigFromNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
@@ -293,6 +307,8 @@ bool saveHitRuntimeConfigToNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   ok &= prefs.preferences().putUInt("piezo_cap_ms", hit.piezoAoCaptureWindowMs) > 0;
   ok &= prefs.preferences().putUInt("piezo_dbg_ms", hit.piezoAoDebugPeriodMs) > 0;
   ok &= prefs.preferences().putUInt("piezo_arm_ms", hit.piezoAoRearmStableMs) > 0;
+  ok &= prefs.preferences().putUInt("max_hits", hit.maxHits) > 0;
+  ok &= prefs.preferences().putUInt("hit_flash", hit.hitFlashMs) > 0;
   return ok;
 }
 
@@ -323,6 +339,8 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   root["piezo_ao_capture_window_ms"] = hit.piezoAoCaptureWindowMs;
   root["piezo_ao_debug_period_ms"] = hit.piezoAoDebugPeriodMs;
   root["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
+  root["max_hits"] = hit.maxHits;
+  root["hit_flash_ms"] = hit.hitFlashMs;
 
   JsonObject hitObject = root.createNestedObject("hit");
   hitObject["robot_id"] = hit.robotId;
@@ -337,6 +355,9 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   hitObject["piezo_ao_capture_window_ms"] = hit.piezoAoCaptureWindowMs;
   hitObject["piezo_ao_debug_period_ms"] = hit.piezoAoDebugPeriodMs;
   hitObject["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
+  hitObject["max_hits"] = hit.maxHits;
+  hitObject["hits_to_down"] = hit.maxHits;
+  hitObject["hit_flash_ms"] = hit.hitFlashMs;
 }
 
 void writeNixoRuntimeConfigJson(JsonObject root, const NixoRuntimeConfig& nixo) {
@@ -392,6 +413,8 @@ RuntimeConfig runtimeConfigFromBuild() {
   config.hit.piezoAoCaptureWindowMs = PIEZO_AO_CAPTURE_WINDOW_MS;
   config.hit.piezoAoDebugPeriodMs = PIEZO_AO_DEBUG_PERIOD_MS;
   config.hit.piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
+  config.hit.maxHits = MAX_HITS;
+  config.hit.hitFlashMs = HIT_FLASH_MS;
   config.nixo.nixoId = NIXO_ID_VALUE;
   config.nixo.commandTopicPrefix = battlebang::esp::mqtt::trimSlashes(String(NIXO_MQTT_TOPIC_PREFIX_VALUE));
   config.nixo.fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;

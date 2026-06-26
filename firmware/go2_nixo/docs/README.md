@@ -14,9 +14,9 @@ firmware/go2_nixo/
 ├─ variants/                        # relay hardware variants
 ├─ .env.go2_nixo.example            # NVS provisioning template
 ├─ config/                          # runtime config + NVS bridge
-├─ ring_led/                        # HP bar + Nixo fire-state ring
+├─ display/                         # HP bar + Nixo fire-state ring
 ├─ mqtt/                            # hit/display/config/OTA MQTT bridge
 └─ nixo/                            # MQTT Nixo fire command / relay sequence
 ```
 
-Identity, stage, Wi-Fi, MQTT, OTA, piezo threshold/rearm/capture/debug, hit cooldown, offline queue, HP brightness, ring brightness, and Nixo fire duration/cooldown/prefire/relay-delay timing are NVS runtime config. Relay pins, polarity, and channel count stay build variants.
+Identity, stage, Wi-Fi, MQTT, OTA, piezo threshold/rearm/capture/debug, hit cooldown, offline queue, local HP count/flash, HP brightness, ring brightness, and Nixo fire duration/cooldown/prefire/relay-delay timing are NVS runtime config. Relay pins, polarity, and channel count stay build variants.

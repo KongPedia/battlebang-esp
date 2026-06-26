@@ -1,4 +1,4 @@
-#include "go2_nixo/ring_led/ring_display.h"
+#include "go2_nixo/display/ring_display.h"
 
 namespace go2 {
 

@@ -12,15 +12,16 @@ This firmware is also **generic image + NVS runtime config**:
 
 Responsibilities:
 
-1. Publish piezo AO ADC threshold crossings as `hit_candidate` MQTT events.
-2. Render Command Center `ring_display` commands on the 84 LED HP bar.
-3. Render local Nixo fire/cooldown state on the ring LED.
-4. Subscribe to Nixo `fire` commands and execute the relay fire sequence.
+1. Accept piezo AO ADC threshold crossings locally as hits.
+2. Render local HP/down state on the 84 LED HP bar.
+3. Publish `hit_event` and device status with `accepted_hit_count`, `hp_remaining`, `max_hits`, and `down`.
+4. Render local Nixo fire/cooldown state on the ring LED.
+5. Subscribe to Nixo `fire` commands and execute the relay fire sequence.
 
 ## Topics
 
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
-- Command Center → ESP HP bar: `battlebang/hit/{robot_id}/ring_display/command`
+- Command Center → ESP HP bar reset/debug only: `battlebang/hit/{robot_id}/ring_display/command`
 - Command Center → Nixo relay: `battlebang/nixo/{nixo_id}/command`
 - Device management: `{mqtt_root}/devices/{device_id}/status|config|ota`
 
@@ -42,6 +43,7 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 | Ring LED data | GPIO4 / 40 LEDs | No, build hardware profile |
 | Piezo AO / D0 debug | GPIO34 / GPIO27 | No, build hardware profile |
 | Piezo threshold/rearm | 200 / 150 raw | Yes, NVS tuning |
+| Local HP model | 14 max hits, 900ms hit flash | Yes, NVS tuning |
 | HP/ring brightness | 120 / 80 | Yes, NVS tuning |
 | Relay 1ch | GPIO23 active-HIGH | No, build variant |
 | Relay 2ch | GPIO22 flywheel + GPIO23 chain, active-LOW | No, build variant |
@@ -58,7 +60,7 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-XXXX
 
-# Provision runtime identity, stage, network, MQTT, OTA, hit/display tuning, and Nixo fire timing
+# Provision runtime identity, stage, network, MQTT, OTA, hit/display tuning including local HP count/flash, and Nixo fire timing
 cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
 # Edit GO2_NIXO_ROBOT_ID=go2_03, GO2_NIXO_NIXO_ID=nixo_go2_03, GO2_NIXO_STAGE_ID=stage_1.
 ./.venv-pio/bin/python scripts/go2_nixo/provision.py --no-serial --print-json
@@ -80,8 +82,10 @@ explicit legacy/factory fallback with `BATTLEBANG_ENABLE_LOCAL_SECRETS`.
 
 - `robot_id`, `hit_topic_prefix`
 - `nixo_id`, `nixo_command_topic_prefix`
-- hit/display tuning: `hit_cooldown_ms`, `offline_queue_capacity`, `offline_queue_flush_interval_ms`, `led_brightness`, `ring_brightness`, `piezo_ao_threshold_raw`, `piezo_ao_rearm_raw`, `piezo_ao_capture_window_ms`, `piezo_ao_debug_period_ms`, `piezo_ao_rearm_stable_ms`
+- hit/display tuning: `hit_cooldown_ms`, `offline_queue_capacity`, `offline_queue_flush_interval_ms`, `led_brightness`, `ring_brightness`, `piezo_ao_threshold_raw`, `piezo_ao_rearm_raw`, `piezo_ao_capture_window_ms`, `piezo_ao_debug_period_ms`, `piezo_ao_rearm_stable_ms`, `max_hits`, `hit_flash_ms`
 - Nixo fire timing/envelope: `nixo_fire_default_duration_ms`, `nixo_fire_min_duration_ms`, `nixo_fire_max_duration_ms`, `nixo_fire_cooldown_ms`, `nixo_prefire_delay_ms`, `nixo_relay_delay1_ms` (or the same fields nested under `nixo` without the `nixo_` prefix)
+
+Power cycling the ESP resets local HP state: `accepted_hit_count`, `hp_remaining`, and `down` are not persisted to NVS. On boot the ESP reads the configured `max_hits` rule and starts from full HP.
 
 Do not put relay pins, relay polarity, relay channel count, or physical LED capacity into runtime config; those stay in hardware/variant profiles so Command Center cannot accidentally remap hardware wiring.
 

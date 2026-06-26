@@ -2,8 +2,8 @@
 
 `firmware/go2_nixo` is the optional one-ESP integrated fallback path. The same image owns:
 
-- hit sensor events: `battlebang/hit/{robot_id}/events`
-- ring display commands: `battlebang/hit/{robot_id}/ring_display/command`
+- ESP-local hit events/status: `battlebang/hit/{robot_id}/events` and `{mqtt_root}/devices/{device_id}/status`
+- HP bar reset/debug commands: `battlebang/hit/{robot_id}/ring_display/command`
 - Nixo/game blaster fire commands: `battlebang/nixo/{nixo_id}/command`
 
 The active 2-ESP split uses `firmware/go2` for hit/LED and `src/nIxo` for Nixo relay fire. Use `esp32dev_nixo_*` for the standalone Nixo ESP, and use `esp32dev_go2_nixo_*` only when intentionally flashing this integrated fallback.

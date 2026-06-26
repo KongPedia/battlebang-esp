@@ -84,6 +84,16 @@
   BATTLEBANG_BUILD_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
 #endif
 
+#ifdef BATTLEBANG_BUILD_MAX_HITS
+#undef BATTLEBANG_MAX_HITS
+#define BATTLEBANG_MAX_HITS BATTLEBANG_BUILD_MAX_HITS
+#endif
+
+#ifdef BATTLEBANG_BUILD_HIT_FLASH_MS
+#undef BATTLEBANG_HIT_FLASH_MS
+#define BATTLEBANG_HIT_FLASH_MS BATTLEBANG_BUILD_HIT_FLASH_MS
+#endif
+
 #ifdef BATTLEBANG_BUILD_LED_PIN
 #undef BATTLEBANG_LED_PIN
 #define BATTLEBANG_LED_PIN BATTLEBANG_BUILD_LED_PIN
@@ -173,6 +183,14 @@
 
 #ifndef BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS
 #define BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS 50
+#endif
+
+#ifndef BATTLEBANG_MAX_HITS
+#define BATTLEBANG_MAX_HITS 14
+#endif
+
+#ifndef BATTLEBANG_HIT_FLASH_MS
+#define BATTLEBANG_HIT_FLASH_MS 900
 #endif
 
 #ifndef BATTLEBANG_LED_PIN
@@ -272,7 +290,13 @@ static constexpr int OFFLINE_HIT_QUEUE_CAPACITY =
     BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY;
 static constexpr uint32_t OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS =
     BATTLEBANG_OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS;
+static constexpr uint16_t MAX_HITS = BATTLEBANG_MAX_HITS;
+static constexpr uint32_t HIT_FLASH_MS = BATTLEBANG_HIT_FLASH_MS;
 
+static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000,
+              "max hits must be 1..1000");
+static_assert(HIT_FLASH_MS <= 60000UL,
+              "hit flash duration must be <= 60000ms");
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0,
               "offline hit queue capacity must be positive");
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255,
@@ -304,7 +328,7 @@ static constexpr const char *MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
-static constexpr uint16_t MQTT_BUFFER_SIZE = 1536;
+static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;
 
 inline const char *targetIdToSensorId(int targetId) {
   return (targetId == 1) ? "piezo_t1" : "piezo_t2";
