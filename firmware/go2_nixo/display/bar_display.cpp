@@ -39,6 +39,7 @@ void BarDisplay::setBrightness(uint16_t brightness) {
 
 void BarDisplay::setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now) {
   if (maxHits < 1) maxHits = 1;
+  if (hitFlashMs > 0x7ffffffful) hitFlashMs = 0x7ffffffful;
   localMaxHits_ = maxHits;
   localHpRemaining_ = hpRemaining > maxHits ? maxHits : hpRemaining;
   localDown_ = down || localHpRemaining_ == 0;

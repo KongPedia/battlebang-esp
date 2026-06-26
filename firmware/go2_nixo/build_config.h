@@ -471,8 +471,10 @@ static_assert(PIEZO_AO_CAPTURE_WINDOW_MS > 0,
               "piezo AO capture window must be positive");
 static_assert(PIEZO_AO_DEBUG_PERIOD_MS > 0,
               "piezo AO debug period must be positive");
-static_assert(MAX_HITS > 0, "max hits must be positive");
-static_assert(HIT_FLASH_MS <= 60000UL, "hit flash duration must be bounded");
+static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000,
+              "max hits must be 1..1000");
+static_assert(HIT_FLASH_MS <= 60000UL,
+              "hit flash duration must be <= 60000ms");
 
 static constexpr const char *ROBOT_ID = BATTLEBANG_ROBOT_ID;
 static constexpr const char *WIFI_SSID = BATTLEBANG_WIFI_SSID;

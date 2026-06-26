@@ -145,7 +145,7 @@ bool HitMqttClient::publishHitEvent(int targetId,
   if (maxHits < 1) maxHits = 1;
   if (hpRemaining > maxHits) hpRemaining = maxHits;
 
-  StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
+  DynamicJsonDocument doc(MQTT_BUFFER_SIZE);
   doc["schema_version"] = 2;
   doc["event"] = "hit_event";
   doc["robot_id"] = robotId_;
@@ -184,9 +184,10 @@ bool HitMqttClient::publishHitEvent(int targetId,
     metadata["queue_dropped"] = offlineQueueDropped_;
   }
 
-  char buffer[MQTT_BUFFER_SIZE];
-  size_t size = serializeJson(doc, buffer, sizeof(buffer));
-  bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
+  String buffer;
+  buffer.reserve(MQTT_BUFFER_SIZE);
+  size_t size = serializeJson(doc, buffer);
+  bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer.c_str()), size, false);
   if (ok) {
     Serial.printf("[HIT] published hit_event seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queued=%s topic=%s\n",
                   (unsigned long)sequence,
@@ -429,7 +430,7 @@ void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   if (now - lastHeartbeatTxMs_ < HEARTBEAT_TX_PERIOD_MS) return;
   lastHeartbeatTxMs_ = now;
 
-  StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
+  DynamicJsonDocument doc(MQTT_BUFFER_SIZE);
   doc["schema_version"] = 1;
   doc["event"] = "heartbeat";
   doc["robot_id"] = robotId_;
@@ -444,9 +445,10 @@ void HitMqttClient::publishHeartbeat(uint32_t now, bool remoteDisplayActive) {
   metadata["offline_queue_capacity"] = offlineQueueCapacity_;
   metadata["offline_queue_dropped"] = offlineQueueDropped_;
 
-  char buffer[MQTT_BUFFER_SIZE];
-  size_t size = serializeJson(doc, buffer, sizeof(buffer));
-  mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer), size, false);
+  String buffer;
+  buffer.reserve(MQTT_BUFFER_SIZE);
+  size_t size = serializeJson(doc, buffer);
+  mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer.c_str()), size, false);
 }
 
 const char* HitMqttClient::heartbeatMode(bool remoteDisplayActive) {

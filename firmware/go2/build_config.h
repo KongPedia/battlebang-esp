@@ -293,6 +293,10 @@ static constexpr uint32_t OFFLINE_HIT_QUEUE_FLUSH_INTERVAL_MS =
 static constexpr uint16_t MAX_HITS = BATTLEBANG_MAX_HITS;
 static constexpr uint32_t HIT_FLASH_MS = BATTLEBANG_HIT_FLASH_MS;
 
+static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000,
+              "max hits must be 1..1000");
+static_assert(HIT_FLASH_MS <= 60000UL,
+              "hit flash duration must be <= 60000ms");
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0,
               "offline hit queue capacity must be positive");
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255,

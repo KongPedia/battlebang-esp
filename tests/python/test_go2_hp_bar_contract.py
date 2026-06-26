@@ -353,7 +353,8 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "resetLocalHitState" in main
     assert "syncLocalHitStateWithRuntimeConfig" in main
     assert "publishMqttReconnectStatus" in main
-    assert 'publishDeviceStatusIfConnected("mqtt_reconnected")' in main
+    assert "bool hasSeenMqttConnection = false;" in main
+    assert 'hasSeenMqttConnection ? "mqtt_reconnected" : "mqtt_connected"' in main
 
     publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
         "static void updateAnalogDebugStats", 1
@@ -391,10 +392,14 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "renderLocal" in bar_source
     assert "handleLocalFlashExpiry" in bar_source
     assert "localFillRatio" in bar_source
+    assert "if (hitFlashMs > 0x7ffffffful) hitFlashMs = 0x7ffffffful;" in bar_source
 
     assert "publishHitEvent" in mqtt_header
     assert "queueHitEvent" in mqtt_header
     assert "QueuedHitEvent" in mqtt_header
+    assert "DynamicJsonDocument doc(MQTT_BUFFER_SIZE);" in mqtt_source
+    assert "String buffer;" in mqtt_source
+    assert "buffer.reserve(MQTT_BUFFER_SIZE);" in mqtt_source
     assert 'doc["schema_version"] = 2;' in mqtt_source
     assert 'doc["event"] = "hit_event";' in mqtt_source
     assert 'doc["accepted"] = true;' in mqtt_source
@@ -428,6 +433,8 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
 
     assert "#define BATTLEBANG_MAX_HITS 14" in build_config
     assert "#define BATTLEBANG_HIT_FLASH_MS 900" in build_config
+    assert "static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000" in build_config
+    assert "static_assert(HIT_FLASH_MS <= 60000UL" in build_config
     assert "static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;" in build_config
     assert f"{env_prefix}_MAX_HITS=14" in env_example
     assert f"{env_prefix}_HIT_FLASH_MS=900" in env_example

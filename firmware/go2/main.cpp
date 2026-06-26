@@ -48,6 +48,7 @@ bool postOtaReboot = false;
 uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
+bool hasSeenMqttConnection = false;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -814,7 +815,8 @@ static void publishMqttReconnectStatus(uint32_t now) {
   const bool connected = hitMqtt.connected();
   if (connected && !lastMqttConnected) {
     lastDeviceStatusMs = now;
-    publishDeviceStatusIfConnected("mqtt_reconnected");
+    publishDeviceStatusIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "mqtt_connected");
+    hasSeenMqttConnection = true;
   }
   lastMqttConnected = connected;
 }
