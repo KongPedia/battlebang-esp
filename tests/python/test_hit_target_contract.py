@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -8,6 +10,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def load_module(path: str, name: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT / path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_hit_target_config_exposes_factory_defaults_for_runtime_config() -> None:
@@ -196,6 +208,8 @@ def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
     topics = read("src/hit_target/mqtt/topics.cpp")
     bus = read("src/hit_target/mqtt/mqtt_bus.cpp")
     pio = read("platformio.ini")
+    runtime_config = read("src/hit_target/config/runtime_config.cpp")
+    mqtt_command = read("scripts/hit_target/mqtt_command.py")
 
     assert 'root + "/devices/hit_target/" + config.deviceId + "/status"' in topics
     assert 'root + "/devices/hit_target/" + config.deviceId + "/config"' in topics
@@ -207,6 +221,12 @@ def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
     assert 'return "devices/" + normalized;' in topics
     assert 'topics.linkedDeviceStatus = root + "/" + linkedDeviceCollection(config.activation.linkedDeviceKind)' in topics
     assert "if (topics.linkedDeviceStatus.length() > 0) result.push_back(topics.linkedDeviceStatus);" in topics
+    assert "isSafeTopicSegment(config.activation.linkedDeviceKind)" in runtime_config
+    assert "isSafeTopicSegment(config.activation.linkedDeviceId)" in runtime_config
+    assert "isSafeTopicSegment(config.deviceId)" in runtime_config
+    assert "isSafeTopicSegment(config.targetId)" in runtime_config
+    assert "def require_safe_topic_segment" in mqtt_command
+    assert "linkedDeviceCollection" in topics
 
     assert "PubSubClient" in read("src/hit_target/mqtt/mqtt_bus.h")
     assert "handleConfigPayload" in bus
@@ -228,6 +248,32 @@ def test_hit_target_mqtt_topics_and_remote_config_are_target_specific() -> None:
     assert "knolleary/PubSubClient@^2.8" in pio
     assert "bblanchon/ArduinoJson@^6.21.5" in pio
     assert "board_build.partitions = min_spiffs.csv" in pio
+
+
+def test_hit_target_mqtt_helper_rejects_unsafe_topic_segments() -> None:
+    mqtt_command = load_module("scripts/hit_target/mqtt_command.py", "hit_target_mqtt_command_under_test")
+
+    assert (
+        mqtt_command.linked_device_status_topic("battlebang", "go2_nixo", "go2_nixo_1ch")
+        == "battlebang/devices/go2_nixo/go2_nixo_1ch/status"
+    )
+    assert (
+        mqtt_command.linked_device_status_topic("/battlebang/", "turret", "turret_dev_01")
+        == "battlebang/turrets/turret_dev_01/status"
+    )
+    for unsafe in ["/", "+", "#", "foo/bar", "", "déjà_vu"]:
+        try:
+            mqtt_command.linked_device_status_topic("battlebang", unsafe, "turret_dev_01")
+        except mqtt_command.HitTargetMqttError:
+            pass
+        else:
+            raise AssertionError(f"unsafe linked_device_kind accepted: {unsafe!r}")
+        try:
+            mqtt_command.linked_device_status_topic("battlebang", "turret", unsafe)
+        except mqtt_command.HitTargetMqttError:
+            pass
+        else:
+            raise AssertionError(f"unsafe linked_device_id accepted: {unsafe!r}")
 
 
 def test_hit_target_source_remains_legacy_with_ota_contract_but_no_ci_workflow() -> None:

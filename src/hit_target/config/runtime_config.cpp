@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <bb_esp_core/config/runtime_config_json.h>
+#include <bb_esp_core/mqtt/topic_utils.h>
 
 #include "hit_target/app/firmware_info.h"
 #include "hit_target/build_config.h"
@@ -105,6 +106,14 @@ bool validateConfig(RuntimeConfig& config, String& error) {
   }
   if (config.targetId.length() > 48) {
     error = "target_id too long";
+    return false;
+  }
+  if (!battlebang::esp::mqtt::isSafeTopicSegment(config.deviceId)) {
+    error = "device_id must use only A-Z, a-z, 0-9, '_', '-', or '.'";
+    return false;
+  }
+  if (!battlebang::esp::mqtt::isSafeTopicSegment(config.targetId)) {
+    error = "target_id must use only A-Z, a-z, 0-9, '_', '-', or '.'";
     return false;
   }
   if (config.hp.phaseCount < 1 || config.hp.phaseCount > kMaxHpPhases) {
@@ -214,6 +223,16 @@ bool validateConfig(RuntimeConfig& config, String& error) {
   }
   if (config.activation.mode == "linked_device" && config.activation.linkedDeviceId.length() == 0) {
     error = "activation.linked_device_id is required for linked_device mode";
+    return false;
+  }
+  if (config.activation.mode == "linked_device" &&
+      !battlebang::esp::mqtt::isSafeTopicSegment(config.activation.linkedDeviceKind)) {
+    error = "activation.linked_device_kind must use only A-Z, a-z, 0-9, '_', '-', or '.'";
+    return false;
+  }
+  if (config.activation.mode == "linked_device" &&
+      !battlebang::esp::mqtt::isSafeTopicSegment(config.activation.linkedDeviceId)) {
+    error = "activation.linked_device_id must use only A-Z, a-z, 0-9, '_', '-', or '.'";
     return false;
   }
   if (config.activation.staleMs < 250 || config.activation.staleMs > 60000) {
