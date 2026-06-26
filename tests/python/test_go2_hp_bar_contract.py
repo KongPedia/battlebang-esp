@@ -355,6 +355,15 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "publishMqttReconnectStatus" in main
     assert 'publishDeviceStatusIfConnected("mqtt_reconnected")' in main
 
+    reset_block = main.split("static void resetAll", 1)[1].split("static void handleCommandChar", 1)[0]
+    assert "resetAnalogPiezoState();" in reset_block
+    assert "hitMqtt.clearOfflineQueue();" in reset_block
+    assert "resetLocalHitState();" in reset_block
+
+    loop_block = main.split("void loop()", 1)[1]
+    assert loop_block.index("pollAnalogPiezo(now);") < loop_block.index("hitMqtt.tick(now")
+    assert loop_block.index("barDisplay.tick(now);") < loop_block.index("hitMqtt.tick(now")
+
     assert "setLocalHpState" in bar_header
     assert "resetLocalHpState" in bar_header
     assert "renderLocal" in bar_source
@@ -423,6 +432,10 @@ def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_cooldo
     assert "renderCooldown" in ring_source
     assert "cooldownStartedMs_" in nixo_fire_source
     assert 'nixoFire.stopFire("mqtt-hit-reset")' not in main
+    tick_block = nixo_fire_source.split("void NixoFireClient::tick", 1)[1].split(
+        "bool NixoFireClient::configured", 1
+    )[0]
+    assert tick_block.index("updateFireSequence(now);") < tick_block.index("ensureMqttConnected(now);")
 
 
 def test_go2_platformio_envs_are_generic_and_identity_is_nvs_provisioned() -> None:

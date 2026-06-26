@@ -441,12 +441,14 @@ static void resetAll(const char* source = "serial") {
   resetAnalogPiezoState();
   hitMqtt.clearOfflineQueue();
   nixoFire.stopFire("reset");
+  resetLocalHitState();
   barDisplay.clearRemoteDisplay();
   barDisplay.markDirty();
   ringDisplay.clearCooldown();
   ringDisplay.markDirty();
-  Serial.printf("[RESET] source=%s ADC hit/display state cleared\n", source);
-  if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC hit/display state cleared");
+  Serial.printf("[RESET] source=%s ADC/local HP/display state cleared\n", source);
+  if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC/local HP/display state cleared");
+  publishDeviceStatusIfConnected("reset");
 }
 
 static void handleCommandChar(char c, const char* source) {
@@ -982,19 +984,23 @@ void setup() {
 void loop() {
   uint32_t now = millis();
 
-  hitMqtt.tick(now, barDisplay.remoteDisplayActive());
-  publishMqttReconnectStatus(now);
+  // Local hit judgment and HP/ring rendering must keep working even when
+  // Command Center/MQTT is offline, so service local paths before network IO.
+  pollCommands();
+  pollAnalogPiezo(now);
   nixoFire.tick(now);
-  processPendingMqttManagement();
-  publishPeriodicDeviceStatus(now);
-  pollConfiguredOta(now);
   ringDisplay.setCooldownState(nixoFire.isFiring(),
                                nixoFire.cooldownRemainingMs(now),
                                nixoFire.cooldownDurationMs(),
                                nixoFire.fireInhibited());
-  pollCommands();
   barDisplay.tick(now);
   ringDisplay.tick(now);
-  pollAnalogPiezo(now);
+
+  hitMqtt.tick(now, barDisplay.remoteDisplayActive());
+  publishMqttReconnectStatus(now);
+  processPendingMqttManagement();
+  publishPeriodicDeviceStatus(now);
+  pollConfiguredOta(now);
+
   delay(1);
 }

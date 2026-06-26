@@ -903,14 +903,17 @@ void setup() {
 void loop() {
   uint32_t now = millis();
 
+  // Local hit judgment and HP bar rendering must keep working even when
+  // Command Center/MQTT is offline, so service the local path before network IO.
+  pollCommands();
+  pollAnalogPiezo(now);
+  barDisplay.tick(now);
+
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   processPendingMqttManagement();
   publishMqttReconnectStatus(now);
   publishPeriodicDeviceStatus(now);
   pollConfiguredOta(now);
-  pollCommands();
-  pollAnalogPiezo(now);
-  barDisplay.tick(now);
 
   delay(1);
 }

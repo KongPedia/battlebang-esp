@@ -91,11 +91,12 @@ void NixoFireClient::begin(const RuntimeConfig& config) {
 }
 
 void NixoFireClient::tick(uint32_t now) {
+  // Relay timing is a local safety/UX path and must not wait behind MQTT reconnect attempts.
+  updateFireSequence(now);
   ensureMqttConnected(now);
   if (mqttClient_.connected()) {
     mqttClient_.loop();
   }
-  updateFireSequence(now);
 }
 
 bool NixoFireClient::configured() const {
