@@ -24,6 +24,7 @@ HP_BAR_FIRMWARES = (
     (GO2_NIXO[0], GO2_NIXO[1], GO2_NIXO[3], GO2_NIXO[4]),
 )
 RING_FIRMWARES = (GO2_NIXO,)
+BTB782_STANDALONE = ROOT / "scripts/btb782_esp_uart_hp_standalone"
 
 HP_BAR_GROUP_COUNT = 28
 HP_BAR_LEDS_PER_GROUP = 3
@@ -173,6 +174,58 @@ def test_fire_ring_renders_red_fire_and_original_cooldown_fill() -> None:
         assert "CRGB color = scaled(96, 0, 0)" in source, firmware
         assert "CRGB color = scaled(0, 64, 0)" in source, firmware
         assert "return firing_ || inhibited_ || remainingMs(now) > 0;" in source, firmware
+
+
+def test_btb782_standalone_uses_three_piezo_channels() -> None:
+    source = (BTB782_STANDALONE / "src/main.cpp").read_text()
+    platformio = (BTB782_STANDALONE / "platformio.ini").read_text()
+    readme = (BTB782_STANDALONE / "README.md").read_text()
+
+    for name, pin in (
+        ("LEFT", 34),
+        ("RIGHT", 35),
+        ("FRONT", 32),
+    ):
+        assert f"BTB782_{name}_PIEZO_PIN" in source
+        assert f"-D BTB782_{name}_PIEZO_PIN={pin}" in platformio
+
+    assert "analogRead(BTB782_LEFT_PIEZO_PIN)" in source
+    assert "analogRead(BTB782_RIGHT_PIEZO_PIN)" in source
+    assert "analogRead(BTB782_FRONT_PIEZO_PIN)" in source
+    assert "piezo:left" in source
+    assert "piezo:right" in source
+    assert "piezo:front" in source
+    assert "left `D34`/`GPIO34`" in readme
+    assert "right `D35`/`GPIO35`" in readme
+    assert "front `D32`/`GPIO32`" in readme
+
+
+def test_btb782_standalone_can_fire_nixo_from_serial_terminal() -> None:
+    source = (BTB782_STANDALONE / "src/main.cpp").read_text()
+    platformio = (BTB782_STANDALONE / "platformio.ini").read_text()
+    readme = (BTB782_STANDALONE / "README.md").read_text()
+
+    assert "#define BTB782_NIXO_RELAY1_PIN 23" in source
+    assert "#define BTB782_NIXO_RELAY2_PIN -1" in source
+    assert "#define BTB782_NIXO_FIRE_DEFAULT_DURATION_MS 3000" in source
+    assert "#define BTB782_NIXO_FIRE_COOLDOWN_MS 1500" in source
+    assert "-D BTB782_NIXO_RELAY1_PIN=23" in platformio
+    assert "-D BTB782_NIXO_FIRE_DEFAULT_DURATION_MS=3000" in platformio
+    assert "static bool startFireSequence" in source
+    assert "static void updateFireSequence" in source
+    assert "awaiting_fire_go2_id" not in source
+    assert 'return strcmp(source, "jetson") == 0;' in source
+    assert "reason=jetson_uart_required" in source
+    assert 'lower.startsWith("f ") || lower.startsWith("fire ")' in source
+    assert 'return value.startsWith("go2_");' in source
+    assert "startFireSequence(BTB782_NIXO_FIRE_DEFAULT_DURATION_MS, source," in source
+    assert "go2Id.c_str());" in source
+    assert 'lower == "x" || lower == "stop-fire" || lower == "fire off"' in source
+    assert "updateFireSequence(now);" in source
+    assert "Live fire is accepted only from Jetson UART" in readme
+    assert "keyboard UI that sends this line belongs on Jetson, not in this ESP repo" in readme
+    assert not (BTB782_STANDALONE / "jetson_terminal.py").exists()
+
 
 def test_bar_remote_ttl_is_bounded_for_signed_expiry_math() -> None:
     for firmware, bar_cpp, _build_config, _robots_json in HP_BAR_FIRMWARES:
