@@ -216,14 +216,15 @@ def test_btb782_standalone_can_fire_nixo_from_serial_terminal() -> None:
     assert "awaiting_fire_go2_id" not in source
     assert 'return strcmp(source, "jetson") == 0;' in source
     assert "reason=jetson_uart_required" in source
-    assert 'lower.startsWith("f ") || lower.startsWith("fire ")' in source
-    assert 'return value.startsWith("go2_");' in source
-    assert "startFireSequence(BTB782_NIXO_FIRE_DEFAULT_DURATION_MS, source," in source
-    assert "go2Id.c_str());" in source
+    assert 'lower == "f" || lower == "fire"' in source
+    assert 'lower.startsWith("f ") || lower.startsWith("fire ")' not in source
+    assert 'return value.startsWith("go2_");' not in source
+    assert "go2_id=" not in source
+    assert "startFireSequence(BTB782_NIXO_FIRE_DEFAULT_DURATION_MS, source);" in source
     assert 'lower == "x" || lower == "stop-fire" || lower == "fire off"' in source
     assert "updateFireSequence(now);" in source
     assert "Live fire is accepted only from Jetson UART" in readme
-    assert "keyboard UI that sends this line belongs on Jetson, not in this ESP repo" in readme
+    assert "`f` / `fire`: fire this robot's local Nixo." in readme
     assert not (BTB782_STANDALONE / "jetson_terminal.py").exists()
 
 

@@ -44,14 +44,6 @@ scripts/btb782_esp_uart_hp_standalone/upload.sh
 scripts/btb782_esp_uart_hp_standalone/monitor.sh /dev/cu.usbserial-0001
 ```
 
-ESP UART commands are newline-terminated. Live fire is accepted only from Jetson UART, not USB serial monitor.
-
-- `s` / `status` / `show-status`: print JSON status.
-- `h` / `hit`: simulate one hit.
-- `f go2_XX` / `fire go2_XX`: fire Nixo for that Go2 ID. The keyboard UI that sends this line belongs on Jetson, not in this ESP repo.
-- `x` / `stop-fire` / `fire off`: stop active fire.
-- `2` / `r` / `reset`: reset HP to full.
-
 ## Jetson UART check
 
 After upload, Jetson should read numeric HP lines on `/dev/ttyTHS1` at `115200` baud, e.g.:

@@ -50,10 +50,10 @@
 #define BTB782_FRONT_PIEZO_PIN 32
 #endif
 #ifndef BTB782_PIEZO_THRESHOLD_RAW
-#define BTB782_PIEZO_THRESHOLD_RAW 200
+#define BTB782_PIEZO_THRESHOLD_RAW 2400
 #endif
 #ifndef BTB782_PIEZO_REARM_RAW
-#define BTB782_PIEZO_REARM_RAW 150
+#define BTB782_PIEZO_REARM_RAW 1800
 #endif
 #ifndef BTB782_CAPTURE_WINDOW_MS
 #define BTB782_CAPTURE_WINDOW_MS 30
@@ -235,22 +235,21 @@ static void stopFireSequence(const char *source) {
                 wasFiring ? "" : " already_idle=true");
 }
 
-static bool startFireSequence(uint32_t durationMs, const char *source,
-                              const char *go2Id) {
+static bool startFireSequence(uint32_t durationMs, const char *source) {
   const uint32_t now = millis();
 
   if (isFiring()) {
     Serial.printf(
-        "[FIRE] ignored source=%s go2_id=%s reason=already_firing state=%s\n",
-        source, go2Id, fireStateName());
+        "[FIRE] ignored source=%s reason=already_firing state=%s\n", source,
+        fireStateName());
     return false;
   }
 
   const uint32_t remainingMs = cooldownRemainingMs(now);
   if (remainingMs > 0) {
     Serial.printf(
-        "[FIRE] ignored source=%s go2_id=%s reason=cooldown remaining_ms=%lu\n",
-        source, go2Id, (unsigned long)remainingMs);
+        "[FIRE] ignored source=%s reason=cooldown remaining_ms=%lu\n", source,
+        (unsigned long)remainingMs);
     return false;
   }
 
@@ -258,8 +257,8 @@ static bool startFireSequence(uint32_t durationMs, const char *source,
   fire_state = FIRE_PREFIRE_DELAY;
   fire_timer_ms = now;
   Serial.printf(
-      "[FIRE] start source=%s go2_id=%s duration_ms=%lu prefire_delay_ms=%lu\n",
-      source, go2Id, (unsigned long)active_fire_duration_ms,
+      "[FIRE] start source=%s duration_ms=%lu prefire_delay_ms=%lu\n", source,
+      (unsigned long)active_fire_duration_ms,
       (unsigned long)BTB782_NIXO_PREFIRE_DELAY_MS);
   return true;
 }
@@ -515,18 +514,8 @@ static bool isIgnoredLeadingChar(char c) {
   return c == '\0' || c == ' ' || c == '\t';
 }
 
-static bool isGo2Id(String value) {
-  value.trim();
-  value.toLowerCase();
-  return value.startsWith("go2_");
-}
-
 static bool sourceCanFire(const char *source) {
   return strcmp(source, "jetson") == 0;
-}
-
-static void printFireUsage() {
-  Serial.println("[FIRE] usage: f go2_XX, or fire go2_XX");
 }
 
 static void handleCommandLine(String line, const char *source) {
@@ -558,24 +547,7 @@ static void handleCommandLine(String line, const char *source) {
                     source);
       return;
     }
-    printFireUsage();
-    return;
-  }
-  if (lower.startsWith("f ") || lower.startsWith("fire ")) {
-    if (!sourceCanFire(source)) {
-      Serial.printf("[FIRE] ignored source=%s reason=jetson_uart_required\n",
-                    source);
-      return;
-    }
-    const int split = line.indexOf(' ');
-    String go2Id = split >= 0 ? line.substring(split + 1) : "";
-    go2Id.trim();
-    if (!isGo2Id(go2Id)) {
-      printFireUsage();
-      return;
-    }
-    startFireSequence(BTB782_NIXO_FIRE_DEFAULT_DURATION_MS, source,
-                      go2Id.c_str());
+    startFireSequence(BTB782_NIXO_FIRE_DEFAULT_DURATION_MS, source);
     return;
   }
 
@@ -685,7 +657,7 @@ void setup() {
       BTB782_NIXO_RELAY_ON_LEVEL, BTB782_NIXO_RELAY_OFF_LEVEL,
       (unsigned long)BTB782_NIXO_FIRE_DEFAULT_DURATION_MS,
       (unsigned long)BTB782_NIXO_FIRE_COOLDOWN_MS, BTB782_HP_MAX);
-  Serial.println("[cmd] UART: s=status, h=simulate hit, f go2_XX=Nixo fire, "
+  Serial.println("[cmd] UART: s=status, h=simulate hit, f/fire=Nixo fire, "
                  "x=stop fire, 2/r/reset=reset HP");
   printStatus("boot");
 }
