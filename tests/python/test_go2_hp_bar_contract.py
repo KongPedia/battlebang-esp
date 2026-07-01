@@ -192,6 +192,10 @@ def test_btb782_standalone_uses_three_piezo_channels() -> None:
     assert "analogRead(BTB782_LEFT_PIEZO_PIN)" in source
     assert "analogRead(BTB782_RIGHT_PIEZO_PIN)" in source
     assert "analogRead(BTB782_FRONT_PIEZO_PIN)" in source
+    assert "analogSetPinAttenuation(BTB782_LEFT_PIEZO_PIN, ADC_11db)" in source
+    assert "analogSetPinAttenuation(BTB782_RIGHT_PIEZO_PIN, ADC_11db)" in source
+    assert "analogSetPinAttenuation(BTB782_FRONT_PIEZO_PIN, ADC_11db)" in source
+    assert "BTB782_LEFT_PIEZO_PIN != BTB782_RIGHT_PIEZO_PIN" in source
     assert "piezo:left" in source
     assert "piezo:right" in source
     assert "piezo:front" in source

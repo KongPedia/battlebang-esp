@@ -111,6 +111,13 @@ static_assert(BTB782_NIXO_RELAY1_PIN >= 0,
 static_assert(BTB782_NIXO_RELAY2_PIN < 0 ||
                   BTB782_NIXO_RELAY1_PIN != BTB782_NIXO_RELAY2_PIN,
               "Nixo relay pins must be different");
+static_assert(BTB782_LEFT_PIEZO_PIN >= 0 && BTB782_RIGHT_PIEZO_PIN >= 0 &&
+                  BTB782_FRONT_PIEZO_PIN >= 0,
+              "left/right/front piezo pins must be configured");
+static_assert(BTB782_LEFT_PIEZO_PIN != BTB782_RIGHT_PIEZO_PIN &&
+                  BTB782_LEFT_PIEZO_PIN != BTB782_FRONT_PIEZO_PIN &&
+                  BTB782_RIGHT_PIEZO_PIN != BTB782_FRONT_PIEZO_PIN,
+              "left/right/front piezo pins must be different");
 static_assert(BTB782_NIXO_FIRE_MIN_DURATION_MS <=
                   BTB782_NIXO_FIRE_DEFAULT_DURATION_MS,
               "default Nixo fire duration below min");
@@ -626,6 +633,11 @@ void setup() {
   pinMode(BTB782_LEFT_PIEZO_PIN, INPUT);
   pinMode(BTB782_RIGHT_PIEZO_PIN, INPUT);
   pinMode(BTB782_FRONT_PIEZO_PIN, INPUT);
+#if defined(ADC_11db)
+  analogSetPinAttenuation(BTB782_LEFT_PIEZO_PIN, ADC_11db);
+  analogSetPinAttenuation(BTB782_RIGHT_PIEZO_PIN, ADC_11db);
+  analogSetPinAttenuation(BTB782_FRONT_PIEZO_PIN, ADC_11db);
+#endif
   if (relay2Enabled())
     configureRelayPinOff(BTB782_NIXO_RELAY2_PIN);
   configureRelayPinOff(BTB782_NIXO_RELAY1_PIN);
