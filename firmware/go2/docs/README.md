@@ -18,4 +18,4 @@ firmware/go2/
 └─ mqtt/                            # hit candidate / heartbeat / display/config/OTA topics
 ```
 
-Piezo threshold/rearm/capture/debug, hit cooldown, offline queue, LED brightness, identity, stage, Wi-Fi, MQTT and OTA policy are runtime NVS config. GPIO pins and LED physical capacity stay build-time hardware profile values.
+Piezo threshold/rearm/capture/debug, hit cooldown, offline queue, LED brightness, identity, stage, Wi-Fi, MQTT and OTA policy are runtime NVS config. The 3ch piezo GPIO pins and LED physical capacity stay build-time hardware profile values.

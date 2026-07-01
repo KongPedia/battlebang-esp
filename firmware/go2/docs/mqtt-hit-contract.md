@@ -19,7 +19,7 @@ battlebang/hit/{robot_id}/ring_display/command   # reset/debug compatibility onl
 
 ## ESP -> Command Center: hit_event
 
-피에조 AO raw가 `piezo_ao_threshold_raw` 이상으로 올라오면 ESP가 capture window에서 peak를 잡고 hit를 accept합니다. accept 즉시:
+left/right/front 피에조 AO 중 최대 raw가 `piezo_ao_threshold_raw` 이상으로 올라오면 ESP가 capture window에서 peak를 잡고 hit를 accept합니다. accept 즉시:
 
 1. `accepted_hit_count`를 증가시킵니다.
 2. `hp_remaining`을 1 감소시킵니다.
@@ -34,7 +34,7 @@ MQTT가 끊긴 동안의 hit는 HP/down 상태가 이미 로컬에 반영되고,
   "schema_version": 2,
   "event": "hit_event",
   "robot_id": "go2_05",
-  "sensor_id": "piezo_t1",
+  "sensor_id": "piezo:left",
   "sequence": 7,
   "hit": true,
   "accepted": true,
@@ -44,7 +44,7 @@ MQTT가 끊긴 동안의 hit는 HP/down 상태가 이미 로컬에 반영되고,
   "down": false,
   "ring_fill_ratio": 0.785714,
   "peak": 2140,
-  "threshold": 400,
+  "threshold": 2400,
   "firmware_ts_ms": 12345,
   "firmware": "go2",
   "firmware_role": "hit_led",
@@ -61,7 +61,7 @@ MQTT가 끊긴 동안의 hit는 HP/down 상태가 이미 로컬에 반영되고,
     "hp_current": 11,
     "hp_max": 14,
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 400
+    "adc_threshold_raw": 2400
   }
 }
 ```

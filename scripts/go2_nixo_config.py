@@ -127,7 +127,10 @@ def append_profile_defines(defines: list[tuple[str, str]], profile: dict) -> Non
         "ring_led_brightness": "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS",
         "t1_do_pin": "BATTLEBANG_BUILD_T1_DO_PIN",
         "t2_do_pin": "BATTLEBANG_BUILD_T2_DO_PIN",
-        "piezo_ao_pin": "BATTLEBANG_BUILD_PIEZO_AO_PIN",
+        "piezo_ao_pin": "BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN",
+        "piezo_left_pin": "BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN",
+        "piezo_right_pin": "BATTLEBANG_BUILD_RIGHT_PIEZO_AO_PIN",
+        "piezo_front_pin": "BATTLEBANG_BUILD_FRONT_PIEZO_AO_PIN",
         "piezo_ao_threshold_raw": "BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW",
         "piezo_ao_rearm_raw": "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW",
         "piezo_ao_capture_window_ms": "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS",
@@ -175,7 +178,9 @@ def append_env_defines(defines: list[tuple[str, str]]) -> None:
         (("BATTLEBANG_RING_LED_BRIGHTNESS",), "BATTLEBANG_BUILD_RING_LED_BRIGHTNESS"),
         (("BATTLEBANG_T1_DO_PIN",), "BATTLEBANG_BUILD_T1_DO_PIN"),
         (("BATTLEBANG_T2_DO_PIN",), "BATTLEBANG_BUILD_T2_DO_PIN"),
-        (("BATTLEBANG_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_PIEZO_AO_PIN"),
+        (("BATTLEBANG_PIEZO_AO_PIN", "BATTLEBANG_LEFT_PIEZO_AO_PIN"), "BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN"),
+        (("BATTLEBANG_RIGHT_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_RIGHT_PIEZO_AO_PIN"),
+        (("BATTLEBANG_FRONT_PIEZO_AO_PIN",), "BATTLEBANG_BUILD_FRONT_PIEZO_AO_PIN"),
         (("BATTLEBANG_PIEZO_AO_THRESHOLD_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW"),
         (("BATTLEBANG_PIEZO_AO_REARM_RAW",), "BATTLEBANG_BUILD_PIEZO_AO_REARM_RAW"),
         (("BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS",), "BATTLEBANG_BUILD_PIEZO_AO_CAPTURE_WINDOW_MS"),
@@ -223,7 +228,11 @@ print(
     f"{PIO_ENV}: generic_runtime_identity=NVS/MAC "
     f"hardware_profile={CONFIG_PATH.relative_to(PROJECT_DIR)} "
     f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
+    f"piezo_left={profile.get('piezo_left_pin', profile.get('piezo_ao_pin', 'default'))} "
+    f"piezo_right={profile.get('piezo_right_pin', 'default')} "
+    f"piezo_front={profile.get('piezo_front_pin', 'default')} "
     f"ao_threshold={profile.get('piezo_ao_threshold_raw', 'default')} "
+    f"ao_rearm={profile.get('piezo_ao_rearm_raw', 'default')} "
     f"offline_queue={profile.get('offline_hit_queue_capacity', 'default')} "
     f"led_pin={profile.get('led_pin', 'default')} "
     f"num_leds={profile.get('num_leds', 'default')} "

@@ -335,6 +335,9 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
         assert "hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);" in main, firmware
         assert "runtimeConfig.hit.piezoAoThresholdRaw" in main, firmware
         assert "runtimeConfig.hit.hitCooldownMs" in main, firmware
+        assert "PIEZO_LEFT_AO_PIN" in main, firmware
+        assert "PIEZO_RIGHT_AO_PIN" in main, firmware
+        assert "PIEZO_FRONT_AO_PIN" in main, firmware
         assert '"piezo_ao_threshold_raw"' in main, firmware
         assert "#include <bb_esp_ota/http_ota.h>" in main, firmware
         assert "#include <bb_esp_ota/ota_manifest.h>" in main, firmware
@@ -703,8 +706,8 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2["hit_topic_prefix"] == "battlebang/hit"
     assert go2["hit"]["robot_id"] == "go2_03"
     assert go2["hit"]["topic_prefix"] == "battlebang/hit"
-    assert go2["hit"]["piezo_ao_threshold_raw"] == 200
-    assert go2["hit"]["piezo_ao_rearm_raw"] == 150
+    assert go2["hit"]["piezo_ao_threshold_raw"] == 2400
+    assert go2["hit"]["piezo_ao_rearm_raw"] == 1800
     assert go2["hit"]["led_brightness"] == 120
     assert go2["hit"]["max_hits"] == 14
     assert go2["hit"]["hit_flash_ms"] == 900
@@ -733,8 +736,8 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2_nixo["hit_topic_prefix"] == "battlebang/hit"
     assert go2_nixo["nixo_id"] == "nixo_go2_03"
     assert go2_nixo["nixo_command_topic_prefix"] == "battlebang/nixo"
-    assert go2_nixo["hit"]["piezo_ao_threshold_raw"] == 200
-    assert go2_nixo["hit"]["piezo_ao_rearm_raw"] == 150
+    assert go2_nixo["hit"]["piezo_ao_threshold_raw"] == 2400
+    assert go2_nixo["hit"]["piezo_ao_rearm_raw"] == 1800
     assert go2_nixo["hit"]["led_brightness"] == 120
     assert go2_nixo["hit"]["ring_brightness"] == 80
     assert go2_nixo["hit"]["max_hits"] == 14
@@ -769,14 +772,24 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert "relay2_pin" not in go2_nixo["nixo"]
 
 
-def test_go2_piezo_threshold_default_is_higher_sensitivity_trial_value() -> None:
+def test_go2_piezo_threshold_defaults_match_btb782_three_channel_script() -> None:
     for firmware, _bar_cpp, build_config, robots_json in HP_BAR_FIRMWARES:
         defaults = json.loads(robots_json.read_text())["defaults"]
-        assert defaults["piezo_ao_threshold_raw"] == 200, firmware
-        assert defaults["piezo_ao_rearm_raw"] == 150, firmware
+        assert defaults["piezo_left_pin"] == 34, firmware
+        assert defaults["piezo_right_pin"] == 35, firmware
+        assert defaults["piezo_front_pin"] == 32, firmware
+        assert "piezo_ao_pin" not in defaults, firmware
+        assert defaults["piezo_ao_threshold_raw"] == 2400, firmware
+        assert defaults["piezo_ao_rearm_raw"] == 1800, firmware
+        assert defaults["piezo_ao_debug_period_ms"] == 1000, firmware
         assert defaults["piezo_ao_threshold_raw"] > defaults["piezo_ao_rearm_raw"], firmware
-        assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 200" in build_config.read_text(), firmware
-        assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 150" in build_config.read_text(), firmware
+        source = build_config.read_text()
+        assert "#define BATTLEBANG_LEFT_PIEZO_AO_PIN 34" in source, firmware
+        assert "#define BATTLEBANG_RIGHT_PIEZO_AO_PIN 35" in source, firmware
+        assert "#define BATTLEBANG_FRONT_PIEZO_AO_PIN 32" in source, firmware
+        assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 2400" in source, firmware
+        assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 1800" in source, firmware
+        assert "static constexpr uint32_t HIT_REARM_STABLE_MS = 30;" in source, firmware
         runtime_source = (ROOT / f"firmware/{firmware}/config/runtime_config.cpp").read_text()
         assert '"piezo_ao_threshold_raw"' in runtime_source, firmware
         assert '"piezo_ao_rearm_raw"' in runtime_source, firmware

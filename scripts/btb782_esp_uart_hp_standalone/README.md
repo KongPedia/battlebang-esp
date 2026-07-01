@@ -55,3 +55,13 @@ After upload, Jetson should read numeric HP lines on `/dev/ttyTHS1` at `115200` 
 ...
 0
 ```
+
+## Commands
+
+Live fire is accepted only from Jetson UART.
+
+- `s` / `status`: print status.
+- `h` / `hit`: simulate a local hit.
+- `f` / `fire`: fire this robot's local Nixo.
+- `x` / `stop-fire` / `fire off`: stop fire.
+- `2` / `r` / `reset`: reset HP.

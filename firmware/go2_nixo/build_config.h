@@ -216,8 +216,30 @@
 #endif
 
 #ifdef BATTLEBANG_BUILD_PIEZO_AO_PIN
-#undef BATTLEBANG_PIEZO_AO_PIN
-#define BATTLEBANG_PIEZO_AO_PIN BATTLEBANG_BUILD_PIEZO_AO_PIN
+#ifndef BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN
+#define BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN BATTLEBANG_BUILD_PIEZO_AO_PIN
+#endif
+#endif
+
+#ifdef BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN
+#undef BATTLEBANG_LEFT_PIEZO_AO_PIN
+#define BATTLEBANG_LEFT_PIEZO_AO_PIN BATTLEBANG_BUILD_LEFT_PIEZO_AO_PIN
+#endif
+
+#ifdef BATTLEBANG_BUILD_RIGHT_PIEZO_AO_PIN
+#undef BATTLEBANG_RIGHT_PIEZO_AO_PIN
+#define BATTLEBANG_RIGHT_PIEZO_AO_PIN BATTLEBANG_BUILD_RIGHT_PIEZO_AO_PIN
+#endif
+
+#ifdef BATTLEBANG_BUILD_FRONT_PIEZO_AO_PIN
+#undef BATTLEBANG_FRONT_PIEZO_AO_PIN
+#define BATTLEBANG_FRONT_PIEZO_AO_PIN BATTLEBANG_BUILD_FRONT_PIEZO_AO_PIN
+#endif
+
+#ifndef BATTLEBANG_PIEZO_AO_PIN
+#ifdef BATTLEBANG_LEFT_PIEZO_AO_PIN
+#define BATTLEBANG_PIEZO_AO_PIN BATTLEBANG_LEFT_PIEZO_AO_PIN
+#endif
 #endif
 
 #ifdef BATTLEBANG_BUILD_PIEZO_AO_THRESHOLD_RAW
@@ -371,18 +393,32 @@
 #define BATTLEBANG_T2_DO_PIN -1
 #endif
 
+#if defined(BATTLEBANG_PIEZO_AO_PIN) && !defined(BATTLEBANG_LEFT_PIEZO_AO_PIN)
+#define BATTLEBANG_LEFT_PIEZO_AO_PIN BATTLEBANG_PIEZO_AO_PIN
+#endif
+
+#ifndef BATTLEBANG_LEFT_PIEZO_AO_PIN
+#define BATTLEBANG_LEFT_PIEZO_AO_PIN 34
+#endif
+
+#ifndef BATTLEBANG_RIGHT_PIEZO_AO_PIN
+#define BATTLEBANG_RIGHT_PIEZO_AO_PIN 35
+#endif
+
+#ifndef BATTLEBANG_FRONT_PIEZO_AO_PIN
+#define BATTLEBANG_FRONT_PIEZO_AO_PIN 32
+#endif
+
 #ifndef BATTLEBANG_PIEZO_AO_PIN
-#define BATTLEBANG_PIEZO_AO_PIN 34
+#define BATTLEBANG_PIEZO_AO_PIN BATTLEBANG_LEFT_PIEZO_AO_PIN
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_THRESHOLD_RAW
-// BTB-770 sensitivity trial: lower threshold so off-center harness hits still
-// publish hit candidates. Tune per hardware profile or env.
-#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 200
+#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 2400
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_REARM_RAW
-#define BATTLEBANG_PIEZO_AO_REARM_RAW 150
+#define BATTLEBANG_PIEZO_AO_REARM_RAW 1800
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS
@@ -390,7 +426,7 @@
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS
-#define BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS 100
+#define BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS 1000
 #endif
 
 namespace go2 {
@@ -425,7 +461,10 @@ static constexpr uint32_t LED_BLINK_MS = 250;
 static constexpr uint32_t LED_DEAD_BLINK_MS = 300;
 
 static constexpr int PIEZO_DO_PIN = BATTLEBANG_T1_DO_PIN;
-static constexpr int PIEZO_AO_PIN = BATTLEBANG_PIEZO_AO_PIN;
+static constexpr int PIEZO_LEFT_AO_PIN = BATTLEBANG_LEFT_PIEZO_AO_PIN;
+static constexpr int PIEZO_RIGHT_AO_PIN = BATTLEBANG_RIGHT_PIEZO_AO_PIN;
+static constexpr int PIEZO_FRONT_AO_PIN = BATTLEBANG_FRONT_PIEZO_AO_PIN;
+static constexpr int PIEZO_AO_PIN = PIEZO_LEFT_AO_PIN;
 static constexpr int T1_DO = PIEZO_DO_PIN;
 static constexpr int T2_DO = BATTLEBANG_T2_DO_PIN;
 static constexpr int PIEZO_AO_THRESHOLD_RAW = BATTLEBANG_PIEZO_AO_THRESHOLD_RAW;
@@ -438,7 +477,7 @@ static constexpr uint32_t ISR_DEBOUNCE_US = 20000;
 static constexpr uint32_t HIT_COOLDOWN_MS = BATTLEBANG_HIT_COOLDOWN_MS;
 static constexpr uint16_t MAX_HITS = BATTLEBANG_MAX_HITS;
 static constexpr uint32_t HIT_FLASH_MS = BATTLEBANG_HIT_FLASH_MS;
-static constexpr uint32_t HIT_REARM_STABLE_MS = 300;
+static constexpr uint32_t HIT_REARM_STABLE_MS = 30;
 static constexpr uint32_t HIT_REARM_CHECK_MS = 50;
 static constexpr int OFFLINE_HIT_QUEUE_CAPACITY =
     BATTLEBANG_OFFLINE_HIT_QUEUE_CAPACITY;
@@ -457,8 +496,13 @@ static_assert(NUM_LEDS == HP_BAR_EXPECTED_LED_COUNT,
 static_assert(RING_NUM_LEDS > 0, "fire ring LED count must be positive");
 static_assert(HP_BAR_LED_PIN != RING_LED_PIN,
               "HP bar and fire ring pins must be different");
-static_assert(PIEZO_AO_PIN >= 0,
-              "piezo AO pin must be configured for ADC threshold hit firmware");
+static_assert(PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0 &&
+                  PIEZO_FRONT_AO_PIN >= 0,
+              "left/right/front piezo AO pins must be configured for 3ch hit firmware");
+static_assert(PIEZO_LEFT_AO_PIN != PIEZO_RIGHT_AO_PIN &&
+                  PIEZO_LEFT_AO_PIN != PIEZO_FRONT_AO_PIN &&
+                  PIEZO_RIGHT_AO_PIN != PIEZO_FRONT_AO_PIN,
+              "left/right/front piezo AO pins must be different");
 static_assert(PIEZO_AO_THRESHOLD_RAW > 0,
               "piezo AO threshold must be positive");
 static_assert(PIEZO_AO_THRESHOLD_RAW <= 4095,
@@ -519,7 +563,16 @@ static_assert(NIXO_RELAY_DELAY1_MS > 0,
               "Nixo relay inter-channel delay must be positive");
 
 inline const char *targetIdToSensorId(int targetId) {
-  return (targetId == 1) ? "piezo_t1" : "piezo_t2";
+  switch (targetId) {
+  case 1:
+    return "piezo:left";
+  case 2:
+    return "piezo:right";
+  case 3:
+    return "piezo:front";
+  default:
+    return "piezo:unknown";
+  }
 }
 
 } // namespace go2
