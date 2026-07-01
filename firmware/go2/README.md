@@ -6,14 +6,14 @@ Go2 등에 장착되는 ESP32 피격/LED 보드용 펌웨어 가이드입니다.
 
 현재 Go2 ESP의 책임은 세 가지입니다.
 
-1. 피에조 센서 AO ADC raw 값이 threshold 이상이면 ESP가 로컬에서 즉시 hit를 accept
+1. left/right/front 피에조 센서 AO ADC 중 최대 raw 값이 threshold 이상이면 ESP가 로컬에서 즉시 hit를 accept
 2. ESP 내부 `accepted_hit_count` / `hp_remaining` / `down` 상태를 갱신하고 84개 HP bar LED를 바로 표시
 3. Command Center에는 `hit_event`와 device `status`로 현재 HP/down 상태만 publish
 
 즉 정상 hit마다 Command Center가 `ring_display`를 내려주지 않아도 됩니다. MQTT가 끊겨도 ESP는 hit 판정과 LED 표시를 계속하고, event만 RAM queue에 보관했다가 재연결 후 원래 `firmware_ts_ms`와 당시 HP metadata로 재전송합니다.
 
 ```text
-Piezo AO ADC threshold -> ESP local hit accept -> ESP HP/down state -> ESP HP bar render
+3ch Piezo AO max ADC threshold -> ESP local hit accept -> ESP HP/down state -> ESP HP bar render
                                       └── MQTT hit_event/status -> Command Center combat/status ingest
 ```
 
@@ -30,7 +30,7 @@ mqtt/      hit_event/heartbeat/status publish, config/ota/reset/debug subscribe
 | Part | Pin | Role |
 | --- | --- | --- |
 | HP bar LED data | `GPIO18` | HP 잔량 표시 |
-| Piezo AO ADC | `GPIO34` | ESP 로컬 hit 감지 |
+| Piezo AO ADC | left `GPIO34`, right `GPIO35`, front `GPIO32` | ESP 로컬 3ch hit 감지 |
 | Piezo DO debug readback | `GPIO27` | debug only |
 
 - ESP → Command Center
@@ -190,14 +190,14 @@ GO2_ROBOT_ID=go2_03 ./.venv-pio/bin/python scripts/go2/provision.py --serial-por
 [MQTT] subscribed battlebang/hit/go2_03/ring_display/command
 ```
 
-피에조 센서 AO ADC raw 값이 threshold 이상으로 올라오면 ESP가 로컬 HP를 먼저 깎고 LED bar를 갱신한 뒤 `hit_event`를 publish합니다.
+left/right/front 피에조 센서 AO ADC 중 최대 raw 값이 threshold 이상으로 올라오면 ESP가 로컬 HP를 먼저 깎고 LED bar를 갱신한 뒤 `hit_event`를 publish합니다.
 
 ```json
 {
   "schema_version": 2,
   "event": "hit_event",
   "robot_id": "go2_03",
-  "sensor_id": "piezo_t1",
+  "sensor_id": "piezo:left",
   "sequence": 1,
   "hit": true,
   "accepted": true,
@@ -207,7 +207,7 @@ GO2_ROBOT_ID=go2_03 ./.venv-pio/bin/python scripts/go2/provision.py --serial-por
   "down": false,
   "ring_fill_ratio": 0.928571,
   "peak": 2140,
-  "threshold": 400,
+  "threshold": 2400,
   "firmware_ts_ms": 12345,
   "metadata": {
     "hit_source": "piezo_ao_adc_threshold",
@@ -216,7 +216,7 @@ GO2_ROBOT_ID=go2_03 ./.venv-pio/bin/python scripts/go2/provision.py --serial-por
     "hp_current": 13,
     "hp_max": 14,
     "adc_peak_raw": 2140,
-    "adc_threshold_raw": 400
+    "adc_threshold_raw": 2400
   }
 }
 ```
@@ -239,11 +239,13 @@ GO2_ROBOT_ID=go2_03 ./.venv-pio/bin/python scripts/go2/provision.py --serial-por
     "num_leds": 84,
     "led_brightness": 120,
     "t1_do_pin": 27,
-    "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 200,
-    "piezo_ao_rearm_raw": 150,
+    "piezo_left_pin": 34,
+    "piezo_right_pin": 35,
+    "piezo_front_pin": 32,
+    "piezo_ao_threshold_raw": 2400,
+    "piezo_ao_rearm_raw": 1800,
     "piezo_ao_capture_window_ms": 30,
-    "piezo_ao_debug_period_ms": 100,
+    "piezo_ao_debug_period_ms": 1000,
     "mqtt_topic_prefix": "battlebang/hit"
   },
   "notes": "identity/stage/tuning overrides are provisioned into ESP32 NVS"

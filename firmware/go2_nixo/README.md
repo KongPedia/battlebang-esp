@@ -12,7 +12,7 @@ This firmware is also **generic image + NVS runtime config**:
 
 Responsibilities:
 
-1. Accept piezo AO ADC threshold crossings locally as hits.
+1. Accept the max of left/right/front piezo AO ADC threshold crossings locally as hits.
 2. Render local HP/down state on the 84 LED HP bar.
 3. Publish `hit_event` and device status with `accepted_hit_count`, `hp_remaining`, `max_hits`, and `down`.
 4. Render local Nixo fire/cooldown state on the ring LED.
@@ -37,12 +37,14 @@ battlebang/nixo/nixo_go2_03/command
 
 Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay variant JSON files under `firmware/go2_nixo/variants/`.
 
+`hardware_profile.json` defaults are the 1ch safe fallback (`GPIO23`, relay2 disabled). For 2ch, build `esp32dev_go2_nixo_2ch`; it merges `variants/relay_2ch/config.json` and compiles relay1=`GPIO22`, relay2=`GPIO23`, active-LOW.
+
 | Part | Default | Runtime? |
 | --- | --- | --- |
 | HP bar LED data | GPIO18 / 84 LEDs | No, build hardware profile |
 | Ring LED data | GPIO4 / 40 LEDs | No, build hardware profile |
-| Piezo AO / D0 debug | GPIO34 / GPIO27 | No, build hardware profile |
-| Piezo threshold/rearm | 200 / 150 raw | Yes, NVS tuning |
+| Piezo AO / D0 debug | left GPIO34, right GPIO35, front GPIO32 / D0 GPIO27 | No, build hardware profile |
+| Piezo threshold/rearm | 2400 / 1800 raw | Yes, NVS tuning |
 | Local HP model | 14 max hits, 900ms hit flash | Yes, NVS tuning |
 | HP/ring brightness | 120 / 80 | Yes, NVS tuning |
 | Relay 1ch | GPIO23 active-HIGH | No, build variant |

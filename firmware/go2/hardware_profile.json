@@ -9,11 +9,13 @@
     "num_leds": 84,
     "led_brightness": 120,
     "t1_do_pin": 27,
-    "piezo_ao_pin": 34,
-    "piezo_ao_threshold_raw": 200,
-    "piezo_ao_rearm_raw": 150,
+    "piezo_left_pin": 34,
+    "piezo_right_pin": 35,
+    "piezo_front_pin": 32,
+    "piezo_ao_threshold_raw": 2400,
+    "piezo_ao_rearm_raw": 1800,
     "piezo_ao_capture_window_ms": 30,
-    "piezo_ao_debug_period_ms": 100,
+    "piezo_ao_debug_period_ms": 1000,
     "mqtt_topic_prefix": "battlebang/hit"
   }
 }

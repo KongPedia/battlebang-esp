@@ -24,6 +24,7 @@ HP_BAR_FIRMWARES = (
     (GO2_NIXO[0], GO2_NIXO[1], GO2_NIXO[3], GO2_NIXO[4]),
 )
 RING_FIRMWARES = (GO2_NIXO,)
+BTB782_STANDALONE = ROOT / "scripts/btb782_esp_uart_hp_standalone"
 
 HP_BAR_GROUP_COUNT = 28
 HP_BAR_LEDS_PER_GROUP = 3
@@ -174,6 +175,63 @@ def test_fire_ring_renders_red_fire_and_original_cooldown_fill() -> None:
         assert "CRGB color = scaled(0, 64, 0)" in source, firmware
         assert "return firing_ || inhibited_ || remainingMs(now) > 0;" in source, firmware
 
+
+def test_btb782_standalone_uses_three_piezo_channels() -> None:
+    source = (BTB782_STANDALONE / "src/main.cpp").read_text()
+    platformio = (BTB782_STANDALONE / "platformio.ini").read_text()
+    readme = (BTB782_STANDALONE / "README.md").read_text()
+
+    for name, pin in (
+        ("LEFT", 34),
+        ("RIGHT", 35),
+        ("FRONT", 32),
+    ):
+        assert f"BTB782_{name}_PIEZO_PIN" in source
+        assert f"-D BTB782_{name}_PIEZO_PIN={pin}" in platformio
+
+    assert "analogRead(BTB782_LEFT_PIEZO_PIN)" in source
+    assert "analogRead(BTB782_RIGHT_PIEZO_PIN)" in source
+    assert "analogRead(BTB782_FRONT_PIEZO_PIN)" in source
+    assert "analogSetPinAttenuation(BTB782_LEFT_PIEZO_PIN, ADC_11db)" in source
+    assert "analogSetPinAttenuation(BTB782_RIGHT_PIEZO_PIN, ADC_11db)" in source
+    assert "analogSetPinAttenuation(BTB782_FRONT_PIEZO_PIN, ADC_11db)" in source
+    assert "BTB782_LEFT_PIEZO_PIN != BTB782_RIGHT_PIEZO_PIN" in source
+    assert "piezo:left" in source
+    assert "piezo:right" in source
+    assert "piezo:front" in source
+    assert "left `D34`/`GPIO34`" in readme
+    assert "right `D35`/`GPIO35`" in readme
+    assert "front `D32`/`GPIO32`" in readme
+
+
+def test_btb782_standalone_can_fire_nixo_from_serial_terminal() -> None:
+    source = (BTB782_STANDALONE / "src/main.cpp").read_text()
+    platformio = (BTB782_STANDALONE / "platformio.ini").read_text()
+    readme = (BTB782_STANDALONE / "README.md").read_text()
+
+    assert "#define BTB782_NIXO_RELAY1_PIN 23" in source
+    assert "#define BTB782_NIXO_RELAY2_PIN -1" in source
+    assert "#define BTB782_NIXO_FIRE_DEFAULT_DURATION_MS 3000" in source
+    assert "#define BTB782_NIXO_FIRE_COOLDOWN_MS 1500" in source
+    assert "-D BTB782_NIXO_RELAY1_PIN=23" in platformio
+    assert "-D BTB782_NIXO_FIRE_DEFAULT_DURATION_MS=3000" in platformio
+    assert "static bool startFireSequence" in source
+    assert "static void updateFireSequence" in source
+    assert "awaiting_fire_go2_id" not in source
+    assert 'return strcmp(source, "jetson") == 0;' in source
+    assert "reason=jetson_uart_required" in source
+    assert 'lower == "f" || lower == "fire"' in source
+    assert 'lower.startsWith("f ") || lower.startsWith("fire ")' not in source
+    assert 'return value.startsWith("go2_");' not in source
+    assert "go2_id=" not in source
+    assert "startFireSequence(BTB782_NIXO_FIRE_DEFAULT_DURATION_MS, source);" in source
+    assert 'lower == "x" || lower == "stop-fire" || lower == "fire off"' in source
+    assert "updateFireSequence(now);" in source
+    assert "Live fire is accepted only from Jetson UART" in readme
+    assert "`f` / `fire`: fire this robot's local Nixo." in readme
+    assert not (BTB782_STANDALONE / "jetson_terminal.py").exists()
+
+
 def test_bar_remote_ttl_is_bounded_for_signed_expiry_math() -> None:
     for firmware, bar_cpp, _build_config, _robots_json in HP_BAR_FIRMWARES:
         source = bar_cpp.read_text()
@@ -281,6 +339,9 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
         assert "hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);" in main, firmware
         assert "runtimeConfig.hit.piezoAoThresholdRaw" in main, firmware
         assert "runtimeConfig.hit.hitCooldownMs" in main, firmware
+        assert "PIEZO_LEFT_AO_PIN" in main, firmware
+        assert "PIEZO_RIGHT_AO_PIN" in main, firmware
+        assert "PIEZO_FRONT_AO_PIN" in main, firmware
         assert '"piezo_ao_threshold_raw"' in main, firmware
         assert "#include <bb_esp_ota/http_ota.h>" in main, firmware
         assert "#include <bb_esp_ota/ota_manifest.h>" in main, firmware
@@ -649,8 +710,8 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2["hit_topic_prefix"] == "battlebang/hit"
     assert go2["hit"]["robot_id"] == "go2_03"
     assert go2["hit"]["topic_prefix"] == "battlebang/hit"
-    assert go2["hit"]["piezo_ao_threshold_raw"] == 200
-    assert go2["hit"]["piezo_ao_rearm_raw"] == 150
+    assert go2["hit"]["piezo_ao_threshold_raw"] == 2400
+    assert go2["hit"]["piezo_ao_rearm_raw"] == 1800
     assert go2["hit"]["led_brightness"] == 120
     assert go2["hit"]["max_hits"] == 14
     assert go2["hit"]["hit_flash_ms"] == 900
@@ -679,8 +740,8 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2_nixo["hit_topic_prefix"] == "battlebang/hit"
     assert go2_nixo["nixo_id"] == "nixo_go2_03"
     assert go2_nixo["nixo_command_topic_prefix"] == "battlebang/nixo"
-    assert go2_nixo["hit"]["piezo_ao_threshold_raw"] == 200
-    assert go2_nixo["hit"]["piezo_ao_rearm_raw"] == 150
+    assert go2_nixo["hit"]["piezo_ao_threshold_raw"] == 2400
+    assert go2_nixo["hit"]["piezo_ao_rearm_raw"] == 1800
     assert go2_nixo["hit"]["led_brightness"] == 120
     assert go2_nixo["hit"]["ring_brightness"] == 80
     assert go2_nixo["hit"]["max_hits"] == 14
@@ -715,14 +776,24 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert "relay2_pin" not in go2_nixo["nixo"]
 
 
-def test_go2_piezo_threshold_default_is_higher_sensitivity_trial_value() -> None:
+def test_go2_piezo_threshold_defaults_match_btb782_three_channel_script() -> None:
     for firmware, _bar_cpp, build_config, robots_json in HP_BAR_FIRMWARES:
         defaults = json.loads(robots_json.read_text())["defaults"]
-        assert defaults["piezo_ao_threshold_raw"] == 200, firmware
-        assert defaults["piezo_ao_rearm_raw"] == 150, firmware
+        assert defaults["piezo_left_pin"] == 34, firmware
+        assert defaults["piezo_right_pin"] == 35, firmware
+        assert defaults["piezo_front_pin"] == 32, firmware
+        assert "piezo_ao_pin" not in defaults, firmware
+        assert defaults["piezo_ao_threshold_raw"] == 2400, firmware
+        assert defaults["piezo_ao_rearm_raw"] == 1800, firmware
+        assert defaults["piezo_ao_debug_period_ms"] == 1000, firmware
         assert defaults["piezo_ao_threshold_raw"] > defaults["piezo_ao_rearm_raw"], firmware
-        assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 200" in build_config.read_text(), firmware
-        assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 150" in build_config.read_text(), firmware
+        source = build_config.read_text()
+        assert "#define BATTLEBANG_LEFT_PIEZO_AO_PIN 34" in source, firmware
+        assert "#define BATTLEBANG_RIGHT_PIEZO_AO_PIN 35" in source, firmware
+        assert "#define BATTLEBANG_FRONT_PIEZO_AO_PIN 32" in source, firmware
+        assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 2400" in source, firmware
+        assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 1800" in source, firmware
+        assert "static constexpr uint32_t HIT_REARM_STABLE_MS = 30;" in source, firmware
         runtime_source = (ROOT / f"firmware/{firmware}/config/runtime_config.cpp").read_text()
         assert '"piezo_ao_threshold_raw"' in runtime_source, firmware
         assert '"piezo_ao_rearm_raw"' in runtime_source, firmware

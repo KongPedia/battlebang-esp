@@ -17,7 +17,7 @@
 using namespace go2;
 
 // Integrated Go2 hit/LED + Nixo fallback firmware:
-// - This ESP samples piezo AO (ADC), accepts local hits immediately, owns
+// - This ESP samples three piezo AO channels (ADC), accepts local hits immediately, owns
 //   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
 //   Command Center per-hit ring_display round trips.
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
@@ -63,16 +63,29 @@ constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
+struct PiezoSample {
+  int raw = -1;
+  int left = -1;
+  int right = -1;
+  int front = -1;
+  int targetId = 1;
+  const char* source = "piezo:left";
+};
+
 struct AnalogPiezoState {
   bool armed = true;
   bool captureActive = false;
   uint32_t captureStartedMs = 0;
   int capturePeakRaw = 0;
+  int captureTargetId = 1;
   uint32_t lastCandidateMs = 0;
   uint32_t quietStartedMs = 0;
 
   uint32_t lastDebugMs = 0;
   int lastRaw = 0;
+  int lastLeftRaw = 0;
+  int lastRightRaw = 0;
+  int lastFrontRaw = 0;
   int minRaw = 4095;
   int maxRaw = 0;
   uint32_t sumRaw = 0;
@@ -85,16 +98,31 @@ static void onBarDisplayUpdate(const BarDisplayUpdate& update);
 static void publishDeviceStatusIfConnected(const char* reason);
 
 static bool piezoAoEnabled() {
-  return PIEZO_AO_PIN >= 0;
+  return PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0 && PIEZO_FRONT_AO_PIN >= 0;
 }
 
 static bool piezoDoDebugEnabled() {
   return PIEZO_DO_PIN >= 0;
 }
 
-static int readPiezoAoRaw() {
-  if (!piezoAoEnabled()) return -1;
-  return analogRead(PIEZO_AO_PIN);
+static PiezoSample readPiezoSample() {
+  PiezoSample sample;
+  if (!piezoAoEnabled()) return sample;
+  sample.left = analogRead(PIEZO_LEFT_AO_PIN);
+  sample.right = analogRead(PIEZO_RIGHT_AO_PIN);
+  sample.front = analogRead(PIEZO_FRONT_AO_PIN);
+  sample.raw = sample.left;
+  if (sample.right > sample.raw) {
+    sample.raw = sample.right;
+    sample.targetId = 2;
+    sample.source = "piezo:right";
+  }
+  if (sample.front > sample.raw) {
+    sample.raw = sample.front;
+    sample.targetId = 3;
+    sample.source = "piezo:front";
+  }
+  return sample;
 }
 
 static int readPiezoDoLevel() {
@@ -102,9 +130,12 @@ static int readPiezoDoLevel() {
   return digitalRead(PIEZO_DO_PIN);
 }
 
-static void resetAnalogStats(int raw) {
-  if (raw < 0) raw = 0;
+static void resetAnalogStats(const PiezoSample& sample) {
+  int raw = sample.raw < 0 ? 0 : sample.raw;
   analogPiezo.lastRaw = raw;
+  analogPiezo.lastLeftRaw = sample.left < 0 ? 0 : sample.left;
+  analogPiezo.lastRightRaw = sample.right < 0 ? 0 : sample.right;
+  analogPiezo.lastFrontRaw = sample.front < 0 ? 0 : sample.front;
   analogPiezo.minRaw = raw;
   analogPiezo.maxRaw = raw;
   analogPiezo.sumRaw = 0;
@@ -116,9 +147,10 @@ static void resetAnalogPiezoState() {
   analogPiezo.captureActive = false;
   analogPiezo.captureStartedMs = 0;
   analogPiezo.capturePeakRaw = 0;
+  analogPiezo.captureTargetId = 1;
   analogPiezo.lastCandidateMs = 0;
   analogPiezo.quietStartedMs = 0;
-  resetAnalogStats(readPiezoAoRaw());
+  resetAnalogStats(readPiezoSample());
 }
 
 static void resetLocalHitState() {
@@ -177,27 +209,38 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
 
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
-    Serial.println("[PIEZO AO] disabled: PIEZO_AO_PIN < 0");
+    Serial.println("[PIEZO AO] disabled: left/right/front piezo AO pins must be >= 0");
     return;
   }
 
-  pinMode(PIEZO_AO_PIN, INPUT);
+  pinMode(PIEZO_LEFT_AO_PIN, INPUT);
+  pinMode(PIEZO_RIGHT_AO_PIN, INPUT);
+  pinMode(PIEZO_FRONT_AO_PIN, INPUT);
   analogReadResolution(12);
-  analogSetPinAttenuation(PIEZO_AO_PIN, ADC_11db);
+#if defined(ADC_11db)
+  analogSetPinAttenuation(PIEZO_LEFT_AO_PIN, ADC_11db);
+  analogSetPinAttenuation(PIEZO_RIGHT_AO_PIN, ADC_11db);
+  analogSetPinAttenuation(PIEZO_FRONT_AO_PIN, ADC_11db);
+#endif
 
   if (piezoDoDebugEnabled()) {
     pinMode(PIEZO_DO_PIN, INPUT_PULLDOWN);
   }
 
   resetAnalogPiezoState();
-  Serial.printf("[PIEZO AO] ADC threshold mode pin=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d do_pin=%d do=%d\n",
-                PIEZO_AO_PIN,
+  Serial.printf("[PIEZO AO] 3ch ADC threshold mode left=%d right=%d front=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
+                PIEZO_LEFT_AO_PIN,
+                PIEZO_RIGHT_AO_PIN,
+                PIEZO_FRONT_AO_PIN,
                 runtimeConfig.hit.piezoAoThresholdRaw,
                 runtimeConfig.hit.piezoAoRearmRaw,
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoDebugPeriodMs,
                 analogPiezo.lastRaw,
+                analogPiezo.lastLeftRaw,
+                analogPiezo.lastRightRaw,
+                analogPiezo.lastFrontRaw,
                 PIEZO_DO_PIN,
                 readPiezoDoLevel());
 }
@@ -287,8 +330,12 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
   publishDeviceStatusIfConnected(localHitState.down ? "local_hit_down" : "local_hit");
 }
 
-static void updateAnalogDebugStats(int raw) {
+static void updateAnalogDebugStats(const PiezoSample& sample) {
+  const int raw = sample.raw < 0 ? 0 : sample.raw;
   analogPiezo.lastRaw = raw;
+  analogPiezo.lastLeftRaw = sample.left < 0 ? 0 : sample.left;
+  analogPiezo.lastRightRaw = sample.right < 0 ? 0 : sample.right;
+  analogPiezo.lastFrontRaw = sample.front < 0 ? 0 : sample.front;
   analogPiezo.minRaw = min(analogPiezo.minRaw, raw);
   analogPiezo.maxRaw = max(analogPiezo.maxRaw, raw);
   analogPiezo.sumRaw += (uint32_t)raw;
@@ -300,9 +347,12 @@ static void printAnalogDebugTick(uint32_t now) {
   analogPiezo.lastDebugMs = now;
 
   uint32_t avg = analogPiezo.sampleCount > 0 ? analogPiezo.sumRaw / analogPiezo.sampleCount : (uint32_t)analogPiezo.lastRaw;
-  Serial.printf("[PIEZO AO] ms=%lu raw=%d min=%d max=%d avg=%lu threshold=%d rearm=%d armed=%s capturing=%s do_pin=%d do=%d mqtt=%s queue=%u\n",
+  Serial.printf("[PIEZO AO] ms=%lu raw=%d left=%d right=%d front=%d min=%d max=%d avg=%lu threshold=%d rearm=%d armed=%s capturing=%s do_pin=%d do=%d mqtt=%s queue=%u\n",
                 (unsigned long)now,
                 analogPiezo.lastRaw,
+                analogPiezo.lastLeftRaw,
+                analogPiezo.lastRightRaw,
+                analogPiezo.lastFrontRaw,
                 analogPiezo.minRaw,
                 analogPiezo.maxRaw,
                 (unsigned long)avg,
@@ -315,7 +365,12 @@ static void printAnalogDebugTick(uint32_t now) {
                 hitMqtt.connected() ? "connected" : "disconnected",
                 hitMqtt.offlineQueueCount());
 
-  resetAnalogStats(analogPiezo.lastRaw);
+  PiezoSample lastSample;
+  lastSample.raw = analogPiezo.lastRaw;
+  lastSample.left = analogPiezo.lastLeftRaw;
+  lastSample.right = analogPiezo.lastRightRaw;
+  lastSample.front = analogPiezo.lastFrontRaw;
+  resetAnalogStats(lastSample);
 }
 
 static void rearmAnalogPiezoWhenQuiet(uint32_t now, int raw) {
@@ -345,20 +400,24 @@ static void rearmAnalogPiezoWhenQuiet(uint32_t now, int raw) {
 static void pollAnalogPiezo(uint32_t now) {
   if (!piezoAoEnabled()) return;
 
-  int raw = readPiezoAoRaw();
-  updateAnalogDebugStats(raw);
+  const PiezoSample sample = readPiezoSample();
+  const int raw = sample.raw;
+  updateAnalogDebugStats(sample);
 
   if (analogPiezo.captureActive) {
-    analogPiezo.capturePeakRaw = max(analogPiezo.capturePeakRaw, raw);
+    if (raw > analogPiezo.capturePeakRaw) {
+      analogPiezo.capturePeakRaw = raw;
+      analogPiezo.captureTargetId = sample.targetId;
+    }
     if (now - analogPiezo.captureStartedMs >= runtimeConfig.hit.piezoAoCaptureWindowMs) {
       uint32_t eventTsMs = analogPiezo.captureStartedMs;
       analogPiezo.captureActive = false;
       analogPiezo.lastCandidateMs = now;
       analogPiezo.quietStartedMs = 0;
-      publishAdcHitEvent(1,
-                             analogPiezo.capturePeakRaw,
-                             runtimeConfig.hit.piezoAoThresholdRaw,
-                             eventTsMs);
+      publishAdcHitEvent(analogPiezo.captureTargetId,
+                          analogPiezo.capturePeakRaw,
+                          runtimeConfig.hit.piezoAoThresholdRaw,
+                          eventTsMs);
     }
     printAnalogDebugTick(now);
     return;
@@ -371,9 +430,14 @@ static void pollAnalogPiezo(uint32_t now) {
     analogPiezo.captureActive = true;
     analogPiezo.captureStartedMs = now;
     analogPiezo.capturePeakRaw = raw;
+    analogPiezo.captureTargetId = sample.targetId;
     analogPiezo.quietStartedMs = 0;
-    Serial.printf("[PIEZO AO] threshold crossed raw=%d threshold=%d ms=%lu do=%d\n",
+    Serial.printf("[PIEZO AO] threshold crossed source=%s raw=%d left=%d right=%d front=%d threshold=%d ms=%lu do=%d\n",
+                  sample.source,
                   raw,
+                  sample.left,
+                  sample.right,
+                  sample.front,
                   runtimeConfig.hit.piezoAoThresholdRaw,
                   (unsigned long)now,
                   readPiezoDoLevel());
@@ -500,6 +564,10 @@ static void addHitTuningStatus(JsonObject doc) {
   doc["offline_queue_flush_interval_ms"] = runtimeConfig.hit.offlineQueueFlushIntervalMs;
   doc["led_brightness"] = runtimeConfig.hit.ledBrightness;
   doc["ring_brightness"] = runtimeConfig.hit.ringBrightness;
+  doc["piezo_left_pin"] = PIEZO_LEFT_AO_PIN;
+  doc["piezo_right_pin"] = PIEZO_RIGHT_AO_PIN;
+  doc["piezo_front_pin"] = PIEZO_FRONT_AO_PIN;
+  doc["piezo_ao_pin"] = PIEZO_LEFT_AO_PIN;
   doc["piezo_ao_threshold_raw"] = runtimeConfig.hit.piezoAoThresholdRaw;
   doc["piezo_ao_rearm_raw"] = runtimeConfig.hit.piezoAoRearmRaw;
   doc["piezo_ao_capture_window_ms"] = runtimeConfig.hit.piezoAoCaptureWindowMs;
@@ -952,7 +1020,7 @@ void setup() {
   barDisplay.tick(millis());
   ringDisplay.tick(millis());
 
-  Serial.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO_AO=%d | PIEZO_DO_DEBUG=%d\n",
+  Serial.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO left=%d right=%d front=%d | PIEZO_DO_DEBUG=%d\n",
                 UART_RX_PIN,
                 UART_TX_PIN,
                 HP_BAR_LED_PIN,
@@ -961,7 +1029,9 @@ void setup() {
                 HP_BAR_LEDS_PER_GROUP,
                 RING_LED_PIN,
                 RING_NUM_LEDS,
-                PIEZO_AO_PIN,
+                PIEZO_LEFT_AO_PIN,
+                PIEZO_RIGHT_AO_PIN,
+                PIEZO_FRONT_AO_PIN,
                 PIEZO_DO_PIN);
   Serial.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu\n",
                 runtimeConfig.hit.piezoAoThresholdRaw,

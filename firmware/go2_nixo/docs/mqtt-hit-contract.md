@@ -20,14 +20,14 @@ battlebang/nixo/{nixo_id}/command
 
 ## ESP -> Command Center: hit_event
 
-When piezo AO ADC crosses threshold, ESP immediately accepts one local hit, decrements `hp_remaining`, updates the HP bar, and publishes a v2 `hit_event`.
+When the max of left/right/front piezo AO ADC crosses threshold, ESP immediately accepts one local hit, decrements `hp_remaining`, updates the HP bar, and publishes a v2 `hit_event`.
 
 ```json
 {
   "schema_version": 2,
   "event": "hit_event",
   "robot_id": "go2_05",
-  "sensor_id": "piezo_t1",
+  "sensor_id": "piezo:left",
   "sequence": 7,
   "hit": true,
   "accepted": true,
@@ -37,7 +37,7 @@ When piezo AO ADC crosses threshold, ESP immediately accepts one local hit, decr
   "down": false,
   "ring_fill_ratio": 0.785714,
   "peak": 2188,
-  "threshold": 200,
+  "threshold": 2400,
   "firmware_ts_ms": 45678,
   "firmware": "go2_nixo",
   "firmware_role": "integrated_hit_led_nixo",
@@ -48,7 +48,7 @@ When piezo AO ADC crosses threshold, ESP immediately accepts one local hit, decr
     "hp_current": 11,
     "hp_max": 14,
     "adc_peak_raw": 2188,
-    "adc_threshold_raw": 200
+    "adc_threshold_raw": 2400
   }
 }
 ```
