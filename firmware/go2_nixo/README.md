@@ -6,7 +6,7 @@ This firmware is also **generic image + NVS runtime config**:
 
 - Build envs select hardware/relay variant only: `esp32dev_go2_nixo`/`esp32dev_go2_nixo_2ch` for 2ch, `esp32dev_go2_nixo_1ch` for 1ch.
 - `go2_01`, `go2_02`, `go2_03` etc. are not build envs. They are runtime `robot_id` values stored in ESP32 NVS.
-- `nixo_id` and Nixo command topic are also NVS runtime config.
+- `nixo_id` is NVS runtime config; MQTT fire commands are kept as a deprecated no-op so UART is the only live fire path.
 - Nixo fire timing/envelope (`default/min/max duration`, prefire delay, relay inter-channel delay) is NVS runtime config; ESP cooldown is disabled.
 - Relay pins, polarity, and channel count remain build-time hardware-safety variant data.
 
@@ -16,13 +16,13 @@ Responsibilities:
 2. Render local HP/down state on the 84 LED HP bar.
 3. Publish `hit_event` and device status with `accepted_hit_count`, `hp_remaining`, `max_hits`, and `down`.
 4. Render local Nixo ready/firing/inhibited state on the ring LED.
-5. Accept MQTT or Jetson UART Nixo `fire` commands and execute the relay fire sequence.
+5. Accept Jetson UART Nixo hold-fire commands and execute the relay fire sequence. MQTT fire commands are ignored.
 
 ## Topics
 
 - ESP → Command Center: `battlebang/hit/{robot_id}/events`
 - Command Center → ESP HP bar reset/debug only: `battlebang/hit/{robot_id}/ring_display/command`
-- Command Center → Nixo relay: `battlebang/nixo/{nixo_id}/command`
+- Deprecated/no-op MQTT Nixo fire topic: `battlebang/nixo/{nixo_id}/command`
 - Device management: `{mqtt_root}/devices/go2_nixo/{device_id}/status|config|ota`
 
 Example after provisioning `robot_id=go2_03`, `nixo_id=nixo_go2_03`:
@@ -30,7 +30,7 @@ Example after provisioning `robot_id=go2_03`, `nixo_id=nixo_go2_03`:
 ```text
 battlebang/hit/go2_03/events
 battlebang/hit/go2_03/ring_display/command
-battlebang/nixo/nixo_go2_03/command
+battlebang/nixo/nixo_go2_03/command  # deprecated/no-op; fire via Jetson UART
 ```
 
 ## Hardware defaults
@@ -83,7 +83,7 @@ explicit legacy/factory fallback with `BATTLEBANG_ENABLE_LOCAL_SECRETS`.
 `provision`/`config` payloads include common `wifi`, `mqtt`, `ota` fields plus these domain fields:
 
 - `robot_id`, `hit_topic_prefix`
-- `nixo_id`, `nixo_command_topic_prefix`
+- `nixo_id`, `nixo_command_topic_prefix` (deprecated/no-op command topic identity)
 - hit/display tuning: `hit_cooldown_ms`, `offline_queue_capacity`, `offline_queue_flush_interval_ms`, `led_brightness`, `ring_brightness`, `piezo_ao_threshold_raw`, `piezo_ao_rearm_raw`, `piezo_ao_capture_window_ms`, `piezo_ao_debug_period_ms`, `piezo_ao_rearm_stable_ms`, `max_hits`, `hit_flash_ms`
 - Nixo fire timing/envelope: `nixo_fire_default_duration_ms`, `nixo_fire_min_duration_ms`, `nixo_fire_max_duration_ms`, `nixo_prefire_delay_ms`, `nixo_relay_delay1_ms` (legacy `nixo_fire_cooldown_ms` is accepted but normalized to `0`; nested `nixo` fields are also accepted)
 
@@ -113,21 +113,11 @@ After provisioning `go2_03`:
 [NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1 relay_on=1 relay_off=0 delay1_ms=800 fire_default_ms=3000 fire_min_ms=100 fire_max_ms=10000 cooldown_ms=0 prefire_ms=600
 ```
 
-Nixo fire command example:
+Nixo fire command:
 
-Jetson UART2 uses hold-fire control: send `f`, `fire`, or `1` repeatedly while
+Jetson UART2 is the only live fire control path: send `f`, `fire`, or `1` repeatedly while
 L2+R2 is held; send `x`, `0`, `stop-fire`, or `fire off` immediately on release.
 If Jetson keepalive packets stop, ESP fails safe after `300 ms`. USB/BT keep
 non-fire bench/debug commands only.
 
-```json
-{
-  "schema_version": 1,
-  "command": "fire",
-  "nixo_id": "nixo_go2_03",
-  "parent_robot_id": "go2_03",
-  "enabled": true,
-  "duration_ms": 1000,
-  "request_id": "manual-fire-001"
-}
-```
+MQTT fire payloads on `battlebang/nixo/{nixo_id}/command` are accepted only as deprecated no-op input and log `reason=jetson_uart_required`.

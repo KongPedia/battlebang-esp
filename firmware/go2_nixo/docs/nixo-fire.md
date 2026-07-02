@@ -4,7 +4,7 @@
 
 - ESP-local hit events/status: `battlebang/hit/{robot_id}/events` and `{mqtt_root}/devices/go2_nixo/{device_id}/status`
 - HP bar reset/debug commands: `battlebang/hit/{robot_id}/ring_display/command`
-- Nixo/game blaster fire commands: `battlebang/nixo/{nixo_id}/command`
+- Deprecated/no-op MQTT Nixo fire commands: `battlebang/nixo/{nixo_id}/command`; live fire is Jetson UART only
 
 The active 2-ESP split uses `firmware/go2` for hit/LED and `src/nIxo` for Nixo relay fire. Use `esp32dev_nixo_*` for the standalone Nixo ESP, and use `esp32dev_go2_nixo_*` only when intentionally flashing this integrated fallback.
 
@@ -53,30 +53,12 @@ GO2_NIXO_ROBOT_ID=go2_06 GO2_NIXO_NIXO_ID=nixo_go2_06 \
   ./.venv-pio/bin/python scripts/go2_nixo/provision.py --serial-port /dev/cu.usbserial-XXXX
 ```
 
-## MQTT command
+## Fire command
 
-Command Center publishes:
-
-```json
-{
-  "schema_version": 1,
-  "command": "fire",
-  "nixo_id": "nixo_go2_03",
-  "parent_robot_id": "go2_03",
-  "enabled": true,
-  "duration_ms": 1000,
-  "request_id": "manual-fire-001"
-}
-```
-
-`enabled=false` stops an active fire sequence.
-
-The firmware requires `request_id`, deduplicates repeated `request_id` values, and clamps `duration_ms` to the configured NVS min/max duration.
-
-Jetson UART2 uses hold-fire control for the local Nixo: send `f`, `fire`, or `1`
+Jetson UART2 is the only live fire control path for the local Nixo: send `f`, `fire`, or `1`
 repeatedly while the trigger combo is held; send `x`, `0`, `stop-fire`, or
 `fire off` on release. If Jetson keepalive packets stop, ESP fails safe after
-`300 ms`. USB/BT fire commands are ignored.
+`300 ms`. USB/BT fire commands are ignored. MQTT fire payloads are deprecated no-ops and log `reason=jetson_uart_required`.
 
 ## Expected serial evidence
 
@@ -104,10 +86,11 @@ repeatedly while the trigger combo is held; send `x`, `0`, `stop-fire`, or
 
 ## Direct smoke command
 
+Use Jetson UART, not MQTT:
+
 ```bash
-mosquitto_pub -h <BROKER_IP> -p 1883 -q 1 \
-  -t battlebang/nixo/nixo_go2_03/command \
-  -m '{"schema_version":1,"command":"fire","nixo_id":"nixo_go2_03","parent_robot_id":"go2_03","enabled":true,"duration_ms":1000,"request_id":"direct-mqtt-smoke"}'
+printf 'f\n' | sudo tee /dev/ttyTHS1 >/dev/null
+printf 'x\n' | sudo tee /dev/ttyTHS1 >/dev/null
 ```
 
 ## Fire ring
