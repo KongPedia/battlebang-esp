@@ -591,6 +591,7 @@ def test_go2_platformio_envs_are_generic_and_identity_is_nvs_provisioned() -> No
 def test_go2_nvs_bridge_keeps_build_defaults_as_fallback_and_uses_standard_keys() -> None:
     go2_runtime_source = (ROOT / "firmware/go2/config/runtime_config.cpp").read_text()
     go2_nixo_runtime_source = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+    nixo_fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
     platformio = (ROOT / "platformio.ini").read_text()
 
     assert "+<../firmware/go2/config/**>" in platformio
@@ -643,6 +644,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     go2_nixo_main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
     go2_runtime_source = (ROOT / "firmware/go2/config/runtime_config.cpp").read_text()
     go2_nixo_runtime_source = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+    nixo_fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
 
     for firmware, main, source in (
         ("go2", go2_main, go2_runtime_source),
@@ -689,7 +691,14 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "nixo_relay2_readback" in go2_nixo_main
     assert 'doc.createNestedObject("hp")' in go2_nixo_main
     assert 'doc.createNestedObject("nixo")' in go2_nixo_main
+    assert 'nixo["state"] = nixoFire.fireStateName();' in go2_nixo_main
+    assert 'doc["nixo_state"] = nixoFire.fireStateName();' in go2_nixo_main
+    assert "lastPublishedNixoState" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
+    assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    assert 'return "ready";' in nixo_fire_source
+    assert '"flywheel_spinup"' in nixo_fire_source
+    assert 'return "firing";' in nixo_fire_source
 
 
 def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_relay_pin_runtime_fields() -> None:

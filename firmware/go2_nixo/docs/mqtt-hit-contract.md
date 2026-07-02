@@ -80,9 +80,26 @@ After `down=true`, additional piezo triggers are not published as new accepted h
     "down": false,
     "ring_fill_ratio": 0.785714,
     "last_hit_sequence": 7
+  },
+  "hp": {
+    "current": 11,
+    "max": 14,
+    "down": false,
+    "accepted_hit_count": 3
+  },
+  "nixo": {
+    "id": "nixo_go2_05",
+    "state": "ready",
+    "firing": false,
+    "fire_inhibited": false
   }
 }
 ```
+
+Nixo `state` is one of `ready`, `inhibited`, `prefire_delay`, `flywheel_spinup`,
+or `firing`. The ESP publishes device status immediately with
+`reason=state_changed` when HP/down or Nixo state changes, and also on the normal
+heartbeat.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 

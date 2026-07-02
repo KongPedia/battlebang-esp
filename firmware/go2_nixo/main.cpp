@@ -67,6 +67,7 @@ bool lastPublishedDown = false;
 bool lastPublishedNixoFiring = false;
 bool lastPublishedFireInhibited = false;
 bool lastPublishedJetsonHoldActive = false;
+const char* lastPublishedNixoState = "";
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -663,11 +664,13 @@ static void addNixoTuningStatus(JsonObject doc) {
   doc["nixo_relay_off_level"] = NIXO_RELAY_OFF_LEVEL_VALUE;
   doc["nixo_relay1_readback"] = digitalRead(NIXO_RELAY1_PIN_VALUE);
   doc["nixo_relay2_readback"] = NIXO_RELAY2_ENABLED_VALUE ? digitalRead(NIXO_RELAY2_PIN_VALUE) : -1;
+  doc["nixo_state"] = nixoFire.fireStateName();
   doc["jetson_fire_hold_active"] = jetsonFireHoldActive;
   doc["jetson_fire_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
 
   JsonObject nixo = doc.createNestedObject("nixo");
   nixo["id"] = runtimeConfig.nixo.nixoId;
+  nixo["state"] = nixoFire.fireStateName();
   nixo["firing"] = nixoFire.isFiring();
   nixo["fire_inhibited"] = nixoFire.fireInhibited();
   nixo["cooldown_remaining_ms"] = nixoFire.cooldownRemainingMs(millis());
@@ -744,6 +747,7 @@ static void rememberPublishedStatusSnapshot() {
   lastPublishedNixoFiring = nixoFire.isFiring();
   lastPublishedFireInhibited = nixoFire.fireInhibited();
   lastPublishedJetsonHoldActive = jetsonFireHoldActive;
+  lastPublishedNixoState = nixoFire.fireStateName();
 }
 
 static bool statusStateChanged() {
@@ -754,7 +758,8 @@ static bool statusStateChanged() {
          lastPublishedDown != localHitState.down ||
          lastPublishedNixoFiring != nixoFire.isFiring() ||
          lastPublishedFireInhibited != nixoFire.fireInhibited() ||
-         lastPublishedJetsonHoldActive != jetsonFireHoldActive;
+         lastPublishedJetsonHoldActive != jetsonFireHoldActive ||
+         strcmp(lastPublishedNixoState, nixoFire.fireStateName()) != 0;
 }
 
 static void publishDeviceStatusIfConnected(const char* reason) {

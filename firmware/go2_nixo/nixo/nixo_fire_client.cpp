@@ -169,6 +169,21 @@ bool NixoFireClient::fireInhibited() const {
   return fireInhibited_;
 }
 
+const char* NixoFireClient::fireStateName() const {
+  if (fireInhibited_) return "inhibited";
+  switch (fireState_) {
+    case FIRE_IDLE:
+      return "ready";
+    case FIRE_PREFIRE_DELAY:
+      return "prefire_delay";
+    case FIRE_RELAY_WAIT1:
+      return NIXO_RELAY2_ENABLED_VALUE ? "flywheel_spinup" : "firing";
+    case FIRE_RELAY_WAIT2:
+      return "firing";
+  }
+  return "unknown";
+}
+
 uint32_t NixoFireClient::cooldownRemainingMs(uint32_t now) const {
   if (cooldownStartedMs_ == 0) return 0;
   uint32_t elapsed = now - cooldownStartedMs_;

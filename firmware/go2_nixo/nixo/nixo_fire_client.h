@@ -21,6 +21,7 @@ class NixoFireClient {
   void stopFire(const char* source = "local");
   bool isFiring() const;
   bool fireInhibited() const;
+  const char* fireStateName() const;
   uint32_t cooldownRemainingMs(uint32_t now) const;
   uint32_t cooldownDurationMs() const;
   const char* commandTopic() const;
