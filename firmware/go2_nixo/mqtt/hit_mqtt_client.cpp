@@ -213,6 +213,57 @@ bool HitMqttClient::publishHitEvent(int targetId,
   return ok;
 }
 
+bool HitMqttClient::publishHpResetEvent(uint32_t sequence,
+                                        uint32_t firmwareTsMs,
+                                        const char* reason,
+                                        uint16_t acceptedHitCount,
+                                        uint16_t hpRemaining,
+                                        uint16_t maxHits,
+                                        bool down) {
+  if (!mqttClient_.connected()) return false;
+  if (maxHits < 1) maxHits = 1;
+  if (hpRemaining > maxHits) hpRemaining = maxHits;
+
+  DynamicJsonDocument doc(MQTT_BUFFER_SIZE);
+  doc["schema_version"] = 2;
+  doc["event"] = "hit_event";
+  doc["event_type"] = "hp_reset";
+  doc["reason"] = reason;
+  doc["robot_id"] = robotId_;
+  doc["sequence"] = sequence;
+  doc["hit"] = false;
+  doc["accepted"] = false;
+  doc["reset_hit_state"] = true;
+  doc["hp_reset"] = true;
+  doc["accepted_hit_count"] = acceptedHitCount;
+  doc["hp_remaining"] = hpRemaining;
+  doc["max_hits"] = maxHits;
+  doc["down"] = down;
+  doc["ring_fill_ratio"] = static_cast<float>(hpRemaining) / static_cast<float>(maxHits);
+  doc["firmware_ts_ms"] = firmwareTsMs;
+  addSourceMetadata(doc, clientId_);
+  JsonObject metadata = doc["metadata"].as<JsonObject>();
+  metadata["decision_owner"] = "esp_local";
+  metadata["display_owner"] = "esp_local";
+  metadata["hp_current"] = hpRemaining;
+  metadata["hp_max"] = maxHits;
+  metadata["reset_reason"] = reason;
+
+  String buffer;
+  buffer.reserve(MQTT_BUFFER_SIZE);
+  size_t size = serializeJson(doc, buffer);
+  bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer.c_str()), size, false);
+  Serial.printf("[HIT] hp_reset publish %s seq=%lu hp=%u/%u down=%s reason=%s topic=%s\n",
+                ok ? "ok" : "failed",
+                (unsigned long)sequence,
+                hpRemaining,
+                maxHits,
+                down ? "true" : "false",
+                reason,
+                eventTopic_);
+  return ok;
+}
+
 void HitMqttClient::queueHitEvent(int targetId,
                                   uint32_t sequence,
                                   uint32_t firmwareTsMs,

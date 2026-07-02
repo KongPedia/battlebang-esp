@@ -52,6 +52,7 @@ String pendingMqttConfigJson;
 String pendingMqttOtaJson;
 bool pendingMqttConfig = false;
 bool pendingMqttOta = false;
+bool pendingHpResetEvent = true;
 bool postOtaReboot = false;
 uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
@@ -108,6 +109,7 @@ AnalogPiezoState analogPiezo;
 
 static void onBarDisplayUpdate(const BarDisplayUpdate& update);
 static void publishDeviceStatusIfConnected(const char* reason);
+static bool publishHpResetEventIfConnected(const char* reason);
 
 static bool piezoAoEnabled() {
   return PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0 && PIEZO_FRONT_AO_PIN >= 0;
@@ -546,6 +548,7 @@ static void resetAll(const char* source = "serial") {
   ringDisplay.markDirty();
   Serial.printf("[RESET] source=%s ADC/local HP/display state cleared\n", source);
   if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC/local HP/display state cleared");
+  publishHpResetEventIfConnected(source);
   publishDeviceStatusIfConnected("reset");
 }
 
@@ -760,6 +763,22 @@ static bool statusStateChanged() {
          lastPublishedFireInhibited != nixoFire.fireInhibited() ||
          lastPublishedJetsonHoldActive != jetsonFireHoldActive ||
          strcmp(lastPublishedNixoState, nixoFire.fireStateName()) != 0;
+}
+
+static bool publishHpResetEventIfConnected(const char* reason) {
+  if (!hitMqtt.connected()) {
+    pendingHpResetEvent = true;
+    return false;
+  }
+  const bool ok = hitMqtt.publishHpResetEvent(++hitSequence,
+                                             millis(),
+                                             reason,
+                                             localHitState.acceptedHitCount,
+                                             localHitState.hpRemaining,
+                                             localHitState.maxHits,
+                                             localHitState.down);
+  pendingHpResetEvent = !ok;
+  return ok;
 }
 
 static void publishDeviceStatusIfConnected(const char* reason) {
@@ -1068,6 +1087,7 @@ static void publishMqttReconnectStatus(uint32_t now) {
   const bool connected = hitMqtt.connected();
   if (connected && !lastMqttConnected) {
     lastDeviceStatusMs = now;
+    if (pendingHpResetEvent) publishHpResetEventIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "boot");
     publishDeviceStatusIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "mqtt_connected");
     hasSeenMqttConnection = true;
   }
@@ -1122,6 +1142,7 @@ static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
     barDisplay.clearRemoteDisplay();
     Serial.println("[RESET] MQTT ADC/local HP state reset");
     if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC/local HP state reset");
+    publishHpResetEventIfConnected("mqtt_reset");
     publishDeviceStatusIfConnected("mqtt_reset");
     return;
   }

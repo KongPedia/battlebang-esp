@@ -55,6 +55,27 @@ When the max of left/right/front piezo AO ADC crosses threshold, ESP immediately
 
 Queued retransmits keep the original `firmware_ts_ms` and add queue metadata. They are still already-accepted ESP-local hits; Command Center should not re-score them.
 
+On ESP boot/power-cycle or reset, the ESP also publishes a full-HP reset envelope on the same event topic so Operator UI can clear stale combat state even if it does not ingest device status:
+
+```json
+{
+  "schema_version": 2,
+  "event": "hit_event",
+  "event_type": "hp_reset",
+  "reason": "boot",
+  "robot_id": "go2_05",
+  "hit": false,
+  "accepted": false,
+  "reset_hit_state": true,
+  "hp_reset": true,
+  "accepted_hit_count": 0,
+  "hp_remaining": 14,
+  "max_hits": 14,
+  "down": false,
+  "ring_fill_ratio": 1.0
+}
+```
+
 After `down=true`, additional piezo triggers are not published as new accepted hits until reset. The ESP keeps local HP/down state and, when MQTT is connected, publishes device status with reason `local_hit_ignored_down`.
 
 ## ESP -> Command Center: device status

@@ -461,6 +461,14 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "if (hitFlashMs > 0x7ffffffful) hitFlashMs = 0x7ffffffful;" in bar_source
 
     assert "publishHitEvent" in mqtt_header
+    if firmware_dir == "go2_nixo":
+        assert "publishHpResetEvent" in mqtt_header
+        assert 'doc["event_type"] = "hp_reset";' in mqtt_source
+        assert 'doc["reset_hit_state"] = true;' in mqtt_source
+        assert 'doc["hp_reset"] = true;' in mqtt_source
+        assert "pendingHpResetEvent" in main
+        assert 'publishHpResetEventIfConnected("mqtt_reset")' in main
+        assert "publishHpResetEventIfConnected(hasSeenMqttConnection ? \"mqtt_reconnected\" : \"boot\")" in main
     assert "queueHitEvent" in mqtt_header
     assert "QueuedHitEvent" in mqtt_header
     assert "DynamicJsonDocument doc(MQTT_BUFFER_SIZE);" in mqtt_source
