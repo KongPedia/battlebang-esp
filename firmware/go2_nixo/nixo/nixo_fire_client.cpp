@@ -136,6 +136,8 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source) {
   }
 
   lastFireStartMs_ = now;
+  copyFireSource(source, activeFireSource_, sizeof(activeFireSource_));
+  copyFireSource(activeFireSource_, lastFireSource_, sizeof(lastFireSource_));
   activeFireDurationMs_ = clampFireDuration(durationMs);
   fireState_ = FIRE_PREFIRE_DELAY;
   fireTimerMs_ = now;
@@ -154,6 +156,7 @@ void NixoFireClient::stopFire(const char* source) {
   if (wasFiring) {
     beginCooldown(millis());
   }
+  activeFireSource_[0] = '\0';
   Serial.printf("[FIRE] stop source=%s\n", source);
 }
 
@@ -167,6 +170,20 @@ bool NixoFireClient::isFiring() const {
 
 bool NixoFireClient::fireInhibited() const {
   return fireInhibited_;
+}
+
+const char* NixoFireClient::activeFireSource() const {
+  return activeFireSource_;
+}
+
+const char* NixoFireClient::lastFireSource() const {
+  return lastFireSource_;
+}
+
+void NixoFireClient::noteFireSource(const char* source) {
+  if (!isFiring()) return;
+  copyFireSource(source, activeFireSource_, sizeof(activeFireSource_));
+  copyFireSource(activeFireSource_, lastFireSource_, sizeof(lastFireSource_));
 }
 
 const char* NixoFireClient::fireStateName() const {
@@ -367,18 +384,32 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
   }
   lastMqttRequestId_ = requestId;
 
+  const char* source = doc["source"] | "mqtt";
   const bool enabled = doc["enabled"].as<bool>();
   if (!enabled) {
-    stopFire("mqtt");
-    Serial.printf("[NIXO MQTT] fire off request_id=%s\n", requestId);
+    stopFire(source);
+    Serial.printf("[NIXO MQTT] fire off request_id=%s source=%s\n", requestId, source);
     return;
   }
 
   uint32_t durationMs = clampFireDuration(doc["duration_ms"] | fireDefaultDurationMs_);
-  Serial.printf("[NIXO MQTT] fire on request_id=%s duration_ms=%lu\n", requestId, (unsigned long)durationMs);
-  if (!startFire(durationMs, "mqtt")) {
+  Serial.printf("[NIXO MQTT] fire on request_id=%s source=%s duration_ms=%lu\n", requestId, source, (unsigned long)durationMs);
+  if (!startFire(durationMs, source)) {
     Serial.printf("[NIXO MQTT] fire not started request_id=%s\n", requestId);
   }
+}
+
+void NixoFireClient::copyFireSource(const char* source, char* dest, size_t length) {
+  if (length == 0) return;
+  if (source == nullptr || source[0] == '\0') source = "unknown";
+  size_t out = 0;
+  for (size_t i = 0; source[i] != '\0' && out + 1 < length; ++i) {
+    const char c = source[i];
+    const bool safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == ':';
+    dest[out++] = safe ? c : '_';
+  }
+  dest[out] = '\0';
 }
 
 uint32_t NixoFireClient::clampFireDuration(uint32_t durationMs) const {

@@ -75,8 +75,10 @@ The firmware requires `request_id`, deduplicates repeated `request_id` values, a
 
 Jetson UART2 uses hold-fire control for the local Nixo: send `f`, `fire`, or `1`
 repeatedly while the trigger combo is held; send `x`, `0`, `stop-fire`, or
-`fire off` on release. If Jetson keepalive packets stop, ESP fails safe after
-`300 ms`. USB/BT fire commands are ignored.
+`fire off` on release. To expose the origin in MQTT status, send
+`fire gamepad_mapping` or `fire source=patrol_person_detect`; plain `f` reports
+`jetson_uart`. If Jetson keepalive packets stop, ESP fails safe after `300 ms`.
+USB/BT fire commands are ignored.
 
 ## Expected serial evidence
 

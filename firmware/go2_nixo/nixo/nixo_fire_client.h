@@ -21,6 +21,9 @@ class NixoFireClient {
   void stopFire(const char* source = "local");
   bool isFiring() const;
   bool fireInhibited() const;
+  const char* activeFireSource() const;
+  const char* lastFireSource() const;
+  void noteFireSource(const char* source);
   const char* fireStateName() const;
   uint32_t cooldownRemainingMs(uint32_t now) const;
   uint32_t cooldownDurationMs() const;
@@ -59,6 +62,8 @@ class NixoFireClient {
   uint32_t relayDelay1Ms_ = NIXO_RELAY_DELAY1_MS;
   uint32_t activeFireDurationMs_ = NIXO_FIRE_DEFAULT_DURATION_MS;
   bool fireInhibited_ = false;
+  char activeFireSource_[32] = {0};
+  char lastFireSource_[32] = {0};
 
   static NixoFireClient* instance_;
   static void mqttMessageCallback(char* topic, byte* payload, unsigned int length);
@@ -69,6 +74,7 @@ class NixoFireClient {
   void ensureMqttConnected(uint32_t now);
   void handleMqttMessage(char* topic, byte* payload, unsigned int length);
   void handleCommandPayload(const char* payload, unsigned int length);
+  void copyFireSource(const char* source, char* dest, size_t length);
   uint32_t clampFireDuration(uint32_t durationMs) const;
 };
 

@@ -69,6 +69,8 @@ bool lastPublishedNixoFiring = false;
 bool lastPublishedFireInhibited = false;
 bool lastPublishedJetsonHoldActive = false;
 const char* lastPublishedNixoState = "";
+String lastPublishedNixoActiveSource;
+String lastPublishedNixoLastFireSource;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -565,7 +567,22 @@ static void stopNixoFireCommand(const char* source) {
   }
 }
 
-static void handleCommandChar(char c, const char* source) {
+static const char* defaultFireSourceForTransport(const char* source) {
+  return strcmp(source, "jetson") == 0 ? "jetson_uart" : source;
+}
+
+static String parseFireSource(String line, const char* source) {
+  line.trim();
+  int split = line.indexOf(' ');
+  if (split < 0) return String(defaultFireSourceForTransport(source));
+  String fireSource = line.substring(split + 1);
+  fireSource.trim();
+  if (fireSource.startsWith("source=")) fireSource = fireSource.substring(7);
+  fireSource.trim();
+  return fireSource.length() > 0 ? fireSource : String(defaultFireSourceForTransport(source));
+}
+
+static void handleCommandChar(char c, const char* source, const char* fireSourceOverride = nullptr) {
   c = normalizeCommandChar(c);
   if (c == CMD_RESET_HIT_DISPLAY || c == 'r') {
     resetAll(source);
@@ -583,15 +600,25 @@ static void handleCommandChar(char c, const char* source) {
       }
       return;
     }
+    const char* fireSource = (fireSourceOverride != nullptr && fireSourceOverride[0] != '\0')
+                                 ? fireSourceOverride
+                                 : defaultFireSourceForTransport(source);
     const bool wasFiring = nixoFire.isFiring();
-    const bool accepted = wasFiring || nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, source);
+    bool accepted = false;
+    if (wasFiring) {
+      nixoFire.noteFireSource(fireSource);
+      accepted = true;
+    } else {
+      accepted = nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource);
+    }
     if (accepted) {
       jetsonFireHoldActive = true;
       jetsonFireHoldDeadlineMs = millis() + JETSON_FIRE_HOLD_TIMEOUT_MS;
     }
-    Serial.printf("[CMD] fire %s source=%s hold_timeout_ms=%lu\n",
+    Serial.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
                   accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
                   source,
+                  fireSource,
                   (unsigned long)JETSON_FIRE_HOLD_TIMEOUT_MS);
     if (SerialBT.hasClient()) {
       SerialBT.printf("[CMD] fire %s source=%s\n",
@@ -668,6 +695,8 @@ static void addNixoTuningStatus(JsonObject doc) {
   doc["nixo_relay1_readback"] = digitalRead(NIXO_RELAY1_PIN_VALUE);
   doc["nixo_relay2_readback"] = NIXO_RELAY2_ENABLED_VALUE ? digitalRead(NIXO_RELAY2_PIN_VALUE) : -1;
   doc["nixo_state"] = nixoFire.fireStateName();
+  doc["nixo_fire_source"] = nixoFire.activeFireSource();
+  doc["nixo_last_fire_source"] = nixoFire.lastFireSource();
   doc["jetson_fire_hold_active"] = jetsonFireHoldActive;
   doc["jetson_fire_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
 
@@ -675,6 +704,8 @@ static void addNixoTuningStatus(JsonObject doc) {
   nixo["id"] = runtimeConfig.nixo.nixoId;
   nixo["state"] = nixoFire.fireStateName();
   nixo["firing"] = nixoFire.isFiring();
+  nixo["active_source"] = nixoFire.activeFireSource();
+  nixo["last_source"] = nixoFire.lastFireSource();
   nixo["fire_inhibited"] = nixoFire.fireInhibited();
   nixo["cooldown_remaining_ms"] = nixoFire.cooldownRemainingMs(millis());
   nixo["mqtt_connected"] = nixoFire.connected();
@@ -690,7 +721,7 @@ static void addNixoTuningStatus(JsonObject doc) {
 }
 
 static void printStatusJson(const char* source, const char* reason) {
-  DynamicJsonDocument doc(3072);
+  DynamicJsonDocument doc(4096);
   doc["event"] = "status";
   doc["reason"] = reason;
   doc["firmware"] = FIRMWARE_NAME;
@@ -751,6 +782,8 @@ static void rememberPublishedStatusSnapshot() {
   lastPublishedFireInhibited = nixoFire.fireInhibited();
   lastPublishedJetsonHoldActive = jetsonFireHoldActive;
   lastPublishedNixoState = nixoFire.fireStateName();
+  lastPublishedNixoActiveSource = nixoFire.activeFireSource();
+  lastPublishedNixoLastFireSource = nixoFire.lastFireSource();
 }
 
 static bool statusStateChanged() {
@@ -762,7 +795,9 @@ static bool statusStateChanged() {
          lastPublishedNixoFiring != nixoFire.isFiring() ||
          lastPublishedFireInhibited != nixoFire.fireInhibited() ||
          lastPublishedJetsonHoldActive != jetsonFireHoldActive ||
-         strcmp(lastPublishedNixoState, nixoFire.fireStateName()) != 0;
+         strcmp(lastPublishedNixoState, nixoFire.fireStateName()) != 0 ||
+         lastPublishedNixoActiveSource != nixoFire.activeFireSource() ||
+         lastPublishedNixoLastFireSource != nixoFire.lastFireSource();
 }
 
 static bool publishHpResetEventIfConnected(const char* reason) {
@@ -783,7 +818,7 @@ static bool publishHpResetEventIfConnected(const char* reason) {
 
 static void publishDeviceStatusIfConnected(const char* reason) {
   if (!hitMqtt.connected()) return;
-  DynamicJsonDocument doc(3072);
+  DynamicJsonDocument doc(4096);
   doc["type"] = "status";
   doc["reason"] = reason;
   doc["firmware_app"] = BB_GO2_NIXO_APP_NAME;
@@ -962,8 +997,10 @@ static void handleCommandLine(String line, const char* source) {
     resetAll(source);
     return;
   }
-  if (lower == "1" || lower == "f" || lower == "fire") {
-    handleCommandChar('f', source);
+  if (lower == "1" || lower == "f" || lower == "fire" || lower.startsWith("f ") ||
+      lower.startsWith("fire ")) {
+    String fireSource = parseFireSource(line, source);
+    handleCommandChar('f', source, fireSource.c_str());
     return;
   }
   if (lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off") {

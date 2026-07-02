@@ -701,7 +701,13 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'doc.createNestedObject("nixo")' in go2_nixo_main
     assert 'nixo["state"] = nixoFire.fireStateName();' in go2_nixo_main
     assert 'doc["nixo_state"] = nixoFire.fireStateName();' in go2_nixo_main
+    assert 'doc["nixo_fire_source"] = nixoFire.activeFireSource();' in go2_nixo_main
+    assert 'nixo["active_source"] = nixoFire.activeFireSource();' in go2_nixo_main
+    assert 'lower.startsWith("fire ")' in go2_nixo_main
+    assert 'if (fireSource.startsWith("source="))' in go2_nixo_main
+    assert 'return strcmp(source, "jetson") == 0 ? "jetson_uart" : source;' in go2_nixo_main
     assert "lastPublishedNixoState" in go2_nixo_main
+    assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
     assert 'return "ready";' in nixo_fire_source
@@ -893,7 +899,10 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "bool wasFiring = isFiring();" in fire_source
     assert "beginCooldown(millis());" in fire_source
     assert 'doc["enabled"].is<bool>()' in fire_source
+    assert 'const char* source = doc["source"] | "mqtt";' in fire_source
     assert 'const bool enabled = doc["enabled"].as<bool>();' in fire_source
+    assert "char activeFireSource_[32] = {0};" in fire_header
+    assert "void noteFireSource(const char* source);" in fire_header
     assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
     stop_block = fire_source.split("void NixoFireClient::stopFire", 1)[1].split(
