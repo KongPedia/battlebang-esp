@@ -693,6 +693,11 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off"' in go2_nixo_main
     assert "JETSON_FIRE_HOLD_TIMEOUT_MS = 300" in go2_nixo_main
     assert "jetsonFireHoldActive = true;" in go2_nixo_main
+    assert "jetsonFireReleaseRequired" in go2_nixo_main
+    assert "reason=non_jetson_fire_active" in go2_nixo_main
+    assert "reason=release_required_after_duration" in go2_nixo_main
+    assert "reason=release_required" in go2_nixo_main
+    assert "lastPublishedJetsonReleaseRequired" in go2_nixo_main
     assert "runtimeConfig.nixo.fireMaxDurationMs" in go2_nixo_main
     assert "isJetsonBufferedImmediateCommand" in go2_nixo_main
     assert "c == 'x' || c == '0'" in go2_nixo_main
@@ -703,6 +708,8 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'doc["nixo_state"] = nixoFire.fireStateName();' in go2_nixo_main
     assert 'doc["nixo_fire_source"] = nixoFire.activeFireSource();' in go2_nixo_main
     assert 'nixo["active_source"] = nixoFire.activeFireSource();' in go2_nixo_main
+    assert 'doc["jetson_fire_release_required"] = jetsonFireReleaseRequired;' in go2_nixo_main
+    assert 'nixo["jetson_release_required"] = jetsonFireReleaseRequired;' in go2_nixo_main
     assert 'lower.startsWith("fire ")' in go2_nixo_main
     assert 'if (fireSource.startsWith("source="))' in go2_nixo_main
     assert 'return strcmp(source, "jetson") == 0 ? "jetson_uart" : source;' in go2_nixo_main

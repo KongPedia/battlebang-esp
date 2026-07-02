@@ -119,7 +119,8 @@ Jetson UART2 uses hold-fire control: send `f`, `fire`, or `1` repeatedly while
 L2+R2 is held; send `x`, `0`, `stop-fire`, or `fire off` immediately on release.
 To expose the origin in MQTT status, send `fire gamepad_mapping` or
 `fire source=patrol_person_detect`; plain `f` reports `jetson_uart`. If Jetson
-keepalive packets stop, ESP fails safe after `300 ms`. USB/BT keep non-fire
+keepalive packets stop, ESP fails safe after `300 ms`. Holding past the max fire
+duration requires release/re-press before ESP will start another UART fire. USB/BT keep non-fire
 bench/debug commands only.
 
 ```json

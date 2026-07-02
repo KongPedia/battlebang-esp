@@ -78,7 +78,8 @@ repeatedly while the trigger combo is held; send `x`, `0`, `stop-fire`, or
 `fire off` on release. To expose the origin in MQTT status, send
 `fire gamepad_mapping` or `fire source=patrol_person_detect`; plain `f` reports
 `jetson_uart`. If Jetson keepalive packets stop, ESP fails safe after `300 ms`.
-USB/BT fire commands are ignored.
+Holding past the max fire duration requires release/re-press before ESP will start
+another UART fire. USB/BT fire commands are ignored.
 
 ## Expected serial evidence
 

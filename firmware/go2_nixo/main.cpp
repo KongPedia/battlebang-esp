@@ -59,6 +59,7 @@ uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
 bool hasSeenMqttConnection = false;
 bool jetsonFireHoldActive = false;
+bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
 bool hasPublishedStatusSnapshot = false;
 uint16_t lastPublishedHpRemaining = 0;
@@ -68,6 +69,7 @@ bool lastPublishedDown = false;
 bool lastPublishedNixoFiring = false;
 bool lastPublishedFireInhibited = false;
 bool lastPublishedJetsonHoldActive = false;
+bool lastPublishedJetsonReleaseRequired = false;
 const char* lastPublishedNixoState = "";
 String lastPublishedNixoActiveSource;
 String lastPublishedNixoLastFireSource;
@@ -560,6 +562,7 @@ static bool sourceCanFire(const char* source) {
 
 static void stopNixoFireCommand(const char* source) {
   jetsonFireHoldActive = false;
+  jetsonFireReleaseRequired = false;
   nixoFire.stopFire(source);
   Serial.printf("[CMD] fire stopped source=%s\n", source);
   if (SerialBT.hasClient()) {
@@ -603,8 +606,26 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     const char* fireSource = (fireSourceOverride != nullptr && fireSourceOverride[0] != '\0')
                                  ? fireSourceOverride
                                  : defaultFireSourceForTransport(source);
+    const uint32_t now = millis();
     const bool wasFiring = nixoFire.isFiring();
     bool accepted = false;
+    if (jetsonFireReleaseRequired) {
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required\n", source, fireSource);
+      return;
+    }
+    if (wasFiring && !jetsonFireHoldActive) {
+      jetsonFireReleaseRequired = true;
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=non_jetson_fire_active\n", source, fireSource);
+      return;
+    }
+    if (jetsonFireHoldActive && !wasFiring) {
+      jetsonFireReleaseRequired = true;
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required_after_duration\n", source, fireSource);
+      return;
+    }
     if (wasFiring) {
       nixoFire.noteFireSource(fireSource);
       accepted = true;
@@ -613,7 +634,8 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     }
     if (accepted) {
       jetsonFireHoldActive = true;
-      jetsonFireHoldDeadlineMs = millis() + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      jetsonFireReleaseRequired = false;
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
     }
     Serial.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
                   accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
@@ -698,6 +720,7 @@ static void addNixoTuningStatus(JsonObject doc) {
   doc["nixo_fire_source"] = nixoFire.activeFireSource();
   doc["nixo_last_fire_source"] = nixoFire.lastFireSource();
   doc["jetson_fire_hold_active"] = jetsonFireHoldActive;
+  doc["jetson_fire_release_required"] = jetsonFireReleaseRequired;
   doc["jetson_fire_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
 
   JsonObject nixo = doc.createNestedObject("nixo");
@@ -717,6 +740,7 @@ static void addNixoTuningStatus(JsonObject doc) {
   nixo["relay1_readback"] = digitalRead(NIXO_RELAY1_PIN_VALUE);
   nixo["relay2_readback"] = NIXO_RELAY2_ENABLED_VALUE ? digitalRead(NIXO_RELAY2_PIN_VALUE) : -1;
   nixo["jetson_hold_active"] = jetsonFireHoldActive;
+  nixo["jetson_release_required"] = jetsonFireReleaseRequired;
   nixo["jetson_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
 }
 
@@ -781,6 +805,7 @@ static void rememberPublishedStatusSnapshot() {
   lastPublishedNixoFiring = nixoFire.isFiring();
   lastPublishedFireInhibited = nixoFire.fireInhibited();
   lastPublishedJetsonHoldActive = jetsonFireHoldActive;
+  lastPublishedJetsonReleaseRequired = jetsonFireReleaseRequired;
   lastPublishedNixoState = nixoFire.fireStateName();
   lastPublishedNixoActiveSource = nixoFire.activeFireSource();
   lastPublishedNixoLastFireSource = nixoFire.lastFireSource();
@@ -795,6 +820,7 @@ static bool statusStateChanged() {
          lastPublishedNixoFiring != nixoFire.isFiring() ||
          lastPublishedFireInhibited != nixoFire.fireInhibited() ||
          lastPublishedJetsonHoldActive != jetsonFireHoldActive ||
+         lastPublishedJetsonReleaseRequired != jetsonFireReleaseRequired ||
          strcmp(lastPublishedNixoState, nixoFire.fireStateName()) != 0 ||
          lastPublishedNixoActiveSource != nixoFire.activeFireSource() ||
          lastPublishedNixoLastFireSource != nixoFire.lastFireSource();
@@ -1095,9 +1121,10 @@ static void pollCommands() {
 }
 
 static void updateJetsonFireHold(uint32_t now) {
-  if (!jetsonFireHoldActive) return;
+  if (!jetsonFireHoldActive && !jetsonFireReleaseRequired) return;
   if ((int32_t)(now - jetsonFireHoldDeadlineMs) < 0) return;
   jetsonFireHoldActive = false;
+  jetsonFireReleaseRequired = false;
   if (nixoFire.isFiring()) {
     nixoFire.stopFire("jetson-hold-timeout");
   }
