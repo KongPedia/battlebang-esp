@@ -47,7 +47,7 @@ void NixoFireClient::begin(const RuntimeConfig& config) {
   fireDefaultDurationMs_ = config.nixo.fireDefaultDurationMs;
   fireMinDurationMs_ = config.nixo.fireMinDurationMs;
   fireMaxDurationMs_ = config.nixo.fireMaxDurationMs;
-  fireCooldownMs_ = config.nixo.fireCooldownMs;
+  fireCooldownMs_ = 0;  // BTB-801: ESP-side Nixo cooldown removed.
   prefireDelayMs_ = config.nixo.prefireDelayMs;
   relayDelay1Ms_ = config.nixo.relayDelay1Ms;
   activeFireDurationMs_ = fireDefaultDurationMs_;

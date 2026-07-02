@@ -2,7 +2,7 @@
 
 Integrated Go2/Nixo ESP owns normal hit acceptance, HP/down state, and HP bar rendering locally. Command Center ingests `hit_event` and device status payloads for dashboard/world state. It must not publish per-hit HP bar updates.
 
-Nixo fire/cooldown is a separate local lane: the original ring LED displays Nixo ready/firing/cooldown only. HP is rendered on the 84-LED bar.
+Nixo fire is a separate local lane: the original ring LED displays Nixo ready/firing/inhibited only. HP is rendered on the 84-LED bar.
 
 ## Topics
 
@@ -109,4 +109,4 @@ Power cycle behavior is intentionally reset-based too: the ESP does not persist 
 
 ## Nixo ring LED separation
 
-The ring LED on GPIO4 is not an HP display. It displays only Nixo local fire state: ready green, firing red, cooldown fill. Hit/down HP state is rendered separately on the 84-LED HP bar on GPIO18.
+The ring LED on GPIO4 is not an HP display. It displays only Nixo local fire state: ready green, firing red, inhibited red. Hit/down HP state is rendered separately on the 84-LED HP bar on GPIO18.

@@ -98,7 +98,7 @@ def test_go2_defaults_are_hp_bar_only() -> None:
     assert "nixo_fire_cooldown_ms" not in defaults, firmware
 
 
-def test_go2_nixo_defaults_keep_fire_ring_and_one_point_five_second_cooldown_fallback() -> None:
+def test_go2_nixo_defaults_disable_esp_side_nixo_cooldown() -> None:
     firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
     defaults = json.loads(robots_json.read_text())["defaults"]
     assert defaults["led_pin"] == 18, firmware
@@ -108,7 +108,7 @@ def test_go2_nixo_defaults_keep_fire_ring_and_one_point_five_second_cooldown_fal
     assert defaults["ring_num_leds"] == RING_LED_COUNT, firmware
     assert defaults["ring_led_brightness"] == 80, firmware
     assert defaults["nixo_fire_default_duration_ms"] == 3000, firmware
-    assert defaults["nixo_fire_cooldown_ms"] == 1500, firmware
+    assert defaults["nixo_fire_cooldown_ms"] == 0, firmware
 
 
 def test_go2_identity_is_not_a_build_time_profile() -> None:
@@ -378,8 +378,9 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
     assert "uint32_t fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;" in go2_nixo_runtime
     assert "uint32_t fireCooldownMs = NIXO_FIRE_COOLDOWN_MS;" in go2_nixo_runtime
     assert "config.nixo.fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;" in go2_nixo_runtime_source
+    assert "nixo.fireCooldownMs = 0;" in go2_nixo_runtime_source
     assert "fireDefaultDurationMs_ = config.nixo.fireDefaultDurationMs;" in nixo_fire_source
-    assert "fireCooldownMs_ = config.nixo.fireCooldownMs;" in nixo_fire_source
+    assert "fireCooldownMs_ = 0;" in nixo_fire_source
     assert "relayDelay1Ms_ = config.nixo.relayDelay1Ms;" in nixo_fire_source
     assert "runtimeConfig.nixo.fireDefaultDurationMs" in go2_nixo_main
     assert '"nixo_fire_default_duration_ms"' in go2_nixo_main
@@ -500,7 +501,8 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "#define BATTLEBANG_HIT_FLASH_MS 900" in build_config
     assert "static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000" in build_config
     assert "static_assert(HIT_FLASH_MS <= 60000UL" in build_config
-    assert "static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;" in build_config
+    expected_mqtt_buffer = 3072 if firmware_dir == "go2_nixo" else 2048
+    assert f"static constexpr uint16_t MQTT_BUFFER_SIZE = {expected_mqtt_buffer};" in build_config
     assert f"{env_prefix}_MAX_HITS=14" in env_example
     assert f"{env_prefix}_HIT_FLASH_MS=900" in env_example
     assert '"max_hits": env_int' in provision_script
@@ -518,12 +520,12 @@ def test_go2_local_hit_state_owns_hp_bar_and_publishes_combat_status() -> None:
     assert_local_hit_state_contract("go2", "GO2")
 
 
-def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_cooldown() -> None:
+def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_fire_state() -> None:
     assert_local_hit_state_contract("go2_nixo", "GO2_NIXO")
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
     ring_source = (ROOT / "firmware/go2_nixo/display/ring_display.cpp").read_text()
     nixo_fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
-    assert "ring LED is reserved for Nixo ready/firing/cooldown state, never HP state" in main
+    assert "ring LED is reserved for Nixo ready/firing/inhibited state, never HP state" in main
     assert "ringDisplay.setCooldownState" in main
     assert "nixoFire.cooldownRemainingMs(now)" in main
     assert "nixoFire.cooldownDurationMs()" in main
@@ -676,6 +678,18 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'readStringField(nixo, "command_topic_prefix", next.nixo.commandTopicPrefix);' in go2_nixo_runtime_source
     assert 'root["nixo_id"] = nixo.nixoId;' in go2_nixo_runtime_source
     assert "pollCommandStream(JetsonSerial, jetsonCommandLine, \"jetson\");" in go2_nixo_main
+    assert 'return strcmp(source, "jetson") == 0;' in go2_nixo_main
+    assert "reason=jetson_uart_required" in go2_nixo_main
+    assert 'lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off"' in go2_nixo_main
+    assert "JETSON_FIRE_HOLD_TIMEOUT_MS = 300" in go2_nixo_main
+    assert "jetsonFireHoldActive = true;" in go2_nixo_main
+    assert "runtimeConfig.nixo.fireMaxDurationMs" in go2_nixo_main
+    assert "isJetsonBufferedImmediateCommand" in go2_nixo_main
+    assert "c == 'x' || c == '0'" in go2_nixo_main
+    assert "nixo_relay2_readback" in go2_nixo_main
+    assert 'doc.createNestedObject("hp")' in go2_nixo_main
+    assert 'doc.createNestedObject("nixo")' in go2_nixo_main
+    assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
 
 
 def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_relay_pin_runtime_fields() -> None:
@@ -751,12 +765,12 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
     assert go2_nixo["nixo"]["fire_default_duration_ms"] == 3000
     assert go2_nixo["nixo"]["fire_min_duration_ms"] == 100
     assert go2_nixo["nixo"]["fire_max_duration_ms"] == 10000
-    assert go2_nixo["nixo"]["fire_cooldown_ms"] == 1500
+    assert go2_nixo["nixo"]["fire_cooldown_ms"] == 0
     assert go2_nixo["nixo"]["prefire_delay_ms"] == 600
     assert go2_nixo["nixo"]["relay_delay1_ms"] == 800
-    assert go2_nixo["ota"]["channel"] == "go2-nixo-1ch"
+    assert go2_nixo["ota"]["channel"] == "go2-nixo-2ch"
     assert go2_nixo["ota"]["public_manifest_url"].endswith(
-        "/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json"
+        "/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json"
     )
 
     go2_nixo_2ch = run_provision_script(
@@ -823,7 +837,7 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
     assert "#define BATTLEBANG_RING_NUM_LEDS 40" in source, firmware
     assert "#define BATTLEBANG_RING_LED_BRIGHTNESS 80" in source, firmware
     assert "#define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 3000" in source, firmware
-    assert "#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 1500" in source, firmware
+    assert "#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 0" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_GROUP_COUNT 28" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_LEDS_PER_GROUP 3" in source, firmware
     assert "HP bar LED count must match grouped bar layout" in source, firmware

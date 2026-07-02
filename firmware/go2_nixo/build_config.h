@@ -330,7 +330,7 @@
 #endif
 
 #ifndef BATTLEBANG_NIXO_FIRE_COOLDOWN_MS
-#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 1500
+#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 0
 #endif
 
 #ifndef BATTLEBANG_HIT_COOLDOWN_MS
@@ -529,7 +529,7 @@ static constexpr const char *MQTT_TOPIC_PREFIX = BATTLEBANG_MQTT_TOPIC_PREFIX;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 static constexpr uint32_t MQTT_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t HEARTBEAT_TX_PERIOD_MS = 1000;
-static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;
+static constexpr uint16_t MQTT_BUFFER_SIZE = 3072;
 
 static constexpr const char *NIXO_ID_VALUE = BATTLEBANG_NIXO_ID;
 static constexpr const char *NIXO_MQTT_TOPIC_PREFIX_VALUE =

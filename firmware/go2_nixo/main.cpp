@@ -21,8 +21,8 @@ using namespace go2;
 //   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
 //   Command Center per-hit ring_display round trips.
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
-// - Nixo fire is handled on the same ESP through MQTT relay commands. The original
-//   ring LED is reserved for Nixo ready/firing/cooldown state, never HP state.
+// - Nixo fire is handled on the same ESP through MQTT relay commands or Jetson UART.
+//   The original ring LED is reserved for Nixo ready/firing/inhibited state, never HP state.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
@@ -57,9 +57,20 @@ uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
 bool hasSeenMqttConnection = false;
+bool jetsonFireHoldActive = false;
+uint32_t jetsonFireHoldDeadlineMs = 0;
+bool hasPublishedStatusSnapshot = false;
+uint16_t lastPublishedHpRemaining = 0;
+uint16_t lastPublishedMaxHits = 0;
+uint16_t lastPublishedAcceptedHitCount = 0;
+bool lastPublishedDown = false;
+bool lastPublishedNixoFiring = false;
+bool lastPublishedFireInhibited = false;
+bool lastPublishedJetsonHoldActive = false;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
+constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -537,17 +548,51 @@ static void resetAll(const char* source = "serial") {
   publishDeviceStatusIfConnected("reset");
 }
 
+static bool sourceCanFire(const char* source) {
+  return strcmp(source, "jetson") == 0;
+}
+
+static void stopNixoFireCommand(const char* source) {
+  jetsonFireHoldActive = false;
+  nixoFire.stopFire(source);
+  Serial.printf("[CMD] fire stopped source=%s\n", source);
+  if (SerialBT.hasClient()) {
+    SerialBT.printf("[CMD] fire stopped source=%s\n", source);
+  }
+}
+
 static void handleCommandChar(char c, const char* source) {
   c = normalizeCommandChar(c);
   if (c == CMD_RESET_HIT_DISPLAY || c == 'r') {
     resetAll(source);
     return;
   }
+  if (c == 'x' || c == '0') {
+    stopNixoFireCommand(source);
+    return;
+  }
   if (c == '1' || c == 'f') {
-    bool started = nixoFire.startFire(runtimeConfig.nixo.fireDefaultDurationMs, source);
-    Serial.printf("[CMD] fire %s source=%s\n", started ? "started" : "ignored", source);
+    if (!sourceCanFire(source)) {
+      Serial.printf("[FIRE] ignored source=%s reason=jetson_uart_required\n", source);
+      if (SerialBT.hasClient() && strcmp(source, "bt") == 0) {
+        SerialBT.println("[FIRE] ignored reason=jetson_uart_required");
+      }
+      return;
+    }
+    const bool wasFiring = nixoFire.isFiring();
+    const bool accepted = wasFiring || nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, source);
+    if (accepted) {
+      jetsonFireHoldActive = true;
+      jetsonFireHoldDeadlineMs = millis() + JETSON_FIRE_HOLD_TIMEOUT_MS;
+    }
+    Serial.printf("[CMD] fire %s source=%s hold_timeout_ms=%lu\n",
+                  accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
+                  source,
+                  (unsigned long)JETSON_FIRE_HOLD_TIMEOUT_MS);
     if (SerialBT.hasClient()) {
-      SerialBT.printf("[CMD] fire %s source=%s\n", started ? "started" : "ignored", source);
+      SerialBT.printf("[CMD] fire %s source=%s\n",
+                      accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
+                      source);
     }
   }
 }
@@ -594,6 +639,15 @@ static void addLocalHitStatus(JsonObject doc) {
   combat["down"] = localHitState.down;
   combat["ring_fill_ratio"] = localHpFillRatio();
   combat["last_hit_sequence"] = localHitState.lastHitSequence;
+
+  JsonObject hp = doc.createNestedObject("hp");
+  hp["robot_id"] = runtimeConfig.hit.robotId;
+  hp["current"] = localHitState.hpRemaining;
+  hp["max"] = localHitState.maxHits;
+  hp["down"] = localHitState.down;
+  hp["accepted_hit_count"] = localHitState.acceptedHitCount;
+  hp["ring_fill_ratio"] = localHpFillRatio();
+  hp["last_hit_sequence"] = localHitState.lastHitSequence;
 }
 
 static void addNixoTuningStatus(JsonObject doc) {
@@ -603,6 +657,30 @@ static void addNixoTuningStatus(JsonObject doc) {
   doc["nixo_fire_cooldown_ms"] = runtimeConfig.nixo.fireCooldownMs;
   doc["nixo_prefire_delay_ms"] = runtimeConfig.nixo.prefireDelayMs;
   doc["nixo_relay_delay1_ms"] = runtimeConfig.nixo.relayDelay1Ms;
+  doc["nixo_relay1_pin"] = NIXO_RELAY1_PIN_VALUE;
+  doc["nixo_relay2_pin"] = NIXO_RELAY2_PIN_VALUE;
+  doc["nixo_relay_on_level"] = NIXO_RELAY_ON_LEVEL_VALUE;
+  doc["nixo_relay_off_level"] = NIXO_RELAY_OFF_LEVEL_VALUE;
+  doc["nixo_relay1_readback"] = digitalRead(NIXO_RELAY1_PIN_VALUE);
+  doc["nixo_relay2_readback"] = NIXO_RELAY2_ENABLED_VALUE ? digitalRead(NIXO_RELAY2_PIN_VALUE) : -1;
+  doc["jetson_fire_hold_active"] = jetsonFireHoldActive;
+  doc["jetson_fire_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
+
+  JsonObject nixo = doc.createNestedObject("nixo");
+  nixo["id"] = runtimeConfig.nixo.nixoId;
+  nixo["firing"] = nixoFire.isFiring();
+  nixo["fire_inhibited"] = nixoFire.fireInhibited();
+  nixo["cooldown_remaining_ms"] = nixoFire.cooldownRemainingMs(millis());
+  nixo["mqtt_connected"] = nixoFire.connected();
+  nixo["command_topic"] = nixoFire.commandTopic();
+  nixo["relay1_pin"] = NIXO_RELAY1_PIN_VALUE;
+  nixo["relay2_pin"] = NIXO_RELAY2_PIN_VALUE;
+  nixo["relay_on_level"] = NIXO_RELAY_ON_LEVEL_VALUE;
+  nixo["relay_off_level"] = NIXO_RELAY_OFF_LEVEL_VALUE;
+  nixo["relay1_readback"] = digitalRead(NIXO_RELAY1_PIN_VALUE);
+  nixo["relay2_readback"] = NIXO_RELAY2_ENABLED_VALUE ? digitalRead(NIXO_RELAY2_PIN_VALUE) : -1;
+  nixo["jetson_hold_active"] = jetsonFireHoldActive;
+  nixo["jetson_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
 }
 
 static void printStatusJson(const char* source, const char* reason) {
@@ -657,6 +735,27 @@ static void printStatusJson(const char* source, const char* reason) {
   replyToSource(source, out);
 }
 
+static void rememberPublishedStatusSnapshot() {
+  hasPublishedStatusSnapshot = true;
+  lastPublishedHpRemaining = localHitState.hpRemaining;
+  lastPublishedMaxHits = localHitState.maxHits;
+  lastPublishedAcceptedHitCount = localHitState.acceptedHitCount;
+  lastPublishedDown = localHitState.down;
+  lastPublishedNixoFiring = nixoFire.isFiring();
+  lastPublishedFireInhibited = nixoFire.fireInhibited();
+  lastPublishedJetsonHoldActive = jetsonFireHoldActive;
+}
+
+static bool statusStateChanged() {
+  if (!hasPublishedStatusSnapshot) return true;
+  return lastPublishedHpRemaining != localHitState.hpRemaining ||
+         lastPublishedMaxHits != localHitState.maxHits ||
+         lastPublishedAcceptedHitCount != localHitState.acceptedHitCount ||
+         lastPublishedDown != localHitState.down ||
+         lastPublishedNixoFiring != nixoFire.isFiring() ||
+         lastPublishedFireInhibited != nixoFire.fireInhibited() ||
+         lastPublishedJetsonHoldActive != jetsonFireHoldActive;
+}
 
 static void publishDeviceStatusIfConnected(const char* reason) {
   if (!hitMqtt.connected()) return;
@@ -705,6 +804,7 @@ static void publishDeviceStatusIfConnected(const char* reason) {
                   static_cast<unsigned int>(out.length()),
                   hitMqtt.deviceStatusTopic());
   }
+  rememberPublishedStatusSnapshot();
 }
 
 static void reapplyRuntimeConfig(const char* reason) {
@@ -842,6 +942,10 @@ static void handleCommandLine(String line, const char* source) {
     handleCommandChar('f', source);
     return;
   }
+  if (lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off") {
+    stopNixoFireCommand(source);
+    return;
+  }
   if (lower == "s" || lower == "status" || lower == "show-status") {
     printStatusJson(source, "serial");
     return;
@@ -889,7 +993,13 @@ static void handleCommandLine(String line, const char* source) {
 
 static bool isImmediateCommandChar(char c) {
   c = normalizeCommandChar(c);
-  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == '1' || c == 'f';
+  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == '1' || c == 'f' || c == 'x' || c == '0';
+}
+
+static bool isJetsonBufferedImmediateCommand(Stream& stream, char c, const char* source) {
+  if (strcmp(source, "jetson") != 0 || !isImmediateCommandChar(c) || stream.available() == 0) return false;
+  const char next = (char)stream.peek();
+  return isIgnoredCommandChar(next) || isImmediateCommandChar(next);
 }
 
 static void pollCommandStream(Stream& stream, String& line, const char* source) {
@@ -902,7 +1012,9 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
       continue;
     }
     if (line.length() == 0 && isIgnoredCommandChar(c)) continue;
-    if (line.length() == 0 && isImmediateCommandChar(c) && stream.available() == 0) {
+    if (line.length() == 0 &&
+        ((isImmediateCommandChar(c) && stream.available() == 0) ||
+         isJetsonBufferedImmediateCommand(stream, c, source))) {
       handleCommandChar(c, source);
       continue;
     }
@@ -919,6 +1031,15 @@ static void pollCommands() {
   pollCommandStream(JetsonSerial, jetsonCommandLine, "jetson");
   pollCommandStream(Serial, usbCommandLine, "usb");
   pollCommandStream(SerialBT, btCommandLine, "bt");
+}
+
+static void updateJetsonFireHold(uint32_t now) {
+  if (!jetsonFireHoldActive) return;
+  if ((int32_t)(now - jetsonFireHoldDeadlineMs) < 0) return;
+  jetsonFireHoldActive = false;
+  if (nixoFire.isFiring()) {
+    nixoFire.stopFire("jetson-hold-timeout");
+  }
 }
 
 
@@ -953,6 +1074,12 @@ static void publishPeriodicDeviceStatus(uint32_t now) {
   if (now - lastDeviceStatusMs < DEVICE_STATUS_PERIOD_MS) return;
   lastDeviceStatusMs = now;
   publishDeviceStatusIfConnected("heartbeat");
+}
+
+static void publishStateChangeDeviceStatus(uint32_t now) {
+  if (!hitMqtt.connected() || !statusStateChanged()) return;
+  lastDeviceStatusMs = now;
+  publishDeviceStatusIfConnected("state_changed");
 }
 
 static void pollConfiguredOta(uint32_t now) {
@@ -1039,9 +1166,9 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
-  Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state, '1'/'f'=Nixo fire.\n",
+  Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state; Jetson UART '1'/'f'=Nixo hold-fire, '0'/'x'=stop.\n",
                 CMD_RESET_HIT_DISPLAY);
-  Serial.println("USB/BT/Jetson line commands: s/status/show-status, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  Serial.println("USB/BT/Jetson line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   Serial.print("release_repo=");
   Serial.println(BB_GO2_NIXO_RELEASE_REPO);
   Serial.print("latest_manifest=");
@@ -1081,6 +1208,7 @@ void loop() {
   pollCommands();
   pollAnalogPiezo(now);
   nixoFire.tick(now);
+  updateJetsonFireHold(now);
   ringDisplay.setCooldownState(nixoFire.isFiring(),
                                nixoFire.cooldownRemainingMs(now),
                                nixoFire.cooldownDurationMs(),
@@ -1091,6 +1219,7 @@ void loop() {
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   publishMqttReconnectStatus(now);
   processPendingMqttManagement();
+  publishStateChangeDeviceStatus(now);
   publishPeriodicDeviceStatus(now);
   pollConfiguredOta(now);
 
