@@ -183,6 +183,7 @@ void normalizeNixoRuntimeConfig(NixoRuntimeConfig& nixo) {
   if (nixo.fireDefaultDurationMs == 0) {
     nixo.fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;
   }
+  nixo.fireCooldownMs = 0;  // BTB-801: Jetson/gamepad owns fire rate limiting.
 }
 
 bool validateNixoRuntimeConfig(const NixoRuntimeConfig& nixo, String& error) {

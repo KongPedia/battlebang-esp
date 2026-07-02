@@ -53,6 +53,13 @@ class HitMqttClient {
                        uint16_t hpRemaining = 0,
                        uint16_t maxHits = 1,
                        bool down = false);
+  bool publishHpResetEvent(uint32_t sequence,
+                           uint32_t firmwareTsMs,
+                           const char* reason,
+                           uint16_t acceptedHitCount,
+                           uint16_t hpRemaining,
+                           uint16_t maxHits,
+                           bool down);
   void queueHitEvent(int targetId,
                      uint32_t sequence,
                      uint32_t firmwareTsMs,

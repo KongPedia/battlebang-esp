@@ -240,7 +240,7 @@ def build_payload(
         "fire_default_duration_ms": env_int(env, nixo_tuning_keys("FIRE_DEFAULT_DURATION_MS"), 3000),
         "fire_min_duration_ms": env_int(env, nixo_tuning_keys("FIRE_MIN_DURATION_MS"), 100),
         "fire_max_duration_ms": env_int(env, nixo_tuning_keys("FIRE_MAX_DURATION_MS"), 10000),
-        "fire_cooldown_ms": env_int(env, nixo_tuning_keys("FIRE_COOLDOWN_MS"), 1500),
+        "fire_cooldown_ms": env_int(env, nixo_tuning_keys("FIRE_COOLDOWN_MS"), 0),
         "prefire_delay_ms": env_int(env, nixo_tuning_keys("PREFIRE_DELAY_MS"), 600),
         "relay_delay1_ms": env_int(env, nixo_tuning_keys("RELAY_DELAY1_MS"), 800),
     }

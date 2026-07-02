@@ -19,4 +19,4 @@ firmware/go2_nixo/
 └─ nixo/                            # MQTT Nixo fire command / relay sequence
 ```
 
-Identity, stage, Wi-Fi, MQTT, OTA, piezo threshold/rearm/capture/debug, hit cooldown, offline queue, local HP count/flash, HP brightness, ring brightness, and Nixo fire duration/cooldown/prefire/relay-delay timing are NVS runtime config. The 3ch piezo GPIO pins stay in the hardware profile; relay pins, polarity, and channel count stay build variants.
+Identity, stage, Wi-Fi, MQTT, OTA, piezo threshold/rearm/capture/debug, hit cooldown, offline queue, local HP count/flash, HP brightness, ring brightness, and Nixo fire duration/prefire/relay-delay timing are NVS runtime config; ESP cooldown is disabled. The 3ch piezo GPIO pins stay in the hardware profile; relay pins, polarity, and channel count stay build variants.

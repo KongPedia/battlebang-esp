@@ -2,7 +2,7 @@
 
 Integrated Go2/Nixo ESP owns normal hit acceptance, HP/down state, and HP bar rendering locally. Command Center ingests `hit_event` and device status payloads for dashboard/world state. It must not publish per-hit HP bar updates.
 
-Nixo fire/cooldown is a separate local lane: the original ring LED displays Nixo ready/firing/cooldown only. HP is rendered on the 84-LED bar.
+Nixo fire is a separate local lane: the original ring LED displays Nixo ready/firing/inhibited only. HP is rendered on the 84-LED bar.
 
 ## Topics
 
@@ -55,6 +55,27 @@ When the max of left/right/front piezo AO ADC crosses threshold, ESP immediately
 
 Queued retransmits keep the original `firmware_ts_ms` and add queue metadata. They are still already-accepted ESP-local hits; Command Center should not re-score them.
 
+On ESP boot/power-cycle or reset, the ESP also publishes a full-HP reset envelope on the same event topic so Operator UI can clear stale combat state even if it does not ingest device status:
+
+```json
+{
+  "schema_version": 2,
+  "event": "hit_event",
+  "event_type": "hp_reset",
+  "reason": "boot",
+  "robot_id": "go2_05",
+  "hit": false,
+  "accepted": false,
+  "reset_hit_state": true,
+  "hp_reset": true,
+  "accepted_hit_count": 0,
+  "hp_remaining": 14,
+  "max_hits": 14,
+  "down": false,
+  "ring_fill_ratio": 1.0
+}
+```
+
 After `down=true`, additional piezo triggers are not published as new accepted hits until reset. The ESP keeps local HP/down state and, when MQTT is connected, publishes device status with reason `local_hit_ignored_down`.
 
 ## ESP -> Command Center: device status
@@ -80,9 +101,26 @@ After `down=true`, additional piezo triggers are not published as new accepted h
     "down": false,
     "ring_fill_ratio": 0.785714,
     "last_hit_sequence": 7
+  },
+  "hp": {
+    "current": 11,
+    "max": 14,
+    "down": false,
+    "accepted_hit_count": 3
+  },
+  "nixo": {
+    "id": "nixo_go2_05",
+    "state": "ready",
+    "firing": false,
+    "fire_inhibited": false
   }
 }
 ```
+
+Nixo `state` is one of `ready`, `inhibited`, `prefire_delay`, `flywheel_spinup`,
+or `firing`. The ESP publishes device status immediately with
+`reason=state_changed` when HP/down or Nixo state changes, and also on the normal
+heartbeat.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 
@@ -109,4 +147,4 @@ Power cycle behavior is intentionally reset-based too: the ESP does not persist 
 
 ## Nixo ring LED separation
 
-The ring LED on GPIO4 is not an HP display. It displays only Nixo local fire state: ready green, firing red, cooldown fill. Hit/down HP state is rendered separately on the 84-LED HP bar on GPIO18.
+The ring LED on GPIO4 is not an HP display. It displays only Nixo local fire state: ready green, firing red, inhibited red. Hit/down HP state is rendered separately on the 84-LED HP bar on GPIO18.
