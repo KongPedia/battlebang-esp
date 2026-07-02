@@ -322,8 +322,63 @@ void NixoFireClient::handleMqttMessage(char* topic, byte* payload, unsigned int 
     return;
   }
 
-  (void)payload;
-  Serial.println("[NIXO MQTT] fire command ignored reason=jetson_uart_required");
+  char payloadBuffer[NIXO_MQTT_BUFFER_SIZE];
+  memcpy(payloadBuffer, payload, length);
+  payloadBuffer[length] = '\0';
+  handleCommandPayload(payloadBuffer, length);
+}
+
+void NixoFireClient::handleCommandPayload(const char* payload, unsigned int length) {
+  StaticJsonDocument<NIXO_MQTT_BUFFER_SIZE> doc;
+  DeserializationError error = deserializeJson(doc, payload, length);
+  if (error) {
+    Serial.printf("[NIXO MQTT] invalid JSON: %s\n", error.c_str());
+    return;
+  }
+
+  const int schemaVersion = doc["schema_version"] | 0;
+  const char* command = doc["command"] | "";
+  const char* nixoId = doc["nixo_id"] | "";
+  const char* requestId = doc["request_id"] | "";
+
+  if (schemaVersion != 1) {
+    Serial.printf("[NIXO MQTT] ignored schema_version=%d\n", schemaVersion);
+    return;
+  }
+  if (strcmp(command, "fire") != 0) {
+    Serial.printf("[NIXO MQTT] ignored command=%s\n", command);
+    return;
+  }
+  if (strcmp(nixoId, nixoId_) != 0) {
+    Serial.printf("[NIXO MQTT] ignored nixo_id=%s expected=%s\n", nixoId, nixoId_);
+    return;
+  }
+  if (requestId[0] == '\0') {
+    Serial.println("[NIXO MQTT] ignored fire command without request_id");
+    return;
+  }
+  if (!doc["enabled"].is<bool>()) {
+    Serial.println("[NIXO MQTT] ignored fire command without boolean enabled");
+    return;
+  }
+  if (lastMqttRequestId_ == requestId) {
+    Serial.printf("[NIXO MQTT] duplicate request_id=%s ignored\n", requestId);
+    return;
+  }
+  lastMqttRequestId_ = requestId;
+
+  const bool enabled = doc["enabled"].as<bool>();
+  if (!enabled) {
+    stopFire("mqtt");
+    Serial.printf("[NIXO MQTT] fire off request_id=%s\n", requestId);
+    return;
+  }
+
+  uint32_t durationMs = clampFireDuration(doc["duration_ms"] | fireDefaultDurationMs_);
+  Serial.printf("[NIXO MQTT] fire on request_id=%s duration_ms=%lu\n", requestId, (unsigned long)durationMs);
+  if (!startFire(durationMs, "mqtt")) {
+    Serial.printf("[NIXO MQTT] fire not started request_id=%s\n", requestId);
+  }
 }
 
 uint32_t NixoFireClient::clampFireDuration(uint32_t durationMs) const {

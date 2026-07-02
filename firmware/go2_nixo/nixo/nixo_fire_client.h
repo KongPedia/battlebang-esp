@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 
@@ -43,6 +44,7 @@ class NixoFireClient {
   bool networkConfigured_ = false;
   char commandTopic_[160] = {0};
   char clientId_[96] = {0};
+  String lastMqttRequestId_;
   uint32_t lastMqttRetryMs_ = 0;
 
   FireState fireState_ = FIRE_IDLE;
@@ -66,6 +68,7 @@ class NixoFireClient {
   void beginCooldown(uint32_t now);
   void ensureMqttConnected(uint32_t now);
   void handleMqttMessage(char* topic, byte* payload, unsigned int length);
+  void handleCommandPayload(const char* payload, unsigned int length);
   uint32_t clampFireDuration(uint32_t durationMs) const;
 };
 

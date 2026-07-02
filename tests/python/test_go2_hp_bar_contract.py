@@ -703,9 +703,6 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'doc["nixo_state"] = nixoFire.fireStateName();' in go2_nixo_main
     assert "lastPublishedNixoState" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
-    assert "fire command ignored reason=jetson_uart_required" in nixo_fire_source
-    assert 'startFire(durationMs, "mqtt")' not in nixo_fire_source
-    assert 'stopFire("mqtt")' not in nixo_fire_source
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
     assert 'return "ready";' in nixo_fire_source
     assert '"flywheel_spinup"' in nixo_fire_source
@@ -895,8 +892,9 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "beginCooldown(now)" in fire_source
     assert "bool wasFiring = isFiring();" in fire_source
     assert "beginCooldown(millis());" in fire_source
-    assert "fire command ignored reason=jetson_uart_required" in fire_source
-    assert 'doc["enabled"]' not in fire_source
+    assert 'doc["enabled"].is<bool>()' in fire_source
+    assert 'const bool enabled = doc["enabled"].as<bool>();' in fire_source
+    assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
     stop_block = fire_source.split("void NixoFireClient::stopFire", 1)[1].split(
         "const char* NixoFireClient::commandTopic",

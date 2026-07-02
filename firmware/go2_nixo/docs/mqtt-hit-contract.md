@@ -14,7 +14,7 @@ battlebang/hit/{robot_id}/events
 Command Center -> ESP reset/debug only
 battlebang/hit/{robot_id}/ring_display/command
 
-Deprecated/no-op Nixo fire topic
+Command Center -> Nixo relay
 battlebang/nixo/{nixo_id}/command
 ```
 
