@@ -917,6 +917,8 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "void NixoFireClient::startFlywheelNow(uint32_t now)" in fire_source
     assert "void NixoFireClient::beginStopSequence(uint32_t now)" in fire_source
     assert "immediate_flywheel=%s" in fire_source
+    assert "startFire(durationMs, source, false)" in fire_source
+    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true)" in main
     assert 'return "flywheel_spindown";' in fire_source
     assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
@@ -995,9 +997,24 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert relay_off_block.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < relay_off_block.index(
         "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
     )
+    start_flywheel_block = fire_source.split("void NixoFireClient::startFlywheelNow(uint32_t now)", 1)[1].split(
+        "void NixoFireClient::beginStopSequence",
+        1,
+    )[0]
+    assert "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_ON_LEVEL_VALUE);" in start_flywheel_block
+    assert start_flywheel_block.index("digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_ON_LEVEL_VALUE);") < (
+        start_flywheel_block.index("if (NIXO_RELAY2_ENABLED_VALUE)")
+    )
+    assert 'return NIXO_RELAY2_ENABLED_VALUE ? "flywheel_spinup" : "firing";' in fire_source
     update_block = fire_source.split("void NixoFireClient::updateFireSequence", 1)[1]
+    one_channel_done = update_block.split("case FIRE_RELAY_WAIT1:", 1)[1].split(
+        "if (now - fireTimerMs_ >= relayDelay1Ms_)",
+        1,
+    )[0]
     two_channel_done = update_block.split("case FIRE_RELAY_WAIT2:", 1)[1].split("case FIRE_STOP_DELAY:", 1)[0]
     stop_delay = update_block.split("case FIRE_STOP_DELAY:", 1)[1]
+    assert "activeFireSource_[0] = '\\0';" in one_channel_done
+    assert one_channel_done.index("activeFireSource_[0] = '\\0';") < one_channel_done.index("beginCooldown(now);")
     assert "beginStopSequence(now);" in two_channel_done
     assert "digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
     assert "now - fireTimerMs_ >= relayDelay1Ms_" in stop_delay

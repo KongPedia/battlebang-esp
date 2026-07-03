@@ -282,6 +282,7 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
                         NIXO_RELAY_OFF_LEVEL_VALUE,
                         digitalRead(NIXO_RELAY1_PIN_VALUE));
           Serial.println("[RELAY] ALL OFF / FIRE done");
+          activeFireSource_[0] = '\0';
           beginCooldown(now);
         }
         return;
@@ -430,7 +431,7 @@ void NixoFireClient::handleCommandPayload(const char* payload, unsigned int leng
 
   uint32_t durationMs = clampFireDuration(doc["duration_ms"] | fireDefaultDurationMs_);
   Serial.printf("[NIXO MQTT] fire on request_id=%s source=%s duration_ms=%lu\n", requestId, source, (unsigned long)durationMs);
-  if (!startFire(durationMs, source)) {
+  if (!startFire(durationMs, source, false)) {
     Serial.printf("[NIXO MQTT] fire not started request_id=%s\n", requestId);
   }
 }
