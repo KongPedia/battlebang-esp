@@ -699,6 +699,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "reason=release_required" in go2_nixo_main
     assert "lastPublishedJetsonReleaseRequired" in go2_nixo_main
     assert "runtimeConfig.nixo.fireMaxDurationMs" in go2_nixo_main
+    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true)" in go2_nixo_main
     assert "isJetsonBufferedImmediateCommand" in go2_nixo_main
     assert "c == 'x' || c == '0'" in go2_nixo_main
     assert "nixo_relay2_readback" in go2_nixo_main
@@ -904,12 +905,19 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "uint32_t remainingMs = cooldownRemainingMs(now)" in fire_source
     assert "beginCooldown(now)" in fire_source
     assert "bool wasFiring = isFiring();" in fire_source
-    assert "beginCooldown(millis());" in fire_source
+    assert "beginCooldown(millis());" not in fire_source
     assert 'doc["enabled"].is<bool>()' in fire_source
     assert 'const char* source = doc["source"] | "mqtt";' in fire_source
     assert 'const bool enabled = doc["enabled"].as<bool>();' in fire_source
     assert "char activeFireSource_[32] = {0};" in fire_header
     assert "void noteFireSource(const char* source);" in fire_header
+    assert "bool startFire(uint32_t durationMs = 0, const char* source = \"local\", bool immediateFlywheel = false);" in fire_header
+    assert "void startFlywheelNow(uint32_t now);" in fire_header
+    assert "void beginStopSequence(uint32_t now);" in fire_header
+    assert "void NixoFireClient::startFlywheelNow(uint32_t now)" in fire_source
+    assert "void NixoFireClient::beginStopSequence(uint32_t now)" in fire_source
+    assert "immediate_flywheel=%s" in fire_source
+    assert 'return "flywheel_spindown";' in fire_source
     assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
     stop_block = fire_source.split("void NixoFireClient::stopFire", 1)[1].split(
@@ -988,13 +996,12 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
         "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
     )
     update_block = fire_source.split("void NixoFireClient::updateFireSequence", 1)[1]
-    two_channel_done = update_block.split("case FIRE_RELAY_WAIT2:", 1)[1].split("return;", 1)[0]
-    assert two_channel_done.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < two_channel_done.index(
-        "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
-    )
-    assert two_channel_done.index("CH2 OFF pin=%d level=%d readback=%d") < two_channel_done.index(
-        "CH1 OFF pin=%d level=%d readback=%d"
-    )
+    two_channel_done = update_block.split("case FIRE_RELAY_WAIT2:", 1)[1].split("case FIRE_STOP_DELAY:", 1)[0]
+    stop_delay = update_block.split("case FIRE_STOP_DELAY:", 1)[1]
+    assert "beginStopSequence(now);" in two_channel_done
+    assert "digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "now - fireTimerMs_ >= relayDelay1Ms_" in stop_delay
+    assert "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in stop_delay
 
 
 def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:

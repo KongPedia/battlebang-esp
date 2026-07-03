@@ -17,7 +17,7 @@ class NixoFireClient {
   bool configured() const;
   bool connected();
   void setFireInhibited(bool inhibited);
-  bool startFire(uint32_t durationMs = 0, const char* source = "local");
+  bool startFire(uint32_t durationMs = 0, const char* source = "local", bool immediateFlywheel = false);
   void stopFire(const char* source = "local");
   bool isFiring() const;
   bool fireInhibited() const;
@@ -35,6 +35,7 @@ class NixoFireClient {
     FIRE_PREFIRE_DELAY,
     FIRE_RELAY_WAIT1,
     FIRE_RELAY_WAIT2,
+    FIRE_STOP_DELAY,
   };
 
   WiFiClient wifiClient_;
@@ -69,6 +70,8 @@ class NixoFireClient {
   static void mqttMessageCallback(char* topic, byte* payload, unsigned int length);
 
   void relayOff();
+  void startFlywheelNow(uint32_t now);
+  void beginStopSequence(uint32_t now);
   void updateFireSequence(uint32_t now);
   void beginCooldown(uint32_t now);
   void ensureMqttConnected(uint32_t now);

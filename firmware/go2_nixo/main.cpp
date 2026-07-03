@@ -630,7 +630,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
       nixoFire.noteFireSource(fireSource);
       accepted = true;
     } else {
-      accepted = nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource);
+      accepted = nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true);
     }
     if (accepted) {
       jetsonFireHoldActive = true;
