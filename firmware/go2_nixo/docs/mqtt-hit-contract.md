@@ -124,27 +124,11 @@ heartbeat.
 
 ## ESP -> Jetson: UART HP status
 
-The ESP sends newline-delimited `hp_status` JSON on Jetson UART2 on boot, HP
-state changes, and a 1s heartbeat. The ESP does not wait for ACKs or track
-whether Jetson consumed the line. Jetson owns any downstream behavior, including
-local Go2 `damp` when `hp_remaining` reaches `0`.
-
-```json
-{
-  "schema_version": 1,
-  "type": "hp_status",
-  "event": "hp_status",
-  "transport": "uart",
-  "reason": "state_changed",
-  "robot_id": "go2_05",
-  "hp_remaining": 0,
-  "max_hits": 14,
-  "down": true,
-  "accepted_hit_count": 14,
-  "last_hit_sequence": 14,
-  "uptime_ms": 123456
-}
-```
+The ESP emits unsolicited Jetson UART2 single-byte HP events: `h` when HP
+decreases, `d` when HP reaches zero/dead, and `r` when HP resets/restores. This
+is fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
+Jetson owns any downstream behavior, including local Go2 `damp` when
+`hp_remaining` reaches `0`.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 
