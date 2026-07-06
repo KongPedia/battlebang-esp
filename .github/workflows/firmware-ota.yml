@@ -24,6 +24,28 @@ on:
       - "lib/bb_esp_net/**"
       - "lib/bb_esp_nvs/**"
       - "lib/bb_esp_ota/**"
+  pull_request:
+    branches:
+      - main
+    # PRs run the same affected-firmware matrix as a smoke build, but release
+    # creation is disabled below so branch validation cannot move OTA tags.
+    paths:
+      - ".github/workflows/firmware-ota.yml"
+      - "platformio.ini"
+      - "firmware/boss_target/**"
+      - "firmware/go2/**"
+      - "firmware/go2_nixo/**"
+      - "firmware/heavy_blaster/**"
+      - "firmware/station/**"
+      - "firmware/turret_fleet/**"
+      - "scripts/firmware/make_release_manifest.py"
+      - "scripts/go2_config.py"
+      - "scripts/go2_nixo_config.py"
+      - "lib/bb_esp_core/**"
+      - "lib/bb_esp_hw/**"
+      - "lib/bb_esp_net/**"
+      - "lib/bb_esp_nvs/**"
+      - "lib/bb_esp_ota/**"
   workflow_dispatch:
     inputs:
       version:
@@ -207,15 +229,33 @@ jobs:
           ]
 
           def changed_files() -> list[str]:
-              if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+              event_name = os.environ.get("GITHUB_EVENT_NAME")
+              if event_name == "workflow_dispatch":
                   return ["__workflow_dispatch__"]
 
               event_path = os.environ.get("GITHUB_EVENT_PATH")
               event = json.loads(Path(event_path).read_text()) if event_path else {}
-              before = event.get("before") or ""
               sha = os.environ["GITHUB_SHA"]
               zero = "0" * 40
 
+              if event_name == "pull_request":
+                  pull_request = event.get("pull_request") or {}
+                  before = (pull_request.get("base") or {}).get("sha") or ""
+                  head = (pull_request.get("head") or {}).get("sha") or sha
+                  if before and head:
+                      subprocess.run(
+                          ["git", "fetch", "--no-tags", "origin", before, head],
+                          check=False,
+                          stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL,
+                      )
+                      diff = subprocess.check_output(
+                          ["git", "diff", "--name-only", before, head],
+                          text=True,
+                      )
+                      return [line.strip() for line in diff.splitlines() if line.strip()]
+
+              before = event.get("before") or ""
               if not before or before == zero:
                   try:
                       before = subprocess.check_output(
@@ -285,6 +325,14 @@ jobs:
             TARGET_BRANCH="${{ inputs.public_release_target_branch }}"
             CREATE_RELEASE="${{ inputs.create_release }}"
             UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            VERSION="0.2.${GITHUB_RUN_NUMBER}-pr${{ github.event.pull_request.number }}"
+            BUILD="$((2000 + GITHUB_RUN_NUMBER))"
+            FIRMWARE_BASE_URL=""
+            PUBLIC_REPO="${GITHUB_REPOSITORY}"
+            TARGET_BRANCH="${GITHUB_BASE_REF:-main}"
+            CREATE_RELEASE="false"
+            UPDATE_STABLE_LATEST="false"
           else
             VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
             BUILD="$((1000 + GITHUB_RUN_NUMBER))"
