@@ -851,22 +851,15 @@ static bool jetsonHpStatusChanged() {
 }
 
 static void sendJetsonHpStatus(const char* reason, uint32_t now) {
-  DynamicJsonDocument doc(512);
-  doc["schema_version"] = 1;
-  doc["type"] = "hp_status";
-  doc["event"] = "hp_status";
-  doc["transport"] = "uart";
-  doc["reason"] = reason;
-  doc["robot_id"] = runtimeConfig.hit.robotId;
-  doc["hp_remaining"] = localHitState.hpRemaining;
-  doc["max_hits"] = localHitState.maxHits;
-  doc["down"] = localHitState.down;
-  doc["accepted_hit_count"] = localHitState.acceptedHitCount;
-  doc["last_hit_sequence"] = localHitState.lastHitSequence;
-  doc["uptime_ms"] = now;
-  String out;
-  serializeJson(doc, out);
-  JetsonSerial.println(out);
+  char line[32];
+  snprintf(line,
+           sizeof(line),
+           "HP,%u,%u,%u",
+           static_cast<unsigned>(localHitState.hpRemaining),
+           static_cast<unsigned>(localHitState.maxHits),
+           localHitState.down ? 1U : 0U);
+  Serial.printf("[JETSON HP] reason=%s uptime_ms=%lu %s\n", reason, (unsigned long)now, line);
+  JetsonSerial.println(line);
   rememberJetsonHpStatusSnapshot(now);
 }
 
