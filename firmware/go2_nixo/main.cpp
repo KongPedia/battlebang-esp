@@ -55,6 +55,7 @@ bool pendingMqttOta = false;
 bool pendingHpResetEvent = true;
 bool postOtaReboot = false;
 uint32_t lastDeviceStatusMs = 0;
+uint32_t lastJetsonHpStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
 bool hasSeenMqttConnection = false;
@@ -62,10 +63,15 @@ bool jetsonFireHoldActive = false;
 bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
 bool hasPublishedStatusSnapshot = false;
+bool hasSentJetsonHpStatus = false;
 uint16_t lastPublishedHpRemaining = 0;
 uint16_t lastPublishedMaxHits = 0;
 uint16_t lastPublishedAcceptedHitCount = 0;
 bool lastPublishedDown = false;
+uint16_t lastJetsonHpRemaining = 0;
+uint16_t lastJetsonMaxHits = 0;
+uint16_t lastJetsonAcceptedHitCount = 0;
+bool lastJetsonDown = false;
 bool lastPublishedNixoFiring = false;
 bool lastPublishedFireInhibited = false;
 bool lastPublishedJetsonHoldActive = false;
@@ -76,6 +82,7 @@ String lastPublishedNixoLastFireSource;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
+constexpr uint32_t JETSON_HP_STATUS_PERIOD_MS = 1000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
@@ -826,6 +833,53 @@ static bool statusStateChanged() {
          lastPublishedNixoLastFireSource != nixoFire.lastFireSource();
 }
 
+static void rememberJetsonHpStatusSnapshot(uint32_t now) {
+  hasSentJetsonHpStatus = true;
+  lastJetsonHpStatusMs = now;
+  lastJetsonHpRemaining = localHitState.hpRemaining;
+  lastJetsonMaxHits = localHitState.maxHits;
+  lastJetsonAcceptedHitCount = localHitState.acceptedHitCount;
+  lastJetsonDown = localHitState.down;
+}
+
+static bool jetsonHpStatusChanged() {
+  if (!hasSentJetsonHpStatus) return true;
+  return lastJetsonHpRemaining != localHitState.hpRemaining ||
+         lastJetsonMaxHits != localHitState.maxHits ||
+         lastJetsonAcceptedHitCount != localHitState.acceptedHitCount ||
+         lastJetsonDown != localHitState.down;
+}
+
+static void sendJetsonHpStatus(const char* reason, uint32_t now) {
+  DynamicJsonDocument doc(512);
+  doc["schema_version"] = 1;
+  doc["type"] = "hp_status";
+  doc["event"] = "hp_status";
+  doc["transport"] = "uart";
+  doc["reason"] = reason;
+  doc["robot_id"] = runtimeConfig.hit.robotId;
+  doc["hp_remaining"] = localHitState.hpRemaining;
+  doc["max_hits"] = localHitState.maxHits;
+  doc["down"] = localHitState.down;
+  doc["accepted_hit_count"] = localHitState.acceptedHitCount;
+  doc["last_hit_sequence"] = localHitState.lastHitSequence;
+  doc["uptime_ms"] = now;
+  String out;
+  serializeJson(doc, out);
+  JetsonSerial.println(out);
+  rememberJetsonHpStatusSnapshot(now);
+}
+
+static void publishJetsonHpStatus(uint32_t now) {
+  if (jetsonHpStatusChanged()) {
+    sendJetsonHpStatus(hasSentJetsonHpStatus ? "state_changed" : "boot", now);
+    return;
+  }
+  if (now - lastJetsonHpStatusMs >= JETSON_HP_STATUS_PERIOD_MS) {
+    sendJetsonHpStatus("heartbeat", now);
+  }
+}
+
 static bool publishHpResetEventIfConnected(const char* reason) {
   if (!hitMqtt.connected()) {
     pendingHpResetEvent = true;
@@ -1306,6 +1360,7 @@ void loop() {
   barDisplay.tick(now);
   ringDisplay.tick(now);
 
+  publishJetsonHpStatus(now);
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   publishMqttReconnectStatus(now);
   processPendingMqttManagement();
