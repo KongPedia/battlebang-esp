@@ -850,22 +850,27 @@ static bool jetsonHpStatusChanged() {
 }
 
 static void sendJetsonHpStatus(const char* reason, uint32_t now) {
-  (void)reason;
-  // ponytail: single-byte event avoids long UART frames on Jetson GPIO; add counts only after RX is proven stable.
+  // ponytail: single-byte events avoid long UART frames on Jetson GPIO; h=hit, d=dead, r=reset/restored.
   const bool isDead = localHitState.down || localHitState.hpRemaining == 0;
-  JetsonSerial.println(isDead ? "d" : "h");
+  const bool isHit = strcmp(reason, "hit") == 0;
+  JetsonSerial.println(isDead ? "d" : (isHit ? "h" : "r"));
   rememberJetsonHpStatusSnapshot(now);
 }
 
 static void publishJetsonHpStatus(uint32_t now) {
   if (!hasSentJetsonHpStatus) {
-    rememberJetsonHpStatusSnapshot(now);
+    sendJetsonHpStatus("reset", now);
     return;
   }
   const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;
+  const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;
   const bool isDead = localHitState.down || localHitState.hpRemaining == 0;
   if (hpDecreased) {
     sendJetsonHpStatus(isDead ? "dead" : "hit", now);
+    return;
+  }
+  if (!isDead && (hpIncreased || lastJetsonDown)) {
+    sendJetsonHpStatus("reset", now);
     return;
   }
   if (jetsonHpStatusChanged()) {

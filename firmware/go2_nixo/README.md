@@ -124,8 +124,8 @@ duration requires release/re-press before ESP will start another UART fire. USB/
 bench/debug commands only.
 
 The ESP also emits unsolicited Jetson UART2 single-byte HP events: `h` when HP
-decreases and `d` when HP reaches zero/dead. This is fire-and-forget: no ACK,
-retry, or read confirmation is required from Jetson.
+decreases, `d` when HP reaches zero/dead, and `r` when HP resets/restores. This
+is fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
 
 ```json
 {
