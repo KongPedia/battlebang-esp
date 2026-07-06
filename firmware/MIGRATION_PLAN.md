@@ -56,6 +56,7 @@ firmware/
   go2_nixo/
   boss_target/
   heavy_blaster/
+  station/
   turret_fleet/
 
 lib/
@@ -83,6 +84,7 @@ scripts/
   go2_nixo/
   boss_target/
   heavy_blaster/
+  station/
   turret_fleet/
 ```
 
@@ -105,6 +107,14 @@ This split matters because PlatformIO can compile all `.cpp` files in a selected
 
 ## Active Firmware Scope
 
+Contract checkpoint:
+
+```python
+KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"]
+RETIRED_FIRMWARE = ["hit_target", "feeder", "nIxo", "turret"]
+```
+
+
 ### Must standardize and migrate to `firmware/`
 
 | Current folder | Target folder | Why included | Main refactor focus |
@@ -113,6 +123,7 @@ This split matters because PlatformIO can compile all `.cpp` files in a selected
 | `firmware/go2_nixo/` | `firmware/go2_nixo/` | Active integrated hit/LED + Nixo relay path | Same as Go2 plus relay variant profiles and common relay pin helper. |
 | `firmware/boss_target/` | `firmware/boss_target/` | Runtime-configured boss target firmware | Replace duplicated NVS/Wi-Fi/OTA/topic utility code with common modules while keeping gameplay local. |
 | `firmware/heavy_blaster/` | `firmware/heavy_blaster/` | Runtime-configured heavy blaster firmware | Physical move complete; use common config/Wi-Fi/MQTT helpers and keep station/relay unlock domain code local. |
+| `firmware/station/` | `firmware/station/` | Fleet Dashboard `/demo` target Station firmware | Physical move complete; one generic image gets per-board station_id/Wi-Fi/MQTT in NVS over USB serial. |
 | `firmware/turret_fleet/` | `firmware/turret_fleet/` | Generic turret fleet firmware | Physical move complete; use common config/Wi-Fi/MQTT/OTA helpers and keep motion/fire safety local. |
 
 ### Shared utility migration
@@ -134,7 +145,7 @@ This split matters because PlatformIO can compile all `.cpp` files in a selected
 
 ## Current Implementation Checkpoint
 
-As of this branch, standardization is being done in safe, reversible slices. Go2, Go2-Nixo, Boss Target, Heavy Blaster, and Turret Fleet physical migrations are complete; remaining `src` PlatformIO envs are legacy/retirement surfaces.
+As of this branch, standardization is being done in safe, reversible slices. Go2, Go2-Nixo, Boss Target, Heavy Blaster, Station, and Turret Fleet physical migrations are complete; remaining `src` PlatformIO envs are legacy/retirement surfaces.
 
 Completed common-module extractions:
 
@@ -158,13 +169,14 @@ Completed active-firmware bridge work and first folder move:
 - `firmware/go2_nixo/` is physically moved and `platformio.ini`, `scripts/go2_nixo_config.py`, `scripts/go2_nixo/provision.py`, docs, variants, and tests now point at the new path.
 - `firmware/boss_target/` is physically moved and `platformio.ini`, `scripts/boss_target/provision.py`, `scripts/boss_target/mqtt_command.py`, CI workflow filters, docs, and tests now point at the new path.
 - `firmware/heavy_blaster/` is physically moved and `platformio.ini`, `scripts/heavy_blaster/provision.py`, `scripts/heavy_blaster/mqtt_command.py`, docs, and tests now point at the new path while product MQTT/OTA surfaces stay hyphenated as `heavy-blaster` / `heavy-blasters`.
+- `firmware/station/` is physically moved and `platformio.ini`, `scripts/station/provision.py`, `scripts/station/flash_and_provision.py`, CI workflow filters, docs, and tests now point at the new path while Fleet Dashboard `/demo` consumes `battlebang/devices/station/{station_id}/status`.
 - `firmware/turret_fleet/` is physically moved and `platformio.ini`, `scripts/turret_fleet/*`, CI workflow filters, docs, examples, profiles, pattern presets, and tests now point at the new path.
 
 Remaining work after this standardization slice:
 
 - No active firmware folder remains to move; the kept firmware families were migrated one firmware at a time into `firmware/<family>/`.
-- Release automation/channel publishing is aligned for Go2, Go2-Nixo, Heavy Blaster, Boss Target, and Turret Fleet.
-- Single-ESP bench upload/serial/MQTT validation has been completed by reflashing the same board sequentially for Go2, Go2-Nixo, Boss Target, Heavy Blaster, and Turret Fleet. This proves runtime NVS identity, stage routing, MQTT topics, and OTA plumbing; hardware-specific I/O still needs the matching fixture before declaring relays, servos, piezos, or LED strips physically validated.
+- Release automation/channel publishing is aligned for Go2, Go2-Nixo, Heavy Blaster, Boss Target, Station, and Turret Fleet.
+- Single-ESP bench upload/serial/MQTT validation has previously been completed by reflashing the same board sequentially for Go2, Go2-Nixo, Boss Target, Heavy Blaster, and Turret Fleet. Station now has the same software path and six-board USB provisioning helper, but physical Station upload/piezo/LED evidence is still pending on the actual fixtures.
 - Add `bb_esp_mqtt` only when a repeated PubSubClient JSON/device bus pattern is ready; do not add it as an empty abstraction.
 - Retire `hit_target`, `feeder`, `nIxo`, `turret`, and loose sketches in a dedicated cleanup after active references are removed.
 
@@ -304,7 +316,7 @@ Acceptance:
 Add `tests/python/test_firmware_template_contract.py` with an explicit kept-firmware list:
 
 ```python
-KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "turret_fleet"]
+KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"]
 RETIRED_FIRMWARE = ["hit_target", "feeder", "nIxo", "turret"]
 ```
 

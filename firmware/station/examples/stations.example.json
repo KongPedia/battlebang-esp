@@ -1,0 +1,10 @@
+{
+  "stations": [
+    { "station_id": "station_01", "serial_port": "/dev/cu.usbserial-110" },
+    { "station_id": "station_02", "serial_port": "/dev/cu.usbserial-120" },
+    { "station_id": "station_03", "serial_port": "/dev/cu.usbserial-130" },
+    { "station_id": "station_04", "serial_port": "/dev/cu.usbserial-140" },
+    { "station_id": "station_05", "serial_port": "/dev/cu.usbserial-150" },
+    { "station_id": "station_06", "serial_port": "/dev/cu.usbserial-160" }
+  ]
+}

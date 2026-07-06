@@ -1,0 +1,18 @@
+{
+  "firmware": "station",
+  "defaults": {
+    "firmware_app": "battlebang-station",
+    "firmware_hardware": "esp32dev-target-station-v1",
+    "station_id": "station_01",
+    "stage_id": "lit4f_260623",
+    "mqtt_root": "battlebang",
+    "ota_channel": "station",
+    "ota_public_manifest_url": "https://github.com/KongPedia/battlebang-esp/releases/download/station-latest/station-manifest.json"
+  },
+  "hardware_profile": {
+    "piezo_pin": 32,
+    "led_pin": 33,
+    "led_type": "WS2812B",
+    "color_order": "RGB"
+  }
+}

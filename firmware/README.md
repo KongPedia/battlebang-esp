@@ -19,6 +19,7 @@ firmware/
   go2_nixo/
   boss_target/
   heavy_blaster/
+  station/
   turret_fleet/
   <future_firmware>/
 
@@ -44,10 +45,10 @@ Agent-facing rules live in `firmware/AGENTS.md`, `lib/AGENTS.md`, `.github/workf
 
 ## Current branch status
 
-This branch is standardizing through common libraries first, then folder moves. `go2`, `go2_nixo`, `boss_target`, `heavy_blaster`, and `turret_fleet` have been physically moved to `firmware/`; active standardized firmware now lives under `firmware/` while legacy `src/` folders remain available for retirement work:
+This branch is standardizing through common libraries first, then folder moves. `go2`, `go2_nixo`, `boss_target`, `heavy_blaster`, `station`, and `turret_fleet` have been physically moved to `firmware/`; active standardized firmware now lives under `firmware/` while legacy `src/` folders remain available for retirement work:
 
 - `bb_esp_core`, `bb_esp_hw`, `bb_esp_net`, `bb_esp_ota`, and `bb_esp_nvs` exist under `lib/`.
-- `boss_target`, `heavy_blaster`, and `turret_fleet` have started using common Wi-Fi/NVS/OTA/topic helpers through thin firmware adapters.
+- `boss_target`, `heavy_blaster`, `station`, and `turret_fleet` have started using common Wi-Fi/NVS/OTA/topic helpers through thin firmware adapters.
 - `go2` and `go2_nixo` use common MQTT topic helpers, build-time `CommonRuntimeConfig` adapters, common JSON config apply/serialize helpers, and an NVS-backed runtime-config bridge that falls back to existing robot-profile/local-secret defaults when NVS is empty; `go2_nixo` uses the common relay pin helper.
 - `go2` and `go2_nixo` now expose serial/BT line commands for the NVS bridge: `show-status`, `show-config`, `provision {json}`, `config {json}`, and `clear-config`. `go2_nixo` also accepts those commands from the Jetson UART.
 - `scripts/go2/provision.py` and `scripts/go2_nixo/provision.py` generate the same standard runtime-config JSON shape from ignored `.env.*` files and send it over the firmware management command line; relay pin/timing values stay build/variant-time data.
@@ -56,6 +57,7 @@ This branch is standardizing through common libraries first, then folder moves. 
 - Go2-Nixo physical migration is complete: `platformio.ini`, `scripts/go2_nixo_config.py`, `scripts/go2_nixo/provision.py`, docs, variants, and tests now point at `firmware/go2_nixo/`.
 - Boss Target physical migration is complete: `platformio.ini`, `scripts/boss_target/provision.py`, `scripts/boss_target/mqtt_command.py`, CI workflow path filters, docs, and tests now point at `firmware/boss_target/`.
 - Heavy Blaster physical migration is complete: `platformio.ini`, `scripts/heavy_blaster/provision.py`, `scripts/heavy_blaster/mqtt_command.py`, docs, and tests now point at `firmware/heavy_blaster/`.
+- Station physical migration is complete: `platformio.ini`, `scripts/station/provision.py`, `scripts/station/flash_and_provision.py`, CI workflow path filters, docs, and tests now point at `firmware/station/`.
 - Turret Fleet physical migration is complete: `platformio.ini`, `scripts/turret_fleet/*`, CI workflow filters, docs, examples, profiles, and tests now point at `firmware/turret_fleet/`.
 
 ## Naming convention
@@ -92,6 +94,7 @@ These firmware folders should be refactored to, or kept on, the template/common-
 | `firmware/go2_nixo/` | `firmware/go2_nixo/` | Active integrated Go2 hit/LED + Nixo relay path; physical move complete. Relay variants remain firmware-specific data and relay GPIO helper uses `bb_esp_hw`. |
 | `firmware/boss_target/` | `firmware/boss_target/` | Active boss-stage target path; physical move complete. Uses common NVS/Wi-Fi/OTA/topic helpers through thin firmware adapters while gameplay remains local. |
 | `firmware/heavy_blaster/` | `firmware/heavy_blaster/` | Active heavy blaster station path; physical move complete. Product MQTT topics/OTA tags keep `heavy-blaster` while folder/script paths use snake_case. |
+| `firmware/station/` | `firmware/station/` | Active target Station path for Fleet Dashboard `/demo` tab `2`; one reusable image is USB-flashed/provisioned for six boards. |
 | `firmware/turret_fleet/` | `firmware/turret_fleet/` | Active generic turret fleet path; physical move complete. Motion/fire safety remains local while common NVS/Wi-Fi/OTA/topic helpers are composed from `bb_esp_*`. |
 
 Shared utility migration:
@@ -125,11 +128,12 @@ Active standardized OTA channels should be owned by the corresponding firmware f
 | `go2_nixo` relay 2ch | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `go2-nixo-2ch-v{version}` |
 | `boss_target` | `https://github.com/KongPedia/battlebang-esp/releases/download/boss-target-latest/boss-target-manifest.json` | `boss-target-v{version}` |
 | `heavy_blaster` | `https://github.com/KongPedia/battlebang-esp/releases/download/heavy-blaster-latest/heavy-blaster-manifest.json` | `heavy-blaster-v{version}` |
+| `station` | `https://github.com/KongPedia/battlebang-esp/releases/download/station-latest/station-manifest.json` | `station-v{version}` |
 | `turret_fleet` | `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json` | `turret-fleet-v{version}` |
 
-Go2, Go2-Nixo, Boss Target, Heavy Blaster, and Turret Fleet all use firmware-specific OTA manifest channels. `hit_target` is unused and should not be used as the reference OTA channel for new work.
+Go2, Go2-Nixo, Boss Target, Heavy Blaster, Station, and Turret Fleet all use firmware-specific OTA manifest channels. `hit_target` is unused and should not be used as the reference OTA channel for new work.
 The unified `Firmware OTA Releases` workflow covers all active firmware families and publishes these channels without using repo-wide `latest`. On `main` pushes it builds only the affected firmware matrix entries; firmware-specific folders select one family, `firmware/go2_nixo/**` selects both relay variants, and common `bb_esp_*` library changes select only firmware that actually depends on that library. Manual dispatch builds the full matrix for branch smoke/release validation.
-Host-only provisioning/MQTT helper changes under `scripts/boss_target/`, `scripts/go2/`, `scripts/go2_runtime/`, `scripts/go2_nixo/`, `scripts/heavy_blaster/`, or `scripts/turret_fleet/` do not trigger OTA release builds. Build-affecting extra scripts (`scripts/go2_config.py`, `scripts/go2_nixo_config.py`) and the shared manifest generator still trigger the relevant release job.
+Host-only provisioning/MQTT helper changes under `scripts/boss_target/`, `scripts/go2/`, `scripts/go2_runtime/`, `scripts/go2_nixo/`, `scripts/heavy_blaster/`, `scripts/station/`, or `scripts/turret_fleet/` do not trigger OTA release builds. Build-affecting extra scripts (`scripts/go2_config.py`, `scripts/go2_nixo_config.py`) and the shared manifest generator still trigger the relevant release job.
 
 ## Bench hardware validation IDs
 
@@ -160,6 +164,7 @@ Current convention:
 | `go2_nixo` | `device_id=go2_dev_01`, `robot_id=go2_dev_01`, `nixo_id=nixo_go2_dev_01` | Flash the matching relay variant (`esp32dev_go2_nixo`, `_1ch`, or `_2ch`), then provision with `scripts/go2_nixo/provision.py --robot-id go2_dev_01 --nixo-id nixo_go2_dev_01`. |
 | `boss_target` | `device_id=boss_target_dev_01`, `boss_id=boss_target_dev_01`, `target_id=boss_target_dev_01` | Current bench board was validated with this ID on `/dev/cu.usbserial-110`. |
 | `heavy_blaster` | `device_id=heavy_blaster_dev_01`, `blaster_id=heavy_blaster_dev_01` | Flash `esp32dev_heavy_blaster`, provision from `firmware/heavy_blaster/.env.heavy-blaster`, then smoke `battlebang/heavy-blasters/heavy_blaster_dev_01/command` with safe `status`/`reset` commands only. |
+| `station` | `device_id=station_01`, `station_id=station_01` through `station_06` | Flash `esp32dev_station` once per board, then provision with `scripts/station/flash_and_provision.py --station station_01=/dev/cu.usbserial-110 ...`. |
 | `turret_fleet` | `device_id=turret_dev_01`, `turret_id=turret_dev_01` | Reuse a physical pose/motion profile with `scripts/turret_fleet/provision.py build-config turret_dev_01 --profile-id turret_1 ...` (or the correct physical profile id for the connected turret). |
 
 For stage-scoped Command Center routing, set `stage_id` during provisioning
@@ -171,6 +176,7 @@ battlebang/devices/go2/go2_dev_01/status
 battlebang/hit/go2_dev_01/events
 battlebang/devices/heavy_blaster/heavy_blaster_dev_01/status
 battlebang/heavy-blasters/heavy_blaster_dev_01/status
+battlebang/devices/station/station_01/status
 battlebang/devices/turret/turret_dev_01/status
 battlebang/turrets/turret_dev_01/status
 ```

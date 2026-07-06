@@ -1,0 +1,13 @@
+{
+  "type": "provision",
+  "schema": 1,
+  "config_version": 1,
+  "configured": true,
+  "device_id": "station_01",
+  "station_id": "station_01",
+  "display_name": "Station 01",
+  "stage_id": "lit4f_260623",
+  "wifi": { "ssid": "YOUR_WIFI_SSID", "password": "YOUR_WIFI_PASSWORD", "auto_start": true },
+  "mqtt": { "host": "COMMAND_CENTER_IP_OR_DNS", "port": 1883, "root": "battlebang" },
+  "gameplay": { "lock_after_hit": true, "auto_reset_ms": 0 }
+}

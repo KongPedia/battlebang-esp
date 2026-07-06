@@ -10,6 +10,7 @@ The detailed migration plan is `firmware/MIGRATION_PLAN.md`; the composition tem
 | `../firmware/go2_nixo/` | `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/.env.go2_nixo` from example; identity/tuning stored in NVS | Active integrated hit/LED + Nixo relay fallback. Relay helper uses common library; relay pins/polarity/channel count remain build variants. |
 | `../firmware/boss_target/` | `esp32dev_boss_target` | `firmware/boss_target/.env.boss_target` from `.env.boss_target.example` | Active. Already moved to `firmware/boss_target/`; common helpers stay in `bb_esp_*` libraries and gameplay remains local. |
 | `../firmware/heavy_blaster/` | `esp32dev_heavy_blaster` | `firmware/heavy_blaster/.env.heavy-blaster` from `.env.heavy-blaster.example` | Active. Already moved to `firmware/heavy_blaster/`; keep station/relay unlock domain code local. |
+| `../firmware/station/` | `esp32dev_station` | `firmware/station/.env.station` from `.env.station.example` | Active. Target Station firmware for Fleet Dashboard `/demo` tab `2`; per-board `station_id` and Wi-Fi/MQTT are NVS-provisioned. |
 | `../firmware/turret_fleet/` | `esp32dev_turret_fleet` | `firmware/turret_fleet/.env.turret_fleet` from `.env.turret_fleet.example` | Active. Already moved to `firmware/turret_fleet/`; keep motion/fire safety local. |
 | `hit_target/` | `esp32dev_hit_target` | `src/hit_target/.env.hit_target` from `.env.hit_target.example` | Unused/retire. Do not standardize or use as template source. Preserve notes only if needed. |
 | `feeder/` | none / manual source | n/a | Legacy/disposable manual feeder sketch source. |
@@ -26,6 +27,7 @@ Some active firmware still builds from `src/` while common modules are introduce
 - `go2_nixo`: common relay pin helper adopted.
 - `boss_target`: physically moved to `firmware/boss_target/`; common NVS/Wi-Fi/topic/OTA manifest helpers are adopted through thin firmware adapters.
 - `heavy_blaster`: physically moved to `firmware/heavy_blaster/`; common NVS/Wi-Fi/topic helpers and real `bb_esp_ota` MQTT/direct/auto-poll OTA execution are adopted while station/relay unlock behavior remains local.
+- `station`: physically moved to `firmware/station/`; common NVS/Wi-Fi/topic/OTA helpers are adopted while first-hit lock and LED capture behavior remain local.
 - `turret_fleet`: physically moved to `firmware/turret_fleet/`; common NVS/Wi-Fi/topic/OTA helpers are adopted where applicable.
 
 ## Independence and common-module rules
@@ -59,6 +61,7 @@ Refactor these to the template/common-module model:
 - `firmware/go2_nixo/` — already moved
 - `firmware/boss_target/` — already moved
 - `firmware/heavy_blaster/` — already moved
+- `firmware/station/` — already moved
 - `firmware/turret_fleet/` — already moved
 
 Move shared relay safety helper:
@@ -82,4 +85,4 @@ Current active channels documented here:
 | `boss_target` | `https://github.com/KongPedia/battlebang-esp/releases/download/boss-target-latest/boss-target-manifest.json` | `boss-target-v{version}` |
 | `turret_fleet` | `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json` | `turret-fleet-v{version}` |
 
-Active OTA channels now include Go2, Go2-Nixo, Boss Target, Heavy Blaster, and Turret Fleet. `hit_target` is unused and should not drive future OTA policy.
+Active OTA channels now include Go2, Go2-Nixo, Boss Target, Heavy Blaster, Station, and Turret Fleet. `hit_target` is unused and should not drive future OTA policy.

@@ -14,6 +14,7 @@ on:
       - "firmware/go2/**"
       - "firmware/go2_nixo/**"
       - "firmware/heavy_blaster/**"
+      - "firmware/station/**"
       - "firmware/turret_fleet/**"
       - "scripts/firmware/make_release_manifest.py"
       - "scripts/go2_config.py"
@@ -164,6 +165,22 @@ jobs:
                   "version_tag_prefix": "heavy-blaster-v",
                   "stable_tag": "heavy-blaster-latest",
                   "paths": [r"^firmware/heavy_blaster/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+              },
+              {
+                  "id": "station",
+                  "env": "esp32dev_station",
+                  "app": "battlebang-station",
+                  "hardware": "esp32dev-target-station-v1",
+                  "channel": "station",
+                  "artifact_prefix": "battlebang-station",
+                  "manifest_name": "station-manifest.json",
+                  "version_header": "firmware/station/app/version_autogen.h",
+                  "version_macro": "BB_STATION_VERSION",
+                  "build_macro": "BB_STATION_BUILD",
+                  "git_macro": "BB_STATION_GIT_SHA",
+                  "version_tag_prefix": "station-v",
+                  "stable_tag": "station-latest",
+                  "paths": [r"^firmware/station/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "turret-fleet",
