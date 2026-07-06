@@ -63,6 +63,7 @@ bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
 bool hasPublishedStatusSnapshot = false;
 bool hasSentJetsonHpStatus = false;
+uint32_t jetsonInitialHpStatusAtMs = 0;
 uint16_t lastPublishedHpRemaining = 0;
 uint16_t lastPublishedMaxHits = 0;
 uint16_t lastPublishedAcceptedHitCount = 0;
@@ -82,6 +83,7 @@ String lastPublishedNixoLastFireSource;
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
+constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -852,6 +854,8 @@ static bool jetsonHpStatusChanged() {
 
 static void writeJetsonHpEvent(char event) {
   // ponytail: Jetson UART is a tiny machine protocol; never mix JSON/debug text into this TX path.
+  // ESP power/reset can leave a partial byte on Jetson RX; newline first resyncs Dora's line reader.
+  if (event == 'd' || event == 'r') JetsonSerial.write(static_cast<uint8_t>('\n'));
   JetsonSerial.write(static_cast<uint8_t>(event));
   JetsonSerial.write(static_cast<uint8_t>('\n'));
 }
@@ -865,6 +869,7 @@ static void sendJetsonHpStatus(const char* reason) {
 
 static void publishJetsonHpStatus() {
   if (!hasSentJetsonHpStatus) {
+    if ((int32_t)(millis() - jetsonInitialHpStatusAtMs) < 0) return;
     sendJetsonHpStatus("reset");
     return;
   }
@@ -1282,6 +1287,7 @@ void setup() {
   delay(200);
 
   JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
+  jetsonInitialHpStatusAtMs = millis() + JETSON_BOOT_RESET_DELAY_MS;
   SerialBT.begin(BT_NAME);
 
   postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
