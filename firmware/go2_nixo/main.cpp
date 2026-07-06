@@ -852,8 +852,12 @@ static bool jetsonHpStatusChanged() {
 
 static void writeJetsonHpEvent(char event) {
   // ponytail: Jetson UART is a tiny machine protocol; never mix JSON/debug text into this TX path.
-  JetsonSerial.write(static_cast<uint8_t>(event));
-  JetsonSerial.write(static_cast<uint8_t>('\n'));
+  // ESP power/reset can leave one garbage byte on Jetson RX; repeat idempotent state events so Dora resyncs.
+  const uint8_t repeats = (event == 'd' || event == 'r') ? 3 : 1;
+  for (uint8_t i = 0; i < repeats; ++i) {
+    JetsonSerial.write(static_cast<uint8_t>(event));
+    JetsonSerial.write(static_cast<uint8_t>('\n'));
+  }
 }
 
 static void sendJetsonHpStatus(const char* reason) {
