@@ -391,7 +391,6 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
 
 def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     main = (ROOT / f"firmware/{firmware_dir}/main.cpp").read_text()
-    compact_main = "".join(main.split())
     bar_header = (ROOT / f"firmware/{firmware_dir}/display/bar_display.h").read_text()
     bar_source = (ROOT / f"firmware/{firmware_dir}/display/bar_display.cpp").read_text()
     mqtt_header = (ROOT / f"firmware/{firmware_dir}/mqtt/hit_mqtt_client.h").read_text()
@@ -409,7 +408,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "applyLocalHit" in main
     assert "publishAdcHitEvent" in main
     assert "barDisplay.setLocalHpState" in main
-    assert 'publishDeviceStatusIfConnected(localHitState.down?"local_hit_down":"local_hit")' in compact_main
+    assert "publishDeviceStatusIfConnected(localHitState.down ? \"local_hit_down\" : \"local_hit\")" in main
     assert 'doc["accepted_hit_count"] = localHitState.acceptedHitCount;' in main
     assert 'doc["hp_remaining"] = localHitState.hpRemaining;' in main
     assert 'doc["max_hits"] = localHitState.maxHits;' in main
@@ -421,7 +420,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "syncLocalHitStateWithRuntimeConfig" in main
     assert "publishMqttReconnectStatus" in main
     assert "bool hasSeenMqttConnection = false;" in main
-    assert 'hasSeenMqttConnection?"mqtt_reconnected":"mqtt_connected"' in compact_main
+    assert 'hasSeenMqttConnection ? "mqtt_reconnected" : "mqtt_connected"' in main
 
     publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
         "static void updateAnalogDebugStats", 1
@@ -433,7 +432,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     )
 
     reset_function = main.split("static void resetLocalHitState()", 1)[1].split("static float localHpFillRatio", 1)[0]
-    assert "localHitState.maxHits=runtimeConfig.hit.maxHits" in "".join(reset_function.split())
+    assert "localHitState.maxHits = runtimeConfig.hit.maxHits" in reset_function
     assert "localHitState.hpRemaining = localHitState.maxHits;" in reset_function
     assert "localHitState.acceptedHitCount = 0;" in reset_function
     assert "localHitState.down = false;" in reset_function
@@ -469,7 +468,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
         assert 'doc["hp_reset"] = true;' in mqtt_source
         assert "pendingHpResetEvent" in main
         assert 'publishHpResetEventIfConnected("mqtt_reset")' in main
-        assert 'publishHpResetEventIfConnected(hasSeenMqttConnection?"mqtt_reconnected":"boot")' in compact_main
+        assert "publishHpResetEventIfConnected(hasSeenMqttConnection ? \"mqtt_reconnected\" : \"boot\")" in main
     assert "queueHitEvent" in mqtt_header
     assert "QueuedHitEvent" in mqtt_header
     assert "DynamicJsonDocument doc(MQTT_BUFFER_SIZE);" in mqtt_source
@@ -534,8 +533,7 @@ def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_fire_s
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
     ring_source = (ROOT / "firmware/go2_nixo/display/ring_display.cpp").read_text()
     nixo_fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
-    assert "ring LED is reserved for Nixo" in main
-    assert "never HP state" in main
+    assert "ring LED is reserved for Nixo ready/firing/inhibited state, never HP state" in main
     assert "ringDisplay.setCooldownState" in main
     assert "nixoFire.cooldownRemainingMs(now)" in main
     assert "nixoFire.cooldownDurationMs()" in main
@@ -543,7 +541,7 @@ def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_fire_s
     assert "cooldownStartedMs_" in nixo_fire_source
     assert 'nixoFire.stopFire("mqtt-hit-reset")' not in main
     bar_update_block = main.split("static void onBarDisplayUpdate", 1)[1].split("void setup()", 1)[0]
-    debug_override_block = bar_update_block.split("debugOverride", 1)[1]
+    debug_override_block = bar_update_block.split("if (!update.debugOverride) return;", 1)[1]
     assert "nixoFire.setFireInhibited" not in debug_override_block
     tick_block = nixo_fire_source.split("void NixoFireClient::tick", 1)[1].split(
         "bool NixoFireClient::configured", 1
@@ -668,7 +666,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
         assert "readHitTuningJson(root, next.hit);" in source, firmware
         assert 'hitObject["topic_prefix"] = hit.hitTopicPrefix;' in source, firmware
 
-        assert "staticvoidapplyAndPersistConfig(constString&json,constchar*source)" in "".join(main.split()), firmware
+        assert "static void applyAndPersistConfig(const String& json, const char* source)" in main, firmware
         assert "RuntimeConfig next = runtimeConfig;" in main, firmware
         assert "applyRuntimeConfigJson(json.c_str(), next, error)" in main, firmware
         assert "const bool saved = saveRuntimeConfigToNvs(next);" in main, firmware
@@ -692,7 +690,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "pollCommandStream(JetsonSerial, jetsonCommandLine, \"jetson\");" in go2_nixo_main
     assert 'return strcmp(source, "jetson") == 0;' in go2_nixo_main
     assert "reason=jetson_uart_required" in go2_nixo_main
-    assert 'lower=="x"||lower=="0"||lower=="stop-fire"||lower=="fireoff"' in "".join(go2_nixo_main.split())
+    assert 'lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off"' in go2_nixo_main
     assert "JETSON_FIRE_HOLD_TIMEOUT_MS = 300" in go2_nixo_main
     assert "jetsonFireHoldActive = true;" in go2_nixo_main
     assert "jetsonFireReleaseRequired" in go2_nixo_main
@@ -701,7 +699,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "reason=release_required" in go2_nixo_main
     assert "lastPublishedJetsonReleaseRequired" in go2_nixo_main
     assert "runtimeConfig.nixo.fireMaxDurationMs" in go2_nixo_main
-    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs,fireSource,true)" in "".join(go2_nixo_main.split())
+    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true)" in go2_nixo_main
     assert "isJetsonBufferedImmediateCommand" in go2_nixo_main
     assert "c == 'x' || c == '0'" in go2_nixo_main
     assert "nixo_relay2_readback" in go2_nixo_main
@@ -720,11 +718,11 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
     assert 'constexpr uint32_t JETSON_HP_STATUS_PERIOD_MS = 1000;' in go2_nixo_main
-    assert '"HP,%u,%u,%u"' in go2_nixo_main
-    assert 'static_cast<unsigned>(localHitState.hpRemaining)' in go2_nixo_main
-    assert 'static_cast<unsigned>(localHitState.maxHits)' in go2_nixo_main
-    assert 'localHitState.down ? 1U : 0U' in go2_nixo_main
-    assert 'JetsonSerial.println(line);' in go2_nixo_main
+    assert 'doc["type"] = "hp_status";' in go2_nixo_main
+    assert 'doc["transport"] = "uart";' in go2_nixo_main
+    assert 'doc["hp_remaining"] = localHitState.hpRemaining;' in go2_nixo_main
+    assert 'doc["down"] = localHitState.down;' in go2_nixo_main
+    assert 'JetsonSerial.println(out);' in go2_nixo_main
     assert 'sendJetsonHpStatus(hasSentJetsonHpStatus ? "state_changed" : "boot", now);' in go2_nixo_main
     assert 'sendJetsonHpStatus("heartbeat", now);' in go2_nixo_main
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
@@ -928,7 +926,7 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "void NixoFireClient::beginStopSequence(uint32_t now)" in fire_source
     assert "immediate_flywheel=%s" in fire_source
     assert "startFire(durationMs, source, false)" in fire_source
-    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs,fireSource,true)" in "".join(main.split())
+    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true)" in main
     assert 'return "flywheel_spindown";' in fire_source
     assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
