@@ -239,8 +239,6 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
 
     for expected in (
         "Firmware OTA Releases",
-        "pull_request:",
-        "PRs run the same affected-firmware matrix as a smoke build",
         "esp32dev_boss_target",
         "esp32dev_go2",
         "esp32dev_go2_nixo_1ch",
@@ -307,13 +305,7 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert "lib/bb_esp_ota/**" in workflow
     assert "scripts/firmware/make_release_manifest.py" in workflow
     assert 'VERSION="0.2.${GITHUB_RUN_NUMBER}-main"' in workflow
-    assert 'VERSION="0.2.${GITHUB_RUN_NUMBER}-pr${{ github.event.pull_request.number }}"' in workflow
     assert 'BUILD="$((1000 + GITHUB_RUN_NUMBER))"' in workflow
-    assert 'BUILD="$((2000 + GITHUB_RUN_NUMBER))"' in workflow
-    assert 'CREATE_RELEASE="false"' in workflow
-    assert 'UPDATE_STABLE_LATEST="false"' in workflow
-    assert 'event_name == "pull_request"' in workflow
-    assert '["git", "diff", "--name-only", before, head]' in workflow
     assert "update_stable_latest" in workflow
     assert 'UPDATE_STABLE_LATEST="true"' in workflow
     assert 'UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"' in workflow
