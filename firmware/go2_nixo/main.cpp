@@ -55,6 +55,7 @@ bool pendingMqttOta = false;
 bool pendingHpResetEvent = true;
 bool postOtaReboot = false;
 uint32_t lastDeviceStatusMs = 0;
+uint32_t lastJetsonHpStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 bool lastMqttConnected = false;
 bool hasSeenMqttConnection = false;
@@ -62,10 +63,15 @@ bool jetsonFireHoldActive = false;
 bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
 bool hasPublishedStatusSnapshot = false;
+bool hasSentJetsonHpStatus = false;
 uint16_t lastPublishedHpRemaining = 0;
 uint16_t lastPublishedMaxHits = 0;
 uint16_t lastPublishedAcceptedHitCount = 0;
 bool lastPublishedDown = false;
+uint16_t lastJetsonHpRemaining = 0;
+uint16_t lastJetsonMaxHits = 0;
+uint16_t lastJetsonAcceptedHitCount = 0;
+bool lastJetsonDown = false;
 bool lastPublishedNixoFiring = false;
 bool lastPublishedFireInhibited = false;
 bool lastPublishedJetsonHoldActive = false;
@@ -826,6 +832,52 @@ static bool statusStateChanged() {
          lastPublishedNixoLastFireSource != nixoFire.lastFireSource();
 }
 
+static void rememberJetsonHpStatusSnapshot(uint32_t now) {
+  hasSentJetsonHpStatus = true;
+  lastJetsonHpStatusMs = now;
+  lastJetsonHpRemaining = localHitState.hpRemaining;
+  lastJetsonMaxHits = localHitState.maxHits;
+  lastJetsonAcceptedHitCount = localHitState.acceptedHitCount;
+  lastJetsonDown = localHitState.down;
+}
+
+static bool jetsonHpStatusChanged() {
+  if (!hasSentJetsonHpStatus) return true;
+  return lastJetsonHpRemaining != localHitState.hpRemaining ||
+         lastJetsonMaxHits != localHitState.maxHits ||
+         lastJetsonAcceptedHitCount != localHitState.acceptedHitCount ||
+         lastJetsonDown != localHitState.down;
+}
+
+static void sendJetsonHpStatus(const char* reason, uint32_t now) {
+  // ponytail: single-byte events avoid long UART frames on Jetson GPIO; h=hit, d=dead, r=reset/restored.
+  const bool isDead = localHitState.down || localHitState.hpRemaining == 0;
+  const bool isHit = strcmp(reason, "hit") == 0;
+  JetsonSerial.println(isDead ? "d" : (isHit ? "h" : "r"));
+  rememberJetsonHpStatusSnapshot(now);
+}
+
+static void publishJetsonHpStatus(uint32_t now) {
+  if (!hasSentJetsonHpStatus) {
+    sendJetsonHpStatus("reset", now);
+    return;
+  }
+  const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;
+  const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;
+  const bool isDead = localHitState.down || localHitState.hpRemaining == 0;
+  if (hpDecreased) {
+    sendJetsonHpStatus(isDead ? "dead" : "hit", now);
+    return;
+  }
+  if (!isDead && (hpIncreased || lastJetsonDown)) {
+    sendJetsonHpStatus("reset", now);
+    return;
+  }
+  if (jetsonHpStatusChanged()) {
+    rememberJetsonHpStatusSnapshot(now);
+  }
+}
+
 static bool publishHpResetEventIfConnected(const char* reason) {
   if (!hitMqtt.connected()) {
     pendingHpResetEvent = true;
@@ -1306,6 +1358,7 @@ void loop() {
   barDisplay.tick(now);
   ringDisplay.tick(now);
 
+  publishJetsonHpStatus(now);
   hitMqtt.tick(now, barDisplay.remoteDisplayActive());
   publishMqttReconnectStatus(now);
   processPendingMqttManagement();

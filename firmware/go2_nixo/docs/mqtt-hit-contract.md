@@ -122,6 +122,30 @@ or `firing`. The ESP publishes device status immediately with
 `reason=state_changed` when HP/down or Nixo state changes, and also on the normal
 heartbeat.
 
+## ESP -> Jetson: UART HP status
+
+The ESP sends newline-delimited `hp_status` JSON on Jetson UART2 on boot, HP
+state changes, and a 1s heartbeat. The ESP does not wait for ACKs or track
+whether Jetson consumed the line. Jetson owns any downstream behavior, including
+local Go2 `damp` when `hp_remaining` reaches `0`.
+
+```json
+{
+  "schema_version": 1,
+  "type": "hp_status",
+  "event": "hp_status",
+  "transport": "uart",
+  "reason": "state_changed",
+  "robot_id": "go2_05",
+  "hp_remaining": 0,
+  "max_hits": 14,
+  "down": true,
+  "accepted_hit_count": 14,
+  "last_hit_sequence": 14,
+  "uptime_ms": 123456
+}
+```
+
 ## Command Center -> ESP: ring_display reset/debug compatibility
 
 The MQTT topic and field names stay legacy `ring_display`/`ring_*`, but BTB-779 ESP firmware ignores normal per-hit commands. Command Center may send this only with `reset_hit_state=true` or `debug_override=true` / `maintenance_override=true`.

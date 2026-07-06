@@ -123,6 +123,10 @@ keepalive packets stop, ESP fails safe after `300 ms`. Holding past the max fire
 duration requires release/re-press before ESP will start another UART fire. USB/BT keep non-fire
 bench/debug commands only.
 
+The ESP also emits unsolicited Jetson UART2 single-byte HP events: `h` when HP
+decreases, `d` when HP reaches zero/dead, and `r` when HP resets/restores. This
+is fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
+
 ```json
 {
   "schema_version": 1,

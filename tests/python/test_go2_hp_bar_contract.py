@@ -717,6 +717,12 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "lastPublishedNixoState" in go2_nixo_main
     assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
+    assert 'JetsonSerial.println(isDead ? "d" : (isHit ? "h" : "r"));' in go2_nixo_main
+    assert 'if (!hasSentJetsonHpStatus) {' in go2_nixo_main
+    assert 'sendJetsonHpStatus("reset", now);' in go2_nixo_main
+    assert 'const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;' in go2_nixo_main
+    assert 'const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;' in go2_nixo_main
+    assert 'sendJetsonHpStatus(isDead ? "dead" : "hit", now);' in go2_nixo_main
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
     assert 'return "ready";' in nixo_fire_source
     assert '"flywheel_spinup"' in nixo_fire_source
