@@ -16,6 +16,7 @@ constexpr size_t kPayloadLimit = 8192;
 constexpr unsigned long kMqttRetryMs = 5000;
 constexpr unsigned long kStatusChangeCheckMs = 200;
 constexpr size_t kStatusDocCapacity = 4096;
+constexpr uint16_t kMqttSocketTimeoutSeconds = 1;
 constexpr const char* kOtaRebootNamespace = "bb_station";
 constexpr const char* kOtaRebootKey = "ota_reboot";
 
@@ -37,6 +38,7 @@ void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManage
   store_ = &store;
   wifi_ = &wifi;
   station_ = &station;
+  client_.setSocketTimeout(kMqttSocketTimeoutSeconds);
   client_.setBufferSize(kPayloadLimit);
   client_.setKeepAlive(30);
   client_.setCallback([this](char* topic, byte* payload, unsigned int length) {
