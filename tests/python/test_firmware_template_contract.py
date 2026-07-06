@@ -25,6 +25,11 @@ KEPT_FIRMWARE = {
         "target": "firmware/heavy_blaster/",
         "env_hint": "esp32dev_heavy_blaster",
     },
+    "station": {
+        "src": "firmware/station",
+        "target": "firmware/station/",
+        "env_hint": "esp32dev_station",
+    },
     "turret_fleet": {
         "src": "firmware/turret_fleet",
         "target": "firmware/turret_fleet/",
@@ -67,7 +72,7 @@ def test_template_scope_pins_kept_and_retired_firmware_lists() -> None:
     ):
         assert forbidden not in platformio
 
-    assert 'KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "turret_fleet"]' in migration
+    assert 'KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"]' in migration
     assert 'RETIRED_FIRMWARE = ["hit_target", "feeder", "nIxo", "turret"]' in migration
 
     for name, data in KEPT_FIRMWARE.items():
@@ -95,7 +100,7 @@ def test_firmware_root_has_migrated_families_so_far() -> None:
         for path in (ROOT / "firmware").iterdir()
         if path.is_dir() and path.name != "_template"
     }
-    assert firmware_dirs == {"go2", "go2_nixo", "boss_target", "heavy_blaster", "turret_fleet"}
+    assert firmware_dirs == {"go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"}
 
     docs = read("firmware/README.md") + read("firmware/MIGRATION_PLAN.md")
     assert "Go2 physical migration is complete" in docs
@@ -239,23 +244,27 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "esp32dev_go2_nixo_1ch",
         "esp32dev_go2_nixo_2ch",
         "esp32dev_heavy_blaster",
+        "esp32dev_station",
         "esp32dev_turret_fleet",
         "boss-target-manifest.json",
         "go2-manifest.json",
         "go2-nixo-1ch-manifest.json",
         "go2-nixo-2ch-manifest.json",
         "heavy-blaster-manifest.json",
+        "station-manifest.json",
         "manifest.json",
         "boss-target-latest",
         "go2-latest",
         "go2-nixo-1ch-latest",
         "go2-nixo-2ch-latest",
         "heavy-blaster-latest",
+        "station-latest",
         "turret-fleet-latest",
         "BB_BOSS_TARGET_VERSION",
         "BB_GO2_VERSION",
         "BB_GO2_NIXO_VERSION",
         "BB_HEAVY_BLASTER_VERSION",
+        "BB_STATION_VERSION",
         "BB_TURRET_FLEET_VERSION",
         "scripts/firmware/make_release_manifest.py",
         "scripts/go2_config.py",
@@ -273,6 +282,7 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         '"scripts/boss_target/**"',
         '"scripts/go2_nixo/**"',
         '"scripts/heavy_blaster/**"',
+        '"scripts/station/**"',
         '"scripts/turret_fleet/**"',
     ):
         assert host_only_script_path not in workflow
@@ -281,12 +291,14 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert 'r"^firmware/go2/"' in workflow
     assert 'r"^firmware/go2_nixo/"' in workflow
     assert 'r"^firmware/heavy_blaster/"' in workflow
+    assert 'r"^firmware/station/"' in workflow
     assert 'r"^firmware/turret_fleet/"' in workflow
     assert 'r"^lib/bb_esp_hw/"' in workflow
     assert 'r"^lib/bb_esp_net/"' in workflow
     assert '"paths": [r"^firmware/go2/", r"^scripts/go2_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
     assert '"paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
     assert '"paths": [r"^firmware/heavy_blaster/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
+    assert '"paths": [r"^firmware/station/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
 
     assert "lib/bb_esp_core/**" in workflow
     assert "lib/bb_esp_nvs/**" in workflow
