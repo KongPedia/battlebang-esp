@@ -38,7 +38,7 @@ class HitMqttClient {
   void begin(BarDisplayHandler barHandler);
   void begin(const RuntimeConfig& config, BarDisplayHandler barHandler);
   void setManagementHandlers(ManagementMessageHandler configHandler, ManagementMessageHandler otaHandler);
-  void tick(uint32_t now, bool remoteDisplayActive);
+  void tick(uint32_t now, bool remoteDisplayActive, bool allowNetworkIo = true);
   bool configured() const;
   bool connected();
   bool publishHitEvent(int targetId,

@@ -939,6 +939,37 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "cooldownStartedMs_ = 0;" not in stop_block
 
 
+def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    hit_header = (ROOT / "firmware/go2_nixo/mqtt/hit_mqtt_client.h").read_text()
+    hit_source = (ROOT / "firmware/go2_nixo/mqtt/hit_mqtt_client.cpp").read_text()
+    fire_header = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    fire_source = (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.cpp").read_text()
+
+    assert "void tickLocal(uint32_t now);" in fire_header
+    assert "void tickNetwork(uint32_t now);" in fire_header
+    assert "void NixoFireClient::tickLocal(uint32_t now)" in fire_source
+    assert "void NixoFireClient::tickNetwork(uint32_t now)" in fire_source
+    assert "mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);" in fire_source
+    assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in fire_source
+    assert "void tick(uint32_t now, bool remoteDisplayActive, bool allowNetworkIo = true);" in hit_header
+    assert "if (!allowNetworkIo) return;" in hit_source
+    assert "mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);" in hit_source
+    assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in hit_source
+
+    assert "FIRE_NETWORK_QUIET_MS = 250" in main
+    assert "markNetworkQuietForFireStop(now);" in main
+    assert "shouldDeferNetworkForFire(now)" in main
+    assert "nixoFire.tickLocal(now);" in main
+    assert "nixoFire.tickNetwork(now);" in main
+    local_index = main.index("nixoFire.tickLocal(now);")
+    defer_index = main.index("const bool deferNetworkForFire = shouldDeferNetworkForFire(now);")
+    network_index = main.index("nixoFire.tickNetwork(now);")
+    assert local_index < defer_index < network_index
+    assert "hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);" in main
+    assert "publishStateChangeDeviceStatus(now);" in main[network_index:]
+
+
 def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     defaults = json.loads((ROOT / "firmware/go2_nixo/hardware_profile.json").read_text())["defaults"]
     relay_1ch = json.loads((ROOT / "firmware/go2_nixo/variants/relay_1ch/config.json").read_text())

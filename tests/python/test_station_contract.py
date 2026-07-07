@@ -135,6 +135,37 @@ def test_station_controller_locks_after_first_hit_and_reset_unlocks() -> None:
     assert 'station["active"] = captured_;' in controller
 
 
+def test_station_services_capture_and_led_before_network_io() -> None:
+    main = read("firmware/station/main.cpp")
+    controller_h = read("firmware/station/station/station_controller.h")
+    controller = read("firmware/station/station/station_controller.cpp")
+    bus_h = read("firmware/station/mqtt/mqtt_bus.h")
+    bus = read("firmware/station/mqtt/mqtt_bus.cpp")
+
+    assert "bool deferAutomaticStatusWhileArmed() const;" in controller_h
+    assert "return config_.configured && mode_ == Mode::WAITING && !captured_;" in controller
+    assert "void loop(bool deferAutomaticStatus = false);" in bus_h
+    assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in bus
+    assert "if (connectIfNeeded()) client_.loop();" in bus
+    assert "if (deferAutomaticStatus) return;" in bus
+    assert bus.index("if (connectIfNeeded()) client_.loop();") < bus.index("if (deferAutomaticStatus) return;")
+
+    loop_body = main.split("void loop()", 1)[1]
+    sensor_index = loop_body.index("stationController.loop(now);")
+    network_index = loop_body.index("if (networkStarted) {")
+    assert sensor_index < network_index
+    assert "const bool deferAutomaticStatus = stationController.deferAutomaticStatusWhileArmed();" in main
+    assert "wifi.loop(config);" in main
+    assert "mqtt.loop(deferAutomaticStatus);" in main
+    assert "flushPendingMqttStatusIfConnected();" in main
+    assert loop_body.index("flushPendingMqttStatusIfConnected();") < loop_body.index("mqtt.loop(deferAutomaticStatus);")
+    assert "pollConfiguredOta();" in main
+    assert "if (!deferAutomaticStatus) pollConfiguredOta();" not in main
+    assert "void publishMqttStatusNowIfConnected(const char* reason)" in main
+    assert 'publishMqttStatusNowIfConnected("ota_downloading");' in main
+    assert 'publishMqttStatusNowIfConnected(result.ok ? "ota_rebooting" : "ota_failed");' in main
+
+
 def test_station_mqtt_matches_fleet_dashboard_demo_station_contract() -> None:
     topics = read("firmware/station/mqtt/topics.cpp")
     bus = read("firmware/station/mqtt/mqtt_bus.cpp")

@@ -70,6 +70,10 @@ bool StationController::isSafeForOta() const {
   return mode_ == Mode::UNCONFIGURED || mode_ == Mode::WAITING || mode_ == Mode::CAPTURED || mode_ == Mode::OTA_PREPARED;
 }
 
+bool StationController::deferAutomaticStatusWhileArmed() const {
+  return config_.configured && mode_ == Mode::WAITING && !captured_;
+}
+
 void StationController::loop(uint32_t now) {
   if (mode_ != Mode::OTA_PREPARED) pollSensor(now);
   if (captured_ && config_.gameplay.autoResetMs > 0 && now - capturedAtMs_ >= config_.gameplay.autoResetMs) {

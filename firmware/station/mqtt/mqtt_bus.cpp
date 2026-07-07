@@ -38,6 +38,7 @@ void MqttBus::begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManage
   store_ = &store;
   wifi_ = &wifi;
   station_ = &station;
+  wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);
   client_.setSocketTimeout(kMqttSocketTimeoutSeconds);
   client_.setBufferSize(kPayloadLimit);
   client_.setKeepAlive(30);
@@ -58,10 +59,11 @@ bool MqttBus::connected() {
   return client_.connected();
 }
 
-void MqttBus::loop() {
+void MqttBus::loop(bool deferAutomaticStatus) {
   if (config_ == nullptr || wifi_ == nullptr) return;
   if (!wifi_->connected()) return;
   if (connectIfNeeded()) client_.loop();
+  if (deferAutomaticStatus) return;
   const unsigned long now = millis();
   if (station_ != nullptr && now - lastStatusChangeCheckMs_ >= kStatusChangeCheckMs) {
     lastStatusChangeCheckMs_ = now;
