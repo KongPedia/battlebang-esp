@@ -189,6 +189,8 @@ def test_ota_transport_lives_in_bb_esp_ota_not_per_firmware_copy_paste() -> None
     assert "#include <Update.h>" in source
     assert "#include <WiFiClientSecure.h>" in source
     assert "secureClient.setCACert(kGithubReleaseRootCaPem)" in source
+    assert "release-assets.githubusercontent.com" in source
+    assert source.count("-----BEGIN CERTIFICATE-----") >= 2
     assert "Update.write(buffer, bytesRead)" in source
     assert "sha256 mismatch" in source
     assert "HTTP update" in library
