@@ -14,6 +14,8 @@ class NixoFireClient {
   void begin();
   void begin(const RuntimeConfig& config);
   void tick(uint32_t now);
+  void tickLocal(uint32_t now);
+  void tickNetwork(uint32_t now);
   bool configured() const;
   bool connected();
   void setFireInhibited(bool inhibited);

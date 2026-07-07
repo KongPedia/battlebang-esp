@@ -79,10 +79,12 @@ bool lastPublishedJetsonReleaseRequired = false;
 const char* lastPublishedNixoState = "";
 String lastPublishedNixoActiveSource;
 String lastPublishedNixoLastFireSource;
+uint32_t fireNetworkQuietUntilMs = 0;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
+constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
 constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
@@ -567,7 +569,23 @@ static bool sourceCanFire(const char* source) {
   return strcmp(source, "jetson") == 0;
 }
 
+static void markNetworkQuietForFire(uint32_t now, uint32_t quietMs = FIRE_NETWORK_QUIET_MS) {
+  const uint32_t until = now + quietMs;
+  if ((int32_t)(until - fireNetworkQuietUntilMs) > 0) fireNetworkQuietUntilMs = until;
+}
+
+static void markNetworkQuietForFireStop(uint32_t now) {
+  const uint32_t relaySettleMs = NIXO_RELAY2_ENABLED_VALUE ? runtimeConfig.nixo.relayDelay1Ms : 0;
+  markNetworkQuietForFire(now, relaySettleMs + FIRE_NETWORK_QUIET_MS);
+}
+
+static bool shouldDeferNetworkForFire(uint32_t now) {
+  if (jetsonFireHoldActive || jetsonFireReleaseRequired) return true;
+  return (int32_t)(fireNetworkQuietUntilMs - now) > 0;
+}
+
 static void stopNixoFireCommand(const char* source) {
+  markNetworkQuietForFireStop(millis());
   jetsonFireHoldActive = false;
   jetsonFireReleaseRequired = false;
   nixoFire.stopFire(source);
@@ -618,18 +636,21 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     bool accepted = false;
     if (jetsonFireReleaseRequired) {
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
       Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required\n", source, fireSource);
       return;
     }
     if (wasFiring && !jetsonFireHoldActive) {
       jetsonFireReleaseRequired = true;
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
       Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=non_jetson_fire_active\n", source, fireSource);
       return;
     }
     if (jetsonFireHoldActive && !wasFiring) {
       jetsonFireReleaseRequired = true;
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
       Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required_after_duration\n", source, fireSource);
       return;
     }
@@ -643,6 +664,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
       jetsonFireHoldActive = true;
       jetsonFireReleaseRequired = false;
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
     }
     Serial.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
                   accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
@@ -1198,6 +1220,7 @@ static void updateJetsonFireHold(uint32_t now) {
   jetsonFireHoldActive = false;
   jetsonFireReleaseRequired = false;
   if (nixoFire.isFiring()) {
+    markNetworkQuietForFireStop(now);
     nixoFire.stopFire("jetson-hold-timeout");
   }
 }
@@ -1370,7 +1393,7 @@ void loop() {
   // Command Center/MQTT is offline, so service local paths before network IO.
   pollCommands();
   pollAnalogPiezo(now);
-  nixoFire.tick(now);
+  nixoFire.tickLocal(now);
   updateJetsonFireHold(now);
   ringDisplay.setCooldownState(nixoFire.isFiring(),
                                nixoFire.cooldownRemainingMs(now),
@@ -1380,12 +1403,16 @@ void loop() {
   ringDisplay.tick(now);
 
   publishJetsonHpStatus();
-  hitMqtt.tick(now, barDisplay.remoteDisplayActive());
-  publishMqttReconnectStatus(now);
-  processPendingMqttManagement();
-  publishStateChangeDeviceStatus(now);
-  publishPeriodicDeviceStatus(now);
-  pollConfiguredOta(now);
+  const bool deferNetworkForFire = shouldDeferNetworkForFire(now);
+  if (!deferNetworkForFire) {
+    nixoFire.tickNetwork(now);
+    hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);
+    publishMqttReconnectStatus(now);
+    processPendingMqttManagement();
+    publishStateChangeDeviceStatus(now);
+    publishPeriodicDeviceStatus(now);
+    pollConfiguredOta(now);
+  }
 
   delay(1);
 }

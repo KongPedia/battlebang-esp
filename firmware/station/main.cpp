@@ -44,13 +44,34 @@ bool postOtaReboot = false;
 uint32_t lastSerialHeartbeatMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
 String serialLine;
+String pendingMqttStatusReason;
+bool pendingMqttStatus = false;
 
 constexpr uint32_t SERIAL_STATUS_PERIOD_MS = 10000;
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_station";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
 void publishMqttStatusIfConnected(const char* reason) {
-  if (mqttStarted && mqtt.connected()) mqtt.publishStatus(reason);
+  pendingMqttStatusReason = reason == nullptr ? "state_changed" : reason;
+  pendingMqttStatus = true;
+}
+
+void flushPendingMqttStatusIfConnected() {
+  if (!pendingMqttStatus) return;
+  if (!mqttStarted || !mqtt.connected()) return;
+  const String reason = pendingMqttStatusReason;
+  pendingMqttStatus = false;
+  pendingMqttStatusReason = "";
+  mqtt.publishStatus(reason.c_str());
+}
+
+void publishMqttStatusNowIfConnected(const char* reason) {
+  flushPendingMqttStatusIfConnected();
+  if (!mqttStarted || !mqtt.connected()) {
+    publishMqttStatusIfConnected(reason);
+    return;
+  }
+  mqtt.publishStatus(reason == nullptr ? "state_changed" : reason);
 }
 
 void printStatusJson(const char* reason, const char* eventName = "status", uint16_t peak = 0, const char* source = "state") {
@@ -203,14 +224,14 @@ void checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterA
   Serial.print(source);
   Serial.print(' ');
   Serial.println(battlebang::esp::ota::manifestSummary(manifest));
-  publishMqttStatusIfConnected("ota_downloading");
+  publishMqttStatusNowIfConnected("ota_downloading");
   stationController.prepareForOta();
   battlebang::esp::ota::OtaResult result = battlebang::esp::ota::runHttpOta(manifest);
   Serial.print("[station][ota] result ok=");
   Serial.print(result.ok ? "yes" : "no");
   Serial.print(" message=");
   Serial.println(result.message);
-  publishMqttStatusIfConnected(result.ok ? "ota_rebooting" : "ota_failed");
+  publishMqttStatusNowIfConnected(result.ok ? "ota_rebooting" : "ota_failed");
   if (result.ok) {
     battlebang::esp::ota::writeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY, true);
     delay(500);
@@ -404,15 +425,19 @@ void setup() {
 void loop() {
   const uint32_t now = millis();
   pollSerial();
-  if (!networkStarted && config.networkAutoStart && now >= config.networkStartDelayMs) startNetwork("delayed_auto_start");
-  if (networkStarted) {
-    wifi.loop(config);
-    if (mqttStarted) mqtt.loop();
-    pollConfiguredOta();
-  }
   stationController.loop(now);
   if (now - lastSerialHeartbeatMs >= SERIAL_STATUS_PERIOD_MS) {
     lastSerialHeartbeatMs = now;
     printStatusJson("serial_heartbeat", "status");
+  }
+  if (!networkStarted && config.networkAutoStart && now >= config.networkStartDelayMs) startNetwork("delayed_auto_start");
+  if (networkStarted) {
+    const bool deferAutomaticStatus = stationController.deferAutomaticStatusWhileArmed();
+    wifi.loop(config);
+    if (mqttStarted) {
+      flushPendingMqttStatusIfConnected();
+      mqtt.loop(deferAutomaticStatus);
+    }
+    pollConfiguredOta();
   }
 }

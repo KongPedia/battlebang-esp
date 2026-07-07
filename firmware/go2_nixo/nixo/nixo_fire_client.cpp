@@ -12,6 +12,8 @@ NixoFireClient* NixoFireClient::instance_ = nullptr;
 
 namespace {
 
+constexpr uint16_t kMqttSocketTimeoutSeconds = 1;
+
 void copyStringOrWarn(const char* label, const String& value, char* buffer, size_t length) {
   if (!battlebang::esp::config::copyToFixedBuffer(value, buffer, length)) {
     Serial.printf("[CONFIG] %s truncated length=%u capacity=%u\n",
@@ -67,6 +69,8 @@ void NixoFireClient::begin(const RuntimeConfig& config) {
   mqttClient_.setServer(mqttHost_, mqttPort_);
   mqttClient_.setCallback(NixoFireClient::mqttMessageCallback);
   mqttClient_.setBufferSize(NIXO_MQTT_BUFFER_SIZE);
+  mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);
+  wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);
   instance_ = this;
 
   Serial.printf("[NIXO] integrated id=%s topic=%s broker=%s:%u relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
@@ -91,8 +95,16 @@ void NixoFireClient::begin(const RuntimeConfig& config) {
 }
 
 void NixoFireClient::tick(uint32_t now) {
-  // Relay timing is a local safety/UX path and must not wait behind MQTT reconnect attempts.
+  tickLocal(now);
+  tickNetwork(now);
+}
+
+void NixoFireClient::tickLocal(uint32_t now) {
+  // Relay timing is a local safety/UX path and must never wait behind MQTT reconnect attempts.
   updateFireSequence(now);
+}
+
+void NixoFireClient::tickNetwork(uint32_t now) {
   ensureMqttConnected(now);
   if (mqttClient_.connected()) {
     mqttClient_.loop();

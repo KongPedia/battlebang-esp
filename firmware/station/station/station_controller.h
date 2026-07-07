@@ -28,6 +28,7 @@ class StationController {
   void prepareForOta();
   void recoverFromFailedOta(const char* source);
   bool isSafeForOta() const;
+  bool deferAutomaticStatusWhileArmed() const;
 
   void appendStatus(JsonObject obj) const;
   String statusSignature() const;

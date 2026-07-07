@@ -12,6 +12,8 @@ HitMqttClient* HitMqttClient::instance_ = nullptr;
 
 namespace {
 
+constexpr uint16_t kMqttSocketTimeoutSeconds = 1;
+
 uint16_t macSuffix() {
   return static_cast<uint16_t>(ESP.getEfuseMac() & 0xFFFF);
 }
@@ -96,7 +98,9 @@ void HitMqttClient::begin(const RuntimeConfig& config, BarDisplayHandler barHand
   int clientIdLength = snprintf(clientId_, sizeof(clientId_), "battlebang-hit-%s-%s-%s", robotId_, FIRMWARE_NAME, suffix);
   warnIfFormatTruncated("mqtt.client_id", clientIdLength, sizeof(clientId_));
   mqttClient_.setBufferSize(MQTT_BUFFER_SIZE);
+  mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);
   mqttClient_.setCallback(HitMqttClient::mqttMessageCallback);
+  wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);
   instance_ = this;
 
   if (!configured()) return;
@@ -107,7 +111,8 @@ void HitMqttClient::begin(const RuntimeConfig& config, BarDisplayHandler barHand
   ensureWiFiConnected(millis());
 }
 
-void HitMqttClient::tick(uint32_t now, bool remoteDisplayActive) {
+void HitMqttClient::tick(uint32_t now, bool remoteDisplayActive, bool allowNetworkIo) {
+  if (!allowNetworkIo) return;
   ensureWiFiConnected(now);
   ensureMqttConnected(now);
   if (!mqttClient_.connected()) return;
