@@ -464,6 +464,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     if firmware_dir == "go2_nixo":
         assert "publishHpResetEvent" in mqtt_header
         assert 'doc["event_type"] = "hp_reset";' in mqtt_source
+        assert 'doc["sensor_id"] = "hit_ring";' in mqtt_source
         assert 'doc["reset_hit_state"] = true;' in mqtt_source
         assert 'doc["hp_reset"] = true;' in mqtt_source
         assert "pendingHpResetEvent" in main

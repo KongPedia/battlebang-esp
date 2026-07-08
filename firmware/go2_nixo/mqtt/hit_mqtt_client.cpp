@@ -235,6 +235,7 @@ bool HitMqttClient::publishHpResetEvent(uint32_t sequence,
   doc["event_type"] = "hp_reset";
   doc["reason"] = reason;
   doc["robot_id"] = robotId_;
+  doc["sensor_id"] = "hit_ring";
   doc["sequence"] = sequence;
   doc["hit"] = false;
   doc["accepted"] = false;
