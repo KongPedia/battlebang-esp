@@ -56,13 +56,14 @@ void publishMqttStatusIfConnected(const char* reason) {
   pendingMqttStatus = true;
 }
 
-void flushPendingMqttStatusIfConnected() {
-  if (!pendingMqttStatus) return;
-  if (!mqttStarted || !mqtt.connected()) return;
+bool flushPendingMqttStatusIfConnected() {
+  if (!pendingMqttStatus) return true;
+  if (!mqttStarted || !mqtt.connected()) return false;
   const String reason = pendingMqttStatusReason;
+  if (!mqtt.publishStatus(reason.c_str())) return false;
   pendingMqttStatus = false;
   pendingMqttStatusReason = "";
-  mqtt.publishStatus(reason.c_str());
+  return true;
 }
 
 void publishMqttStatusNowIfConnected(const char* reason) {
@@ -71,16 +72,19 @@ void publishMqttStatusNowIfConnected(const char* reason) {
     publishMqttStatusIfConnected(reason);
     return;
   }
-  mqtt.publishStatus(reason == nullptr ? "state_changed" : reason);
+  if (!mqtt.publishStatus(reason == nullptr ? "state_changed" : reason)) publishMqttStatusIfConnected(reason);
 }
 
 void printStatusJson(const char* reason, const char* eventName = "status", uint16_t peak = 0, const char* source = "state") {
   DynamicJsonDocument doc(4096);
+  const uint32_t now = millis();
   doc["schema_version"] = 1;
   doc["event"] = eventName;
   doc["reason"] = reason;
   doc["source"] = source;
   doc["peak"] = peak;
+  doc["firmware_ts_ms"] = now;
+  doc["source_uptime_ms"] = now;
   doc["device_type"] = "station";
   doc["firmware_app"] = BB_STATION_APP_NAME;
   doc["firmware_version"] = BB_STATION_VERSION;

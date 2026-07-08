@@ -18,7 +18,7 @@ class MqttBus {
   void reconfigure();
   void loop(bool deferAutomaticStatus = false);
   bool connected();
-  void publishStatus(const char* reason);
+  bool publishStatus(const char* reason);
 
  private:
   bool connectIfNeeded();

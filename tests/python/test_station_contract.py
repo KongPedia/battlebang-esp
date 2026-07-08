@@ -145,10 +145,16 @@ def test_station_services_capture_and_led_before_network_io() -> None:
     assert "bool deferAutomaticStatusWhileArmed() const;" in controller_h
     assert "return config_.configured && mode_ == Mode::WAITING && !captured_;" in controller
     assert "void loop(bool deferAutomaticStatus = false);" in bus_h
+    assert "bool publishStatus(const char* reason);" in bus_h
     assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in bus
     assert "if (connectIfNeeded()) client_.loop();" in bus
     assert "if (deferAutomaticStatus) return;" in bus
     assert bus.index("if (connectIfNeeded()) client_.loop();") < bus.index("if (deferAutomaticStatus) return;")
+    assert "bool MqttBus::publishStatus(const char* reason)" in bus
+    assert 'client_.publish(topics.stationStatus.c_str(), payload.c_str(), true)' in bus
+    assert "return false;" in bus
+    assert "lastStatusSignature_ = station_->statusSignature();" in bus
+    assert bus.index("if (!ok) {") < bus.index("lastStatusSignature_ = station_->statusSignature();")
 
     loop_body = main.split("void loop()", 1)[1]
     sensor_index = loop_body.index("stationController.loop(now);")
@@ -157,11 +163,15 @@ def test_station_services_capture_and_led_before_network_io() -> None:
     assert "const bool deferAutomaticStatus = stationController.deferAutomaticStatusWhileArmed();" in main
     assert "wifi.loop(config);" in main
     assert "mqtt.loop(deferAutomaticStatus);" in main
+    assert "bool flushPendingMqttStatusIfConnected()" in main
+    assert "if (!mqtt.publishStatus(reason.c_str())) return false;" in main
+    assert "pendingMqttStatus = false;" in main
     assert "flushPendingMqttStatusIfConnected();" in main
     assert loop_body.index("flushPendingMqttStatusIfConnected();") < loop_body.index("mqtt.loop(deferAutomaticStatus);")
     assert "pollConfiguredOta();" in main
     assert "if (!deferAutomaticStatus) pollConfiguredOta();" not in main
     assert "void publishMqttStatusNowIfConnected(const char* reason)" in main
+    assert "if (!mqtt.publishStatus(reason == nullptr ? \"state_changed\" : reason)) publishMqttStatusIfConnected(reason);" in main
     assert 'publishMqttStatusNowIfConnected("ota_downloading");' in main
     assert 'publishMqttStatusNowIfConnected(result.ok ? "ota_rebooting" : "ota_failed");' in main
 
@@ -179,6 +189,8 @@ def test_station_mqtt_matches_fleet_dashboard_demo_station_contract() -> None:
     for token in (
         'doc["schema_version"] = 1;',
         'doc["type"] = "status";',
+        'doc["firmware_ts_ms"] = now;',
+        'doc["source_uptime_ms"] = now;',
         'doc["device_type"] = "station";',
         'doc["firmware_app"] = BB_STATION_APP_NAME;',
         'doc["firmware_hardware"] = BB_STATION_HARDWARE;',
