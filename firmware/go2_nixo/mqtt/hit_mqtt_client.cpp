@@ -328,7 +328,7 @@ uint8_t HitMqttClient::offlineQueueCount() const {
 
 bool HitMqttClient::publishDeviceStatus(const char* payload) {
   if (!mqttClient_.connected() || deviceStatusTopic_[0] == '\0') return false;
-  return mqttClient_.publish(deviceStatusTopic_, payload, false);
+  return mqttClient_.publish(deviceStatusTopic_, payload, true);
 }
 
 const char* HitMqttClient::eventTopic() const {
