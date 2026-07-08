@@ -138,14 +138,16 @@ void MqttBus::subscribeTopics() {
   subscriptionsDirty_ = false;
 }
 
-void MqttBus::publishStatus(const char* reason) {
-  if (config_ == nullptr || wifi_ == nullptr || station_ == nullptr || !client_.connected()) return;
-  lastStatusMs_ = millis();
+bool MqttBus::publishStatus(const char* reason) {
+  if (config_ == nullptr || wifi_ == nullptr || station_ == nullptr || !client_.connected()) return false;
   DynamicJsonDocument doc(kStatusDocCapacity);
+  const uint32_t now = millis();
   doc["schema_version"] = 1;
   doc["type"] = "status";
   doc["event"] = reason;
   doc["reason"] = reason;
+  doc["firmware_ts_ms"] = now;
+  doc["source_uptime_ms"] = now;
   doc["device_type"] = "station";
   doc["firmware_app"] = BB_STATION_APP_NAME;
   doc["firmware_version"] = BB_STATION_VERSION;
@@ -163,18 +165,21 @@ void MqttBus::publishStatus(const char* reason) {
   doc["ota_desired_build"] = config_->otaDesiredBuild;
   doc["ota_channel"] = config_->otaChannel;
   doc["ota_manifest_url"] = config_->otaLocalMirrorUrl.length() > 0 ? config_->otaLocalMirrorUrl : config_->otaPublicManifestUrl;
-  doc["uptime_ms"] = millis();
+  doc["uptime_ms"] = now;
   String payload;
   serializeJson(doc, payload);
   TopicSet topics = buildTopics(*config_);
-  bool ok = topics.stationStatus.length() > 0 && client_.publish(topics.stationStatus.c_str(), payload.c_str(), false);
+  bool ok = topics.stationStatus.length() > 0 && client_.publish(topics.stationStatus.c_str(), payload.c_str(), true);
   if (!ok) {
     Serial.print("[station][mqtt] status publish failed len=");
     Serial.print(payload.length());
     Serial.print(" buffer=");
     Serial.println(kPayloadLimit);
+    return false;
   }
+  lastStatusMs_ = now;
   lastStatusSignature_ = station_->statusSignature();
+  return true;
 }
 
 void MqttBus::handleMessage(char* topic, byte* payload, unsigned int length) {

@@ -235,6 +235,7 @@ bool HitMqttClient::publishHpResetEvent(uint32_t sequence,
   doc["event_type"] = "hp_reset";
   doc["reason"] = reason;
   doc["robot_id"] = robotId_;
+  doc["sensor_id"] = "hit_ring";
   doc["sequence"] = sequence;
   doc["hit"] = false;
   doc["accepted"] = false;
@@ -327,7 +328,7 @@ uint8_t HitMqttClient::offlineQueueCount() const {
 
 bool HitMqttClient::publishDeviceStatus(const char* payload) {
   if (!mqttClient_.connected() || deviceStatusTopic_[0] == '\0') return false;
-  return mqttClient_.publish(deviceStatusTopic_, payload, false);
+  return mqttClient_.publish(deviceStatusTopic_, payload, true);
 }
 
 const char* HitMqttClient::eventTopic() const {
