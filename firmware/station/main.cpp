@@ -436,11 +436,11 @@ void loop() {
   }
   if (!networkStarted && config.networkAutoStart && now >= config.networkStartDelayMs) startNetwork("delayed_auto_start");
   if (networkStarted) {
-    const bool deferAutomaticStatus = stationController.deferAutomaticStatusWhileArmed();
+    const bool deferStateChangeStatus = stationController.deferStateChangeStatusWhileArmed();
     wifi.loop(config);
     if (mqttStarted) {
       flushPendingMqttStatusIfConnected();
-      mqtt.loop(deferAutomaticStatus);
+      mqtt.loop(deferStateChangeStatus);
     }
     pollConfiguredOta();
   }

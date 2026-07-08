@@ -16,7 +16,7 @@ class MqttBus {
  public:
   void begin(RuntimeConfig& config, RuntimeConfigStore& store, WifiManager& wifi, StationController& station);
   void reconfigure();
-  void loop(bool deferAutomaticStatus = false);
+  void loop(bool deferStateChangeStatus = false);
   bool connected();
   bool publishStatus(const char* reason);
 

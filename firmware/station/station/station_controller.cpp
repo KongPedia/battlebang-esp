@@ -70,7 +70,7 @@ bool StationController::isSafeForOta() const {
   return mode_ == Mode::UNCONFIGURED || mode_ == Mode::WAITING || mode_ == Mode::CAPTURED || mode_ == Mode::OTA_PREPARED;
 }
 
-bool StationController::deferAutomaticStatusWhileArmed() const {
+bool StationController::deferStateChangeStatusWhileArmed() const {
   return config_.configured && mode_ == Mode::WAITING && !captured_;
 }
 

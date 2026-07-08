@@ -142,14 +142,16 @@ def test_station_services_capture_and_led_before_network_io() -> None:
     bus_h = read("firmware/station/mqtt/mqtt_bus.h")
     bus = read("firmware/station/mqtt/mqtt_bus.cpp")
 
-    assert "bool deferAutomaticStatusWhileArmed() const;" in controller_h
+    assert "bool deferStateChangeStatusWhileArmed() const;" in controller_h
     assert "return config_.configured && mode_ == Mode::WAITING && !captured_;" in controller
-    assert "void loop(bool deferAutomaticStatus = false);" in bus_h
+    assert "void loop(bool deferStateChangeStatus = false);" in bus_h
     assert "bool publishStatus(const char* reason);" in bus_h
     assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in bus
     assert "if (connectIfNeeded()) client_.loop();" in bus
-    assert "if (deferAutomaticStatus) return;" in bus
-    assert bus.index("if (connectIfNeeded()) client_.loop();") < bus.index("if (deferAutomaticStatus) return;")
+    assert "if (deferStateChangeStatus) return;" not in bus
+    assert "if (!deferStateChangeStatus && station_ != nullptr" in bus
+    assert bus.index("if (connectIfNeeded()) client_.loop();") < bus.index("if (!deferStateChangeStatus && station_ != nullptr")
+    assert bus.index("if (!deferStateChangeStatus && station_ != nullptr") < bus.index('publishStatus("heartbeat")')
     assert "bool MqttBus::publishStatus(const char* reason)" in bus
     assert 'client_.publish(topics.stationStatus.c_str(), payload.c_str(), true)' in bus
     assert "return false;" in bus
@@ -160,16 +162,16 @@ def test_station_services_capture_and_led_before_network_io() -> None:
     sensor_index = loop_body.index("stationController.loop(now);")
     network_index = loop_body.index("if (networkStarted) {")
     assert sensor_index < network_index
-    assert "const bool deferAutomaticStatus = stationController.deferAutomaticStatusWhileArmed();" in main
+    assert "const bool deferStateChangeStatus = stationController.deferStateChangeStatusWhileArmed();" in main
     assert "wifi.loop(config);" in main
-    assert "mqtt.loop(deferAutomaticStatus);" in main
+    assert "mqtt.loop(deferStateChangeStatus);" in main
     assert "bool flushPendingMqttStatusIfConnected()" in main
     assert "if (!mqtt.publishStatus(reason.c_str())) return false;" in main
     assert "pendingMqttStatus = false;" in main
     assert "flushPendingMqttStatusIfConnected();" in main
-    assert loop_body.index("flushPendingMqttStatusIfConnected();") < loop_body.index("mqtt.loop(deferAutomaticStatus);")
+    assert loop_body.index("flushPendingMqttStatusIfConnected();") < loop_body.index("mqtt.loop(deferStateChangeStatus);")
     assert "pollConfiguredOta();" in main
-    assert "if (!deferAutomaticStatus) pollConfiguredOta();" not in main
+    assert "if (!deferStateChangeStatus) pollConfiguredOta();" not in main
     assert "void publishMqttStatusNowIfConnected(const char* reason)" in main
     assert "if (!mqtt.publishStatus(reason == nullptr ? \"state_changed\" : reason)) publishMqttStatusIfConnected(reason);" in main
     assert 'publishMqttStatusNowIfConnected("ota_downloading");' in main

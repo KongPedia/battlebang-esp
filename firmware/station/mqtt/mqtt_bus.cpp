@@ -59,13 +59,14 @@ bool MqttBus::connected() {
   return client_.connected();
 }
 
-void MqttBus::loop(bool deferAutomaticStatus) {
+void MqttBus::loop(bool deferStateChangeStatus) {
   if (config_ == nullptr || wifi_ == nullptr) return;
   if (!wifi_->connected()) return;
   if (connectIfNeeded()) client_.loop();
-  if (deferAutomaticStatus) return;
   const unsigned long now = millis();
-  if (station_ != nullptr && now - lastStatusChangeCheckMs_ >= kStatusChangeCheckMs) {
+  // While WAITING/armed, skip only automatic state-diff chatter; heartbeat must
+  // keep flowing so Command Center/Fleet Dashboard can see the station is live.
+  if (!deferStateChangeStatus && station_ != nullptr && now - lastStatusChangeCheckMs_ >= kStatusChangeCheckMs) {
     lastStatusChangeCheckMs_ = now;
     const String signature = station_->statusSignature();
     if (signature != lastStatusSignature_) {
