@@ -969,13 +969,14 @@ def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
     assert "FIRE_NETWORK_QUIET_MS = 250" in main
     assert "markNetworkQuietForFireStop(now);" in main
     assert "shouldDeferNetworkForFire(now)" in main
-    assert 'constexpr const char* NIXO_TRANSPORT = "jetson_uart";' in main
-    assert "nixoFire.tickNetwork(now);" not in main
+    assert 'constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";' in main
+    assert "nixoFire.tickNetwork(now);" in main
     assert "nixoFire.tickLocal(now);" in main
     local_index = main.index("nixoFire.tickLocal(now);")
     defer_index = main.index("const bool deferNetworkForFire = shouldDeferNetworkForFire(now);")
+    nixo_network_index = main.index("nixoFire.tickNetwork(now);")
     network_index = main.index("hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);")
-    assert local_index < defer_index < network_index
+    assert local_index < defer_index < nixo_network_index < network_index
     assert "hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);" in main
     assert "publishStateChangeDeviceStatus(now);" in main[network_index:]
 

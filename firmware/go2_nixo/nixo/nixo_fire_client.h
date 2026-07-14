@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "go2_nixo/config/runtime_config.h"
+#include "go2_nixo/mqtt/uart_friendly_wifi_client.h"
 
 namespace go2 {
 
@@ -40,7 +41,7 @@ class NixoFireClient {
     FIRE_STOP_DELAY,
   };
 
-  WiFiClient wifiClient_;
+  UartFriendlyWiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
   char nixoId_[64] = {0};
   char mqttHost_[96] = {0};
