@@ -363,6 +363,7 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
     assert "begin(runtimeConfigFromBuild());" in nixo_fire_source
     assert "#include <WiFi.h>" in nixo_fire_source
     assert "#include <bb_esp_core/config/string_buffer.h>" in nixo_fire_source
+    assert "#include <PubSubClient.h>" in nixo_fire_header
     assert "networkConfigured_ = config.common.configured;" in nixo_fire_source
     assert 'copyStringOrWarn("nixo.id", config.nixo.nixoId, nixoId_, sizeof(nixoId_));' in nixo_fire_source
     assert 'copyStringOrWarn("mqtt.username", config.common.mqttUsername, mqttUsername_, sizeof(mqttUsername_));' in nixo_fire_source
@@ -373,6 +374,8 @@ def test_go2_and_go2_nixo_reuse_common_runtime_config_and_mqtt_topic_helpers() -
     assert 'warnIfFormatTruncated("nixo.client_id", clientIdLength, sizeof(clientId_));' in nixo_fire_source
     assert 'config.nixo.commandTopicPrefix, config.nixo.nixoId, "command"' in nixo_fire_source
     assert '"%s/%s/command"' not in nixo_fire_source
+    assert "tickNetwork" in nixo_fire_header
+    assert "tickNetwork" in nixo_fire_source
     assert "nixoFire.begin(runtimeConfig);" in go2_nixo_main
     assert "deferred: Nixo relay is firing" in go2_nixo_main
     assert "uint32_t fireDefaultDurationMs = NIXO_FIRE_DEFAULT_DURATION_MS;" in go2_nixo_runtime
@@ -690,7 +693,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'readStringField(nixo, "command_topic_prefix", next.nixo.commandTopicPrefix);' in go2_nixo_runtime_source
     assert 'root["nixo_id"] = nixo.nixoId;' in go2_nixo_runtime_source
     assert "pollCommandStream(JetsonSerial, jetsonCommandLine, \"jetson\");" in go2_nixo_main
-    assert 'return strcmp(source, "jetson") == 0;' in go2_nixo_main
+    assert 'return strcmp(source, "jetson") == 0 || strcmp(source, "usb") == 0;' in go2_nixo_main
     assert "reason=jetson_uart_required" in go2_nixo_main
     assert 'lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off"' in go2_nixo_main
     assert "JETSON_FIRE_HOLD_TIMEOUT_MS = 300" in go2_nixo_main
@@ -952,24 +955,36 @@ def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
     assert "void tickNetwork(uint32_t now);" in fire_header
     assert "void NixoFireClient::tickLocal(uint32_t now)" in fire_source
     assert "void NixoFireClient::tickNetwork(uint32_t now)" in fire_source
-    assert "mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);" in fire_source
-    assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in fire_source
     assert "void tick(uint32_t now, bool remoteDisplayActive, bool allowNetworkIo = true);" in hit_header
     assert "if (!allowNetworkIo) return;" in hit_source
     assert "mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);" in hit_source
     assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in hit_source
+    assert "mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);" in fire_source
+    assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in fire_source
+    assert "class UartFriendlyWiFiClient" in (ROOT / "firmware/go2_nixo/mqtt/uart_friendly_wifi_client.h").read_text()
+    assert "kConnectTimeoutMs = 100" in (ROOT / "firmware/go2_nixo/mqtt/uart_friendly_wifi_client.h").read_text()
+    assert "if (WiFi.status() != WL_CONNECTED) return;" in hit_source
+    assert "if (WiFi.status() != WL_CONNECTED) return;" in fire_source
 
     assert "FIRE_NETWORK_QUIET_MS = 250" in main
     assert "markNetworkQuietForFireStop(now);" in main
     assert "shouldDeferNetworkForFire(now)" in main
-    assert "nixoFire.tickLocal(now);" in main
+    assert 'constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";' in main
     assert "nixoFire.tickNetwork(now);" in main
+    assert "nixoFire.tickLocal(now);" in main
     local_index = main.index("nixoFire.tickLocal(now);")
     defer_index = main.index("const bool deferNetworkForFire = shouldDeferNetworkForFire(now);")
-    network_index = main.index("nixoFire.tickNetwork(now);")
-    assert local_index < defer_index < network_index
+    nixo_network_index = main.index("nixoFire.tickNetwork(now);")
+    network_index = main.index("hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);")
+    assert local_index < defer_index < nixo_network_index < network_index
     assert "hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);" in main
     assert "publishStateChangeDeviceStatus(now);" in main[network_index:]
+
+
+def test_go2_nixo_rejects_null_fire_source() -> None:
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    assert "static bool sourceCanFire(const char* source)" in main
+    assert "if (source == nullptr) return false;" in main
 
 
 def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:

@@ -21,7 +21,7 @@ using namespace go2;
 //   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
 //   Command Center per-hit ring_display round trips.
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
-// - Nixo fire is handled on the same ESP through MQTT relay commands or Jetson UART.
+// - Nixo fire uses Jetson UART as the default path; MQTT remains a secondary command path.
 //   The original ring LED is reserved for Nixo ready/firing/inhibited state, never HP state.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
@@ -86,6 +86,7 @@ constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
 constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
 constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
+constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -566,7 +567,8 @@ static void resetAll(const char* source = "serial") {
 }
 
 static bool sourceCanFire(const char* source) {
-  return strcmp(source, "jetson") == 0;
+  if (source == nullptr) return false;
+  return strcmp(source, "jetson") == 0 || strcmp(source, "usb") == 0;
 }
 
 static void markNetworkQuietForFire(uint32_t now, uint32_t quietMs = FIRE_NETWORK_QUIET_MS) {
@@ -631,6 +633,14 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     const char* fireSource = (fireSourceOverride != nullptr && fireSourceOverride[0] != '\0')
                                  ? fireSourceOverride
                                  : defaultFireSourceForTransport(source);
+    if (strcmp(source, "usb") == 0) {
+      const bool accepted = nixoFire.startFire(runtimeConfig.nixo.fireDefaultDurationMs, fireSource, false);
+      Serial.printf("[CMD] USB fire %s source=%s duration_ms=%lu\n",
+                    accepted ? "started" : "ignored",
+                    fireSource,
+                    (unsigned long)runtimeConfig.nixo.fireDefaultDurationMs);
+      return;
+    }
     const uint32_t now = millis();
     const bool wasFiring = nixoFire.isFiring();
     bool accepted = false;
@@ -759,6 +769,7 @@ static void addNixoTuningStatus(JsonObject doc) {
   nixo["last_source"] = nixoFire.lastFireSource();
   nixo["fire_inhibited"] = nixoFire.fireInhibited();
   nixo["cooldown_remaining_ms"] = nixoFire.cooldownRemainingMs(millis());
+  nixo["transport"] = NIXO_TRANSPORT;
   nixo["mqtt_connected"] = nixoFire.connected();
   nixo["command_topic"] = nixoFire.commandTopic();
   nixo["relay1_pin"] = NIXO_RELAY1_PIN_VALUE;
@@ -790,6 +801,7 @@ static void printStatusJson(const char* source, const char* reason) {
   doc["location"] = runtimeConfig.common.location;
   doc["mqtt_configured"] = hitMqtt.configured();
   doc["mqtt_connected"] = hitMqtt.connected();
+  doc["nixo_transport"] = NIXO_TRANSPORT;
   doc["nixo_mqtt_configured"] = nixoFire.configured();
   doc["nixo_mqtt_connected"] = nixoFire.connected();
   doc["mqtt_auth_configured"] =
@@ -959,6 +971,7 @@ static void publishDeviceStatusIfConnected(const char* reason) {
   doc["wifi"] = WiFi.status() == WL_CONNECTED ? "UP" : "DOWN";
   doc["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String();
   doc["mqtt_connected"] = hitMqtt.connected();
+  doc["nixo_transport"] = NIXO_TRANSPORT;
   doc["nixo_mqtt_connected"] = nixoFire.connected();
   doc["mqtt_root"] = runtimeConfig.common.mqttRoot;
   doc["ota_supported"] = true;
@@ -1370,8 +1383,8 @@ void setup() {
                 hitMqtt.eventTopic(),
                 hitMqtt.ringCommandTopic());
   printStatusJson("usb", "boot");
-  Serial.printf("[NIXO] mqtt=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
-                nixoFire.configured() ? "enabled" : "disabled",
+  Serial.printf("[NIXO] transport=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
+                NIXO_TRANSPORT,
                 runtimeConfig.nixo.nixoId.c_str(),
                 nixoFire.commandTopic(),
                 NIXO_RELAY1_PIN_VALUE,
