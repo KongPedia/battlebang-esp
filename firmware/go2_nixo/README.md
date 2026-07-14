@@ -10,6 +10,17 @@ This firmware is also **generic image + NVS runtime config**:
 - Nixo fire timing/envelope (`default/min/max duration`, prefire delay, relay inter-channel delay) is NVS runtime config; ESP cooldown is disabled.
 - Relay pins, polarity, and channel count remain build-time hardware-safety variant data.
 
+## Device relay polarity
+
+These are the verified per-device electrical settings. Do not assume the
+generic relay variant polarity applies to every robot.
+
+| Robot | Relay channels | `nixo_relay_on_level` | `nixo_relay_off_level` |
+| --- | ---: | ---: | ---: |
+| `go2_03` | 2ch | `0` | `1` |
+| `go2_04` | 2ch | `1` | `0` |
+| `go2_06` | 1ch | `1` | `0` |
+
 Responsibilities:
 
 1. Accept the max of left/right/front piezo AO ADC threshold crossings locally as hits.
