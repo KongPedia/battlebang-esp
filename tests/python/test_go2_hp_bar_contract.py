@@ -961,16 +961,20 @@ def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
     assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in hit_source
     assert "mqttClient_.setSocketTimeout(kMqttSocketTimeoutSeconds);" in fire_source
     assert "wifiClient_.setTimeout(kMqttSocketTimeoutSeconds);" in fire_source
+    assert "class UartFriendlyWiFiClient" in (ROOT / "firmware/go2_nixo/mqtt/uart_friendly_wifi_client.h").read_text()
+    assert "kConnectTimeoutMs = 100" in (ROOT / "firmware/go2_nixo/mqtt/uart_friendly_wifi_client.h").read_text()
     assert "if (WiFi.status() != WL_CONNECTED) return;" in hit_source
     assert "if (WiFi.status() != WL_CONNECTED) return;" in fire_source
 
     assert "FIRE_NETWORK_QUIET_MS = 250" in main
     assert "markNetworkQuietForFireStop(now);" in main
     assert "shouldDeferNetworkForFire(now)" in main
+    assert 'constexpr const char* NIXO_TRANSPORT = "jetson_uart";' in main
+    assert "nixoFire.tickNetwork(now);" not in main
     assert "nixoFire.tickLocal(now);" in main
     local_index = main.index("nixoFire.tickLocal(now);")
     defer_index = main.index("const bool deferNetworkForFire = shouldDeferNetworkForFire(now);")
-    network_index = main.index("nixoFire.tickNetwork(now);")
+    network_index = main.index("hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);")
     assert local_index < defer_index < network_index
     assert "hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);" in main
     assert "publishStateChangeDeviceStatus(now);" in main[network_index:]

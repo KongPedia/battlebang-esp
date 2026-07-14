@@ -21,8 +21,8 @@ using namespace go2;
 //   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
 //   Command Center per-hit ring_display round trips.
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
-// - Nixo fire is handled on the same ESP through MQTT or Jetson UART. Local UART/relay
-//   work is serviced before network work so Wi-Fi/MQTT outages cannot delay fire control.
+// - Nixo fire is handled through Jetson UART. The Nixo MQTT client remains available for
+//   compatibility, but this UART-only runtime does not service its reconnect loop.
 //   The original ring LED is reserved for Nixo ready/firing/inhibited state, never HP state.
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
@@ -87,7 +87,7 @@ constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
 constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
 constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
-constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";
+constexpr const char* NIXO_TRANSPORT = "jetson_uart";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -1418,7 +1418,6 @@ void loop() {
   publishJetsonHpStatus();
   const bool deferNetworkForFire = shouldDeferNetworkForFire(now);
   if (!deferNetworkForFire) {
-    nixoFire.tickNetwork(now);
     hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);
     publishMqttReconnectStatus(now);
     processPendingMqttManagement();

@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "go2_nixo/config/runtime_config.h"
+#include "go2_nixo/mqtt/uart_friendly_wifi_client.h"
 
 namespace go2 {
 
@@ -79,7 +80,7 @@ class HitMqttClient {
   const char* deviceOtaTopic() const;
 
  private:
-  WiFiClient wifiClient_;
+  UartFriendlyWiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
   BarDisplayHandler barHandler_ = nullptr;
   ManagementMessageHandler configHandler_ = nullptr;
