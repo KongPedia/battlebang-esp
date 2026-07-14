@@ -981,6 +981,12 @@ def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
     assert "publishStateChangeDeviceStatus(now);" in main[network_index:]
 
 
+def test_go2_nixo_rejects_null_fire_source() -> None:
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    assert "static bool sourceCanFire(const char* source)" in main
+    assert "if (source == nullptr) return false;" in main
+
+
 def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     defaults = json.loads((ROOT / "firmware/go2_nixo/hardware_profile.json").read_text())["defaults"]
     relay_1ch = json.loads((ROOT / "firmware/go2_nixo/variants/relay_1ch/config.json").read_text())

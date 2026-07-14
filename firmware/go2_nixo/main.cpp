@@ -567,6 +567,7 @@ static void resetAll(const char* source = "serial") {
 }
 
 static bool sourceCanFire(const char* source) {
+  if (source == nullptr) return false;
   return strcmp(source, "jetson") == 0 || strcmp(source, "usb") == 0;
 }
 
