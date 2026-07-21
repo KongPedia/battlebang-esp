@@ -19,12 +19,12 @@ generic relay variant polarity applies to every robot.
 | --- | ---: | ---: | ---: |
 | `go2_03` | 2ch | `0` | `1` |
 | `go2_04` | 2ch | `1` | `0` |
-| `go2_06` | 1ch | `1` | `0` |
+| `go2_06` | 2ch | `1` | `0` |
 
 Responsibilities:
 
 1. Accept the max of left/right/front piezo AO ADC threshold crossings locally as hits.
-2. Render local HP/down state on the 84 LED HP bar.
+2. Render a three-second startup progress bar, then local HP as green/yellow-at-30% remaining, red recent damage, and unlit lost HP.
 3. Publish `hit_event` and device status with `accepted_hit_count`, `hp_remaining`, `max_hits`, and `down`.
 4. Render local Nixo ready/firing/inhibited state on the ring LED.
 5. Accept MQTT or Jetson UART Nixo `fire` commands and execute the relay fire sequence.

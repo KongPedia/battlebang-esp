@@ -554,6 +554,53 @@ def test_go2_nixo_local_hit_state_owns_hp_bar_while_ring_led_remains_nixo_fire_s
     assert tick_block.index("updateFireSequence(now);") < tick_block.index("ensureMqttConnected(now);")
 
 
+def test_go2_nixo_bar_renders_remaining_hp_and_recent_damage() -> None:
+    bar_header = (ROOT / "firmware/go2_nixo/display/bar_display.h").read_text()
+    bar_source = (ROOT / "firmware/go2_nixo/display/bar_display.cpp").read_text()
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+
+    local_block = bar_source.split("void BarDisplay::renderLocal", 1)[1].split(
+        "void BarDisplay::renderRemote", 1
+    )[0]
+    assert "fillRatio <= 0.30f ? CRGB::Yellow : CRGB::Green" in local_block
+    assert "renderHpBar(fillRatio," in local_block
+    assert "CRGB::Black);" in local_block
+    assert "setHpBarGroup(group, CRGB::Red);" in local_block
+    assert "localHpRemaining_ + 1" in local_block
+    assert 'localMode_ == "hit_flash"' in local_block
+    assert "CRGB::White" not in local_block
+    assert "CRGB::Orange" not in local_block
+    assert "renderSegmentNumber" not in bar_source
+    assert "DIGIT_PIXELS" not in bar_source
+    assert "setFiring" not in bar_header
+    assert "barDisplay.setFiring" not in main
+    assert "setHpBarPixel" in bar_header
+    assert "group = HP_BAR_GROUP_COUNT - 1 - group;" in bar_source
+    assert "strip = HP_BAR_LEDS_PER_GROUP - 1 - strip;" in bar_source
+    assert "localHpRemaining_) / static_cast<float>(localMaxHits_)" in bar_source
+    assert "localHitState.hpRemaining--;" in main
+    assert "barDisplay.resetLocalHpState(localHitState.maxHits);" in main
+
+
+def test_go2_nixo_ignores_hits_during_three_second_startup_loading() -> None:
+    bar_header = (ROOT / "firmware/go2_nixo/display/bar_display.h").read_text()
+    bar_source = (ROOT / "firmware/go2_nixo/display/bar_display.cpp").read_text()
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+
+    assert "STARTUP_LOADING_MS = 3000" in bar_source
+    assert "bool startupReady(uint32_t now) const;" in bar_header
+    assert "const int interiorGroups = HP_BAR_GROUP_COUNT - 2;" in bar_source
+    assert "setHpBarPixel(group, 0, CRGB::White);" in bar_source
+    assert "setHpBarPixel(group, 1, CRGB::Blue);" in bar_source
+    publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
+        "static void updateAnalogDebugStats", 1
+    )[0]
+    assert "if (!barDisplay.startupReady(eventTsMs))" in publish_function
+    assert publish_function.index("startupReady(eventTsMs)") < publish_function.index(
+        "uint32_t sequence = ++hitSequence;"
+    )
+
+
 def test_go2_platformio_envs_are_generic_and_identity_is_nvs_provisioned() -> None:
     platformio = (ROOT / "platformio.ini").read_text()
     go2_config = (ROOT / "scripts/go2_config.py").read_text()
