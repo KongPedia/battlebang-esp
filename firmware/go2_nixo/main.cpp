@@ -274,6 +274,14 @@ static void beginAnalogPiezo() {
 }
 
 static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
+  if (!barDisplay.startupReady(eventTsMs)) {
+    Serial.printf("[PIEZO AO] ignored during startup loading target=%d peak=%d threshold=%d ts_ms=%lu\n",
+                  targetId,
+                  peakRaw,
+                  thresholdRaw,
+                  (unsigned long)eventTsMs);
+    return;
+  }
   if (localHitState.down || localHitState.hpRemaining == 0) {
     Serial.printf("[PIEZO AO] ignored after down target=%d peak=%d threshold=%d hp=%u/%u ts_ms=%lu mqtt_connected=%s queue=%u\n",
                   targetId,
