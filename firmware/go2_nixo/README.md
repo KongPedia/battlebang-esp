@@ -65,6 +65,9 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 ## Build, upload, provision
 
 ```bash
+# Find the connected USB serial port on macOS
+./.venv-pio/bin/pio device list
+
 # Build/upload the 2ch integrated image
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-XXXX
 
