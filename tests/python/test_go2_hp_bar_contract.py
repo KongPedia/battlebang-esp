@@ -1118,13 +1118,12 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
         "void NixoFireClient::beginCooldown",
         1,
     )[0]
-    one_channel_done = update_block.split("case FIRE_RELAY_WAIT1:", 1)[1].split(
-        "if (now - fireTimerMs_ >= relayDelay1Ms_)",
-        1,
-    )[0]
-    two_channel_done = update_block.split("case FIRE_RELAY_WAIT2:", 1)[1]
-    assert 'stopFire("duration-complete");' in one_channel_done
-    assert 'stopFire("duration-complete");' in two_channel_done
+    assert "uint32_t fireEndsAtMs_ = 0;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
+    assert "fireEndsAtMs_ = now + activeFireDurationMs_;" in fire_source
+    assert "return static_cast<int32_t>(now - fireEndsAtMs_) >= 0 ? 0 : fireEndsAtMs_ - now;" in fire_source
+    assert "static_cast<int32_t>(now - fireEndsAtMs_) >= 0" in update_block
+    assert update_block.count('stopFire("duration-complete");') == 1
+    assert "fireEndsAtMs_ =" not in update_block
     assert update_block.count("now - fireTimerMs_ >= relayDelay1Ms_") == 1
 
 

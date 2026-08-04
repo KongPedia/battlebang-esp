@@ -23,9 +23,11 @@ def test_canonical_fixture_hash_and_vector_count() -> None:
 
 def test_diagnostic_build_is_echo_only_and_production_has_no_legacy_fallback() -> None:
     platformio = (ROOT / "platformio.ini").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/firmware-ota.yml").read_text(encoding="utf-8")
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text(encoding="utf-8")
     protocol = (ROOT / "firmware/go2_nixo/serial/protocol.cpp").read_text(encoding="utf-8")
     assert "[env:esp32dev_go2_nixo_serial_diag]" in platformio
+    assert "esp32dev_go2_nixo_serial_diag" not in workflow
     assert platformio.count("BATTLEBANG_UART_DIAGNOSTIC=1") == 1
     diagnostic_env = platformio.split("[env:esp32dev_go2_nixo_serial_diag]", 1)[1].split("[env:", 1)[0]
     assert "+<../firmware/go2_nixo/main.cpp>" in diagnostic_env
@@ -90,6 +92,40 @@ def test_production_runtime_bridges_binary_uart_fire_and_hp() -> None:
     assert "hasValidFlagsForType" in protocol
 
 
+def test_uart_fire_faults_latch_release_without_disabling_mqtt_fire() -> None:
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text(encoding="utf-8")
+    runtime = (ROOT / "firmware/go2_nixo/serial/runtime.cpp").read_text(encoding="utf-8")
+
+    defer_block = main.split("static bool shouldDeferNetworkForFire", 1)[1].split(
+        "static void refreshNixoFireInhibit", 1
+    )[0]
+    inhibit_block = main.split("static void refreshNixoFireInhibit", 1)[1].split(
+        "static const char* serialFireSourceName", 1
+    )[0]
+    stop_block = main.split("static void stopSerialFire", 1)[1].split(
+        "static uint8_t onSerialFireHold", 1
+    )[0]
+    link_lost_block = main.split("static void onSerialLinkLost", 1)[1].split(
+        "static serial::HpSnapshot", 1
+    )[0]
+
+    assert "jetsonFireReleaseRequired" not in defer_block
+    assert "jetsonSession.connected()" not in inhibit_block
+    assert "localHitState.down || localHitState.hpRemaining == 0" in inhibit_block
+    assert "requiresExplicitFireRelease(reason)" in stop_block
+    assert "reason == serial::FireReason::OperatorRelease" in stop_block
+    assert "const bool uartOwnedFire = jetsonFireHoldActive;" in link_lost_block
+    assert "uartOwnedFire" in link_lost_block
+    assert "reason == FireReason::HoldTimeout" in runtime
+    assert "reason == FireReason::LinkStale" in runtime
+    assert "reason == FireReason::SessionChanged" in runtime
+    assert "reason == FireReason::InternalFault" in runtime
+    assert "JETSON_PARSER_FAULT_THRESHOLD = 8" in main
+    assert "noteJetsonParserErrors" in main
+    assert "if (jetsonUartQueue == nullptr) return;" in main
+    assert "if (frame.type == MessageType::Nack) ++counters_.reliable_drops;" in runtime
+
+
 def test_portable_cpp_codec_parser_and_diagnostic_composition(tmp_path: Path) -> None:
     compiler = shutil.which("c++")
     assert compiler is not None, "host C++ compiler is required"
@@ -115,7 +151,7 @@ def test_portable_cpp_codec_parser_and_diagnostic_composition(tmp_path: Path) ->
     payload = fixture()
     vectors = [*payload["golden_vectors"], *payload["edge_vectors"]]
     result = subprocess.run(
-        [str(executable), *(vector["hex"].replace(" ", "") for vector in vectors)],
+        [str(executable), *(f"{vector['name']}={vector['hex'].replace(' ', '')}" for vector in vectors)],
         check=True,
         cwd=ROOT,
         capture_output=True,

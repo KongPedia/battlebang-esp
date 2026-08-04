@@ -105,6 +105,7 @@ struct ProductionUartCounters {
 
 ProductionUartCounters jetsonUartCounters;
 uint32_t jetsonEspBootId = 0;
+uint32_t jetsonConsecutiveParserErrors = 0;
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -112,6 +113,7 @@ constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
 constexpr uint32_t MAX_CONTINUOUS_FIRE_MS = 10000;
 constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
 constexpr uint32_t FIRE_STOP_PRIORITY_MS = 100;
+constexpr uint32_t JETSON_PARSER_FAULT_THRESHOLD = 8;
 constexpr const char* NIXO_TRANSPORT = "binary_uart+mqtt";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
@@ -620,13 +622,12 @@ static void markNetworkQuietForFireStop(uint32_t now) {
 }
 
 static bool shouldDeferNetworkForFire(uint32_t now) {
-  if (jetsonFireHoldActive || jetsonFireReleaseRequired) return true;
+  if (jetsonFireHoldActive) return true;
   return (int32_t)(fireNetworkQuietUntilMs - now) > 0;
 }
 
 static void refreshNixoFireInhibit() {
-  const bool inhibited = localHitState.down || localHitState.hpRemaining == 0 ||
-                         !jetsonSession.connected();
+  const bool inhibited = localHitState.down || localHitState.hpRemaining == 0;
   if (nixoFire.fireInhibited() == inhibited) return;
   nixoFire.setFireInhibited(inhibited);
   if (inhibited && (localHitState.down || localHitState.hpRemaining == 0)) {
@@ -652,13 +653,20 @@ static const char* serialFireSourceName(serial::CommandSource source) {
   }
 }
 
-static void stopSerialFire(const char* source, serial::FireReason reason, uint32_t now) {
-  markNetworkQuietForFireStop(now);
+static void stopSerialFire(const char* source,
+                           serial::FireReason reason,
+                           uint32_t now,
+                           bool stopNixo = true) {
+  if (stopNixo) markNetworkQuietForFireStop(now);
   jetsonFireHoldActive = false;
-  jetsonFireReleaseRequired = false;
+  if (reason == serial::FireReason::OperatorRelease) {
+    jetsonFireReleaseRequired = false;
+  } else if (serial::requiresExplicitFireRelease(reason)) {
+    jetsonFireReleaseRequired = true;
+  }
   jetsonFireSource = serial::CommandSource::Unknown;
   jetsonFireReason = reason;
-  nixoFire.stopFire(source);
+  if (stopNixo) nixoFire.stopFire(source);
   Serial.printf("[CMD] fire stopped source=%s\n", source);
   jetsonSession.notifyFireStatus(now);
 }
@@ -684,6 +692,7 @@ static uint8_t onSerialFireHold(serial::CommandSource source, uint32_t now, void
     return static_cast<uint8_t>(serial::NackError::Busy);
   }
   if (jetsonFireHoldActive && !wasFiring) {
+    jetsonFireHoldActive = false;
     jetsonFireReleaseRequired = true;
     jetsonFireReason = serial::FireReason::DurationLimit;
     jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
@@ -728,11 +737,13 @@ static uint8_t onSerialHpReset(uint8_t, uint32_t now, void*) {
 }
 
 static void onSerialLinkLost(serial::FireReason reason, uint32_t now, void*) {
+  const bool uartOwnedFire = jetsonFireHoldActive;
   jetsonFireStopGuardUntilMs = now + FIRE_STOP_PRIORITY_MS;
   stopSerialFire(reason == serial::FireReason::LinkStale ? "jetson-link-stale"
                                                          : "jetson-parser-fault",
                  reason,
-                 now);
+                 now,
+                 uartOwnedFire);
   refreshNixoFireInhibit();
 }
 
@@ -760,16 +771,22 @@ static serial::FireSnapshot readSerialFireSnapshot(uint32_t now, void*) {
     fire.state = serial::FireState::ReleaseRequired;
   } else if (fire.inhibited) {
     fire.state = serial::FireState::Inhibited;
-  } else if (strcmp(nixoFire.fireStateName(), "prefire_delay") == 0) {
-    fire.state = serial::FireState::Prefire;
-  } else if (strcmp(nixoFire.fireStateName(), "flywheel_spinup") == 0) {
-    fire.state = serial::FireState::Spinup;
-  } else if (strcmp(nixoFire.fireStateName(), "firing") == 0) {
-    fire.state = serial::FireState::Firing;
-  } else if (strcmp(nixoFire.fireStateName(), "flywheel_spindown") == 0) {
-    fire.state = serial::FireState::Spindown;
   } else {
-    fire.state = serial::FireState::Idle;
+    switch (nixoFire.fireState()) {
+      case NixoFireClient::FIRE_PREFIRE_DELAY:
+        fire.state = serial::FireState::Prefire;
+        break;
+      case NixoFireClient::FIRE_RELAY_WAIT1:
+        fire.state = NIXO_RELAY2_ENABLED_VALUE ? serial::FireState::Spinup
+                                               : serial::FireState::Firing;
+        break;
+      case NixoFireClient::FIRE_RELAY_WAIT2:
+        fire.state = serial::FireState::Firing;
+        break;
+      case NixoFireClient::FIRE_IDLE:
+        fire.state = serial::FireState::Idle;
+        break;
+    }
   }
   return fire;
 }
@@ -1268,6 +1285,7 @@ static void recordJetsonUartEvent(const uart_event_t& event, uint32_t now) {
 }
 
 static void flushJetsonTx() {
+  if (jetsonUartQueue == nullptr) return;
   while (jetsonSession.tx().pendingBytes() != 0) {
     size_t available = 0;
     const uint8_t* bytes = jetsonSession.tx().peek(available);
@@ -1336,7 +1354,19 @@ static void configureJetsonSession(uint32_t now) {
                        capabilities,
                        callbacks,
                        now);
+  jetsonConsecutiveParserErrors = 0;
   refreshNixoFireInhibit();
+}
+
+static void noteJetsonParserErrors(uint32_t added, bool frameDecoded, uint32_t now) {
+  if (added == 0) {
+    if (frameDecoded) jetsonConsecutiveParserErrors = 0;
+    return;
+  }
+  jetsonConsecutiveParserErrors += added;
+  if (jetsonConsecutiveParserErrors < JETSON_PARSER_FAULT_THRESHOLD) return;
+  jetsonConsecutiveParserErrors = 0;
+  jetsonSession.parserFault(now);
 }
 
 static void pollJetsonBinaryUart(uint32_t now) {
@@ -1353,12 +1383,18 @@ static void pollJetsonBinaryUart(uint32_t now) {
       const int count = uart_read_bytes(UART_NUM_2, bytes, requested, 0);
       if (count <= 0) break;
       const uint32_t errorsBefore = parserErrorCount();
+      const uint32_t framesBefore = jetsonParser.counters().frames;
       jetsonParser.feed(bytes, static_cast<size_t>(count), now, receiveJetsonFrame);
-      if (parserErrorCount() != errorsBefore) jetsonSession.parserFault(now);
+      noteJetsonParserErrors(parserErrorCount() - errorsBefore,
+                             jetsonParser.counters().frames != framesBefore,
+                             now);
     }
     const uint32_t errorsBefore = parserErrorCount();
+    const uint32_t framesBefore = jetsonParser.counters().frames;
     jetsonParser.feed(nullptr, 0, now, receiveJetsonFrame);
-    if (parserErrorCount() != errorsBefore) jetsonSession.parserFault(now);
+    noteJetsonParserErrors(parserErrorCount() - errorsBefore,
+                           jetsonParser.counters().frames != framesBefore,
+                           now);
   }
 
   jetsonSession.setTransportCounters(jetsonParser.counters().crc_errors,
@@ -1369,10 +1405,7 @@ static void pollJetsonBinaryUart(uint32_t now) {
 }
 
 static void updateJetsonFireHold(uint32_t now) {
-  if (!serial::isFireHoldExpired(jetsonFireHoldActive,
-                                 jetsonFireReleaseRequired,
-                                 jetsonFireHoldDeadlineMs,
-                                 now)) return;
+  if (!serial::isFireHoldExpired(jetsonFireHoldActive, jetsonFireHoldDeadlineMs, now)) return;
   stopSerialFire("jetson-hold-timeout", serial::FireReason::HoldTimeout, now);
 }
 

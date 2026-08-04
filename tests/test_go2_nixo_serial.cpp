@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <random>
 #include <string>
 #include <vector>
@@ -134,6 +135,8 @@ struct FakeRuntime {
   int hp_resets = 0;
   int link_losses = 0;
   bool firing = false;
+  bool hold_active = false;
+  bool release_required = false;
   bool inhibited = false;
   go2::serial::FireReason last_link_reason = go2::serial::FireReason::None;
   go2::serial::HpSnapshot hp;
@@ -141,18 +144,22 @@ struct FakeRuntime {
   static uint8_t fireHold(go2::serial::CommandSource, uint32_t, void* context) {
     FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
     if (fake.inhibited) return static_cast<uint8_t>(go2::serial::NackError::Inhibited);
+    if (fake.release_required) return static_cast<uint8_t>(go2::serial::NackError::Busy);
     ++fake.fire_holds;
     fake.firing = true;
+    fake.hold_active = true;
     return 0;
   }
 
   static go2::serial::AckResult fireStop(uint8_t, uint32_t, void* context) {
     FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
     ++fake.fire_stops;
-    const bool was_firing = fake.firing;
+    const bool changed = fake.firing || fake.hold_active || fake.release_required;
     fake.firing = false;
-    return was_firing ? go2::serial::AckResult::Applied
-                      : go2::serial::AckResult::NoopAlreadySafe;
+    fake.hold_active = false;
+    fake.release_required = false;
+    return changed ? go2::serial::AckResult::Applied
+                   : go2::serial::AckResult::NoopAlreadySafe;
   }
 
   static uint8_t hpReset(uint8_t, uint32_t, void* context) {
@@ -170,6 +177,8 @@ struct FakeRuntime {
     ++fake.link_losses;
     fake.last_link_reason = reason;
     fake.firing = false;
+    fake.hold_active = false;
+    if (go2::serial::requiresExplicitFireRelease(reason)) fake.release_required = true;
   }
 
   static go2::serial::HpSnapshot hpSnapshot(void* context) {
@@ -179,7 +188,10 @@ struct FakeRuntime {
   static go2::serial::FireSnapshot fireSnapshot(uint32_t, void* context) {
     FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
     go2::serial::FireSnapshot fire;
-    fire.state = fake.firing ? go2::serial::FireState::Firing : go2::serial::FireState::Idle;
+    fire.state = fake.release_required
+                     ? go2::serial::FireState::ReleaseRequired
+                     : (fake.firing ? go2::serial::FireState::Firing
+                                    : go2::serial::FireState::Idle);
     fire.inhibited = fake.inhibited;
     fire.source = fake.firing ? go2::serial::CommandSource::Gamepad
                               : go2::serial::CommandSource::Unknown;
@@ -213,24 +225,39 @@ struct SessionFeedContext {
 }  // namespace
 
 int main(int argc, char** argv) {
-  CHECK(argc == 19);
-  std::vector<std::vector<uint8_t> > vectors;
-  for (int i = 1; i < argc; ++i) vectors.push_back(hexBytes(argv[i]));
+  std::map<std::string, std::vector<uint8_t> > vectors;
+  for (int i = 1; i < argc; ++i) {
+    const std::string argument(argv[i]);
+    const size_t separator = argument.find('=');
+    CHECK(separator != std::string::npos && separator != 0 && separator + 1 < argument.size());
+    vectors[argument.substr(0, separator)] = hexBytes(argument.substr(separator + 1).c_str());
+  }
 
-  const MessageType expected_types[] = {
-      MessageType::Connect,      MessageType::Connected,      MessageType::FireStop,
-      MessageType::Ack,        MessageType::HpStatus,      MessageType::HitEvent,
-      MessageType::DiagEcho,   MessageType::DiagEchoReply,
+  struct ExpectedVector {
+    const char* name;
+    MessageType type;
   };
-  for (size_t i = 0; i < 8; ++i) {
-    const Frame frame = decode(vectors[i]);
-    CHECK(frame.type == expected_types[i]);
+  const ExpectedVector expected_vectors[] = {
+      {"connect", MessageType::Connect},
+      {"connected", MessageType::Connected},
+      {"fire_stop", MessageType::FireStop},
+      {"fire_stop_ack", MessageType::Ack},
+      {"hp_status", MessageType::HpStatus},
+      {"hit_event", MessageType::HitEvent},
+      {"diag_echo", MessageType::DiagEcho},
+      {"diag_echo_reply", MessageType::DiagEchoReply},
+  };
+  for (size_t i = 0; i < sizeof(expected_vectors) / sizeof(expected_vectors[0]); ++i) {
+    CHECK(vectors.count(expected_vectors[i].name) == 1);
+    const std::vector<uint8_t>& wire = vectors.at(expected_vectors[i].name);
+    const Frame frame = decode(wire);
+    CHECK(frame.type == expected_vectors[i].type);
     CHECK(go2::serial::isPayloadValid(frame));
     uint8_t encoded[go2::serial::kMaxFrameBytes] = {};
     size_t encoded_length = 0;
     CHECK(go2::serial::encodeFrame(frame, encoded, sizeof(encoded), encoded_length) == FrameError::None);
-    CHECK(encoded_length == vectors[i].size());
-    CHECK(std::memcmp(encoded, vectors[i].data(), encoded_length) == 0);
+    CHECK(encoded_length == wire.size());
+    CHECK(std::memcmp(encoded, wire.data(), encoded_length) == 0);
   }
 
   CHECK(go2::serial::crc16CcittFalse(reinterpret_cast<const uint8_t*>("123456789"), 9) == 0x29B1);
@@ -240,7 +267,7 @@ int main(int argc, char** argv) {
   CHECK(!go2::serial::isNewerSequence(7, 7));
   CHECK(!go2::serial::isNewerSequence(0x8000, 0));
 
-  const std::vector<uint8_t>& connected = vectors[1];
+  const std::vector<uint8_t>& connected = vectors["connected"];
   IncrementalParser one_byte_parser;
   Collector one_byte;
   for (size_t i = 0; i < connected.size(); ++i) {
@@ -262,8 +289,8 @@ int main(int argc, char** argv) {
   CHECK(random_frames.frames.size() == 1);
 
   std::vector<uint8_t> coalesced = hexBytes("626F6F74206C6F670D0A00");
-  append(coalesced, vectors[6]);
-  append(coalesced, vectors[7]);
+  append(coalesced, vectors["diag_echo"]);
+  append(coalesced, vectors["diag_echo_reply"]);
   IncrementalParser coalesced_parser;
   Collector coalesced_frames;
   coalesced_parser.feed(coalesced.data(), coalesced.size(), 0, Collector::receive, &coalesced_frames);
@@ -271,7 +298,7 @@ int main(int argc, char** argv) {
   CHECK(coalesced_parser.counters().discarded_bytes == 11);
 
   std::vector<uint8_t> oversize = hexBytes("AA5501F0010001010203040041");
-  append(oversize, vectors[2]);
+  append(oversize, vectors["fire_stop"]);
   IncrementalParser oversize_parser;
   Collector oversize_frames;
   oversize_parser.feed(oversize.data(), oversize.size(), 0, Collector::receive, &oversize_frames);
@@ -281,23 +308,23 @@ int main(int argc, char** argv) {
 
   IncrementalParser timeout_parser;
   Collector timeout_frames;
-  timeout_parser.feed(vectors[2].data(), 10, 1000, Collector::receive, &timeout_frames);
+  timeout_parser.feed(vectors["fire_stop"].data(), 10, 1000, Collector::receive, &timeout_frames);
   timeout_parser.feed(nullptr, 0, 1051, Collector::receive, &timeout_frames);
-  timeout_parser.feed(vectors[2].data(), vectors[2].size(), 1052, Collector::receive, &timeout_frames);
+  timeout_parser.feed(vectors["fire_stop"].data(), vectors["fire_stop"].size(), 1052, Collector::receive, &timeout_frames);
   CHECK(timeout_frames.frames.size() == 1);
   CHECK(timeout_parser.counters().timeout_errors == 1);
 
-  std::vector<uint8_t> bad_version = vectors[2];
+  std::vector<uint8_t> bad_version = vectors["fire_stop"];
   bad_version[2] = 2;
   repairCrc(bad_version);
-  std::vector<uint8_t> bad_type = vectors[2];
+  std::vector<uint8_t> bad_type = vectors["fire_stop"];
   bad_type[3] = 0x55;
   repairCrc(bad_type);
-  std::vector<uint8_t> invalids = vectors[12];
+  std::vector<uint8_t> invalids = vectors["crc_bit_flip"];
   append(invalids, bad_version);
-  append(invalids, vectors[13]);
+  append(invalids, vectors["reserved_flag"]);
   append(invalids, bad_type);
-  append(invalids, vectors[2]);
+  append(invalids, vectors["fire_stop"]);
   IncrementalParser recovery_parser;
   Collector recovered;
   recovery_parser.feed(invalids.data(), invalids.size(), 0, Collector::receive, &recovered);
@@ -308,7 +335,7 @@ int main(int argc, char** argv) {
   CHECK(recovery_parser.counters().type_errors == 1);
 
   std::vector<uint8_t> overflow(600, static_cast<uint8_t>('x'));
-  append(overflow, vectors[7]);
+  append(overflow, vectors["diag_echo_reply"]);
   IncrementalParser overflow_parser;
   Collector overflow_frames;
   overflow_parser.feed(overflow.data(), overflow.size(), 0, Collector::receive, &overflow_frames);
@@ -321,40 +348,40 @@ int main(int argc, char** argv) {
   const std::vector<uint8_t> noise_and_magic = hexBytes("6E6F697365AA");
   split_magic_parser.feed(noise_and_magic.data(), noise_and_magic.size(), 0,
                           Collector::receive, &split_magic_frames);
-  split_magic_parser.feed(vectors[6].data() + 1, vectors[6].size() - 1, 0,
+  split_magic_parser.feed(vectors["diag_echo"].data() + 1, vectors["diag_echo"].size() - 1, 0,
                           Collector::receive, &split_magic_frames);
   CHECK(split_magic_frames.frames.size() == 1);
   CHECK(split_magic_frames.frames[0].type == MessageType::DiagEcho);
 
-  const Frame empty_payload = decode(vectors[8]);
-  const Frame max_payload = decode(vectors[9]);
+  const Frame empty_payload = decode(vectors["empty_payload"]);
+  const Frame max_payload = decode(vectors["max_64_byte_payload"]);
   CHECK(empty_payload.payload_length == 0);
   CHECK(max_payload.payload_length == 64);
-  CHECK(decode(vectors[10]).sequence == 0xFFFF);
-  CHECK(decode(vectors[11]).sequence == 0);
+  CHECK(decode(vectors["sequence_ffff"]).sequence == 0xFFFF);
+  CHECK(decode(vectors["sequence_0000_after_wrap"]).sequence == 0);
   Frame ignored;
-  CHECK(go2::serial::decodeFrame(vectors[12].data(), vectors[12].size(), ignored) == FrameError::Crc);
-  CHECK(go2::serial::decodeFrame(vectors[13].data(), vectors[13].size(), ignored) == FrameError::Flags);
-  CHECK(!go2::serial::isPayloadValid(decode(vectors[14])));
-  const Frame same_a = decode(vectors[15]);
-  const Frame same_b = decode(vectors[16]);
+  CHECK(go2::serial::decodeFrame(vectors["crc_bit_flip"].data(), vectors["crc_bit_flip"].size(), ignored) == FrameError::Crc);
+  CHECK(go2::serial::decodeFrame(vectors["reserved_flag"].data(), vectors["reserved_flag"].size(), ignored) == FrameError::Flags);
+  CHECK(!go2::serial::isPayloadValid(decode(vectors["fixed_payload_wrong_length"])));
+  const Frame same_a = decode(vectors["same_sequence_payload_a"]);
+  const Frame same_b = decode(vectors["same_sequence_payload_b"]);
   CHECK(same_a.sequence == same_b.sequence);
   CHECK(same_a.payload[0] != same_b.payload[0]);
-  CHECK(decode(vectors[17]).session_id == 0x01020303);
+  CHECK(decode(vectors["old_session"]).session_id == 0x01020303);
 
-  std::vector<uint8_t> no_side_effect = vectors[12];
-  append(no_side_effect, vectors[13]);
-  append(no_side_effect, vectors[14]);
-  append(no_side_effect, vectors[2]);
+  std::vector<uint8_t> no_side_effect = vectors["crc_bit_flip"];
+  append(no_side_effect, vectors["reserved_flag"]);
+  append(no_side_effect, vectors["fixed_payload_wrong_length"]);
+  append(no_side_effect, vectors["fire_stop"]);
   IncrementalParser diagnostic_parser;
   DiagnosticCollector diagnostic;
   diagnostic_parser.feed(no_side_effect.data(), no_side_effect.size(), 0,
                          DiagnosticCollector::receive, &diagnostic);
   CHECK(diagnostic.replies == 0);
-  diagnostic_parser.feed(vectors[6].data(), vectors[6].size(), 1,
+  diagnostic_parser.feed(vectors["diag_echo"].data(), vectors["diag_echo"].size(), 1,
                          DiagnosticCollector::receive, &diagnostic);
   CHECK(diagnostic.replies == 1);
-  CHECK(diagnostic.last_reply == vectors[7]);
+  CHECK(diagnostic.last_reply == vectors["diag_echo_reply"]);
 
   FakeRuntime fake;
   fake.hp.revision = 21;
@@ -370,7 +397,7 @@ int main(int argc, char** argv) {
                     go2::serial::CapabilityHitEvent | go2::serial::CapabilityLinkStatus,
                 fake.callbacks(),
                 10);
-  const Frame connect = decode(vectors[0]);
+  const Frame connect = decode(vectors["connect"]);
   session.handleFrame(connect, 10);
   CHECK(session.connected());
   CHECK(session.sessionId() == 0x01020304);
@@ -514,7 +541,24 @@ int main(int argc, char** argv) {
   wrapped_hold.sequence = 0;
   wrapped_hold.session_id = session.sessionId();
   session.handleFrame(wrapped_hold, 102);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.fire_holds == 1);
+  CHECK(fake.release_required);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Nack);
+  CHECK(outgoing[0].payload[3] == static_cast<uint8_t>(go2::serial::NackError::Busy));
+
+  Frame release_after_reconnect = fire_stop;
+  release_after_reconnect.sequence = 0;
+  release_after_reconnect.session_id = session.sessionId();
+  session.handleFrame(release_after_reconnect, 103);
+  CHECK(!fake.release_required);
+  CHECK(findType(drainTx(session.tx()), MessageType::Ack) != nullptr);
+
+  Frame repressed_hold = wrapped_hold;
+  repressed_hold.sequence = 1;
+  session.handleFrame(repressed_hold, 104);
   CHECK(fake.fire_holds == 2);
+  CHECK(fake.hold_active);
   drainTx(session.tx());
 
   go2::serial::HitSnapshot hit;
@@ -563,22 +607,79 @@ int main(int argc, char** argv) {
   CHECK(session.state() == go2::serial::LinkState::Stale);
   CHECK(fake.link_losses == 2);
   CHECK(fake.last_link_reason == go2::serial::FireReason::LinkStale);
+  CHECK(fake.release_required);
 
   reconnect.sequence = 10;
   reconnect.session_id = 0x11223344;
   session.handleFrame(reconnect, 2000);
   CHECK(session.connected());
   drainTx(session.tx());
-  session.parserFault(2001);
+
+  Frame held_after_stale = fire_hold;
+  held_after_stale.sequence = 11;
+  held_after_stale.session_id = session.sessionId();
+  session.handleFrame(held_after_stale, 2001);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.fire_holds == 2);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Nack);
+  CHECK(outgoing[0].payload[3] == static_cast<uint8_t>(go2::serial::NackError::Busy));
+
+  Frame release_after_stale = fire_stop;
+  release_after_stale.sequence = 11;
+  release_after_stale.session_id = session.sessionId();
+  session.handleFrame(release_after_stale, 2002);
+  CHECK(!fake.release_required);
+  drainTx(session.tx());
+
+  Frame hold_before_parser_fault = fire_hold;
+  hold_before_parser_fault.sequence = 12;
+  hold_before_parser_fault.session_id = session.sessionId();
+  session.handleFrame(hold_before_parser_fault, 2003);
+  CHECK(fake.fire_holds == 3);
+  drainTx(session.tx());
+  session.parserFault(2004);
   CHECK(!session.connected());
   CHECK(session.state() == go2::serial::LinkState::Fault);
   CHECK(fake.link_losses == 3);
   CHECK(fake.last_link_reason == go2::serial::FireReason::InternalFault);
+  CHECK(fake.release_required);
 
-  CHECK(!go2::serial::isFireHoldExpired(false, false, 300, 300));
-  CHECK(!go2::serial::isFireHoldExpired(true, false, 300, 299));
-  CHECK(go2::serial::isFireHoldExpired(true, false, 300, 300));
-  CHECK(go2::serial::isFireHoldExpired(false, true, 300, 301));
+  Frame reconnect_after_fault = connect;
+  reconnect_after_fault.sequence = 20;
+  reconnect_after_fault.session_id = 0x55667788;
+  session.handleFrame(reconnect_after_fault, 2100);
+  drainTx(session.tx());
+  Frame held_after_fault = fire_hold;
+  held_after_fault.sequence = 21;
+  held_after_fault.session_id = session.sessionId();
+  session.handleFrame(held_after_fault, 2101);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.fire_holds == 3);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Nack);
+  CHECK(outgoing[0].payload[3] == static_cast<uint8_t>(go2::serial::NackError::Busy));
+
+  Frame reset_while_release_required = hp_reset;
+  reset_while_release_required.sequence = 22;
+  reset_while_release_required.session_id = session.sessionId();
+  session.handleFrame(reset_while_release_required, 2102);
+  CHECK(fake.release_required);
+  CHECK(findType(drainTx(session.tx()), MessageType::Ack) != nullptr);
+
+  Frame final_operator_release = fire_stop;
+  final_operator_release.sequence = 23;
+  final_operator_release.session_id = session.sessionId();
+  session.handleFrame(final_operator_release, 2103);
+  CHECK(!fake.release_required);
+  CHECK(findType(drainTx(session.tx()), MessageType::Ack) != nullptr);
+
+  CHECK(!go2::serial::isFireHoldExpired(false, 300, 300));
+  CHECK(!go2::serial::isFireHoldExpired(true, 300, 299));
+  CHECK(go2::serial::isFireHoldExpired(true, 300, 300));
+  CHECK(go2::serial::requiresExplicitFireRelease(go2::serial::FireReason::HoldTimeout));
+  CHECK(go2::serial::requiresExplicitFireRelease(go2::serial::FireReason::LinkStale));
+  CHECK(go2::serial::requiresExplicitFireRelease(go2::serial::FireReason::SessionChanged));
+  CHECK(go2::serial::requiresExplicitFireRelease(go2::serial::FireReason::InternalFault));
+  CHECK(!go2::serial::requiresExplicitFireRelease(go2::serial::FireReason::OperatorRelease));
 
   go2::serial::FrameTxQueue bounded_tx;
   Frame largest = max_payload;

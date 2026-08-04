@@ -5,10 +5,8 @@
 namespace go2 {
 namespace serial {
 
-bool isFireHoldExpired(bool hold_active,
-                       bool release_required,
-                       uint32_t deadline_ms,
-                       uint32_t now_ms);
+bool isFireHoldExpired(bool hold_active, uint32_t deadline_ms, uint32_t now_ms);
+bool requiresExplicitFireRelease(FireReason reason);
 
 class FrameTxQueue {
  public:

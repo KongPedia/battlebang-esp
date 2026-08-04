@@ -12,6 +12,13 @@ namespace go2 {
 
 class NixoFireClient {
  public:
+  enum FireState {
+    FIRE_IDLE,
+    FIRE_PREFIRE_DELAY,
+    FIRE_RELAY_WAIT1,
+    FIRE_RELAY_WAIT2,
+  };
+
   void begin();
   void begin(const RuntimeConfig& config);
   void tick(uint32_t now);
@@ -27,6 +34,7 @@ class NixoFireClient {
   const char* activeFireSource() const;
   const char* lastFireSource() const;
   void noteFireSource(const char* source);
+  FireState fireState() const { return fireState_; }
   const char* fireStateName() const;
   uint32_t cooldownRemainingMs(uint32_t now) const;
   uint32_t cooldownDurationMs() const;
@@ -34,13 +42,6 @@ class NixoFireClient {
   const char* commandTopic() const;
 
  private:
-  enum FireState {
-    FIRE_IDLE,
-    FIRE_PREFIRE_DELAY,
-    FIRE_RELAY_WAIT1,
-    FIRE_RELAY_WAIT2,
-  };
-
   UartFriendlyWiFiClient wifiClient_;
   PubSubClient mqttClient_{wifiClient_};
   char nixoId_[64] = {0};
@@ -56,7 +57,7 @@ class NixoFireClient {
 
   FireState fireState_ = FIRE_IDLE;
   uint32_t fireTimerMs_ = 0;
-  uint32_t lastFireStartMs_ = 0;
+  uint32_t fireEndsAtMs_ = 0;
   uint32_t cooldownStartedMs_ = 0;
   uint32_t fireDefaultDurationMs_ = NIXO_FIRE_DEFAULT_DURATION_MS;
   uint32_t fireMinDurationMs_ = NIXO_FIRE_MIN_DURATION_MS;

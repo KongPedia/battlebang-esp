@@ -24,12 +24,13 @@ void writeBe32(uint8_t* data, uint32_t value) {
 
 }  // namespace
 
-bool isFireHoldExpired(bool hold_active,
-                       bool release_required,
-                       uint32_t deadline_ms,
-                       uint32_t now_ms) {
-  return (hold_active || release_required) &&
-         static_cast<int32_t>(now_ms - deadline_ms) >= 0;
+bool isFireHoldExpired(bool hold_active, uint32_t deadline_ms, uint32_t now_ms) {
+  return hold_active && static_cast<int32_t>(now_ms - deadline_ms) >= 0;
+}
+
+bool requiresExplicitFireRelease(FireReason reason) {
+  return reason == FireReason::HoldTimeout || reason == FireReason::LinkStale ||
+         reason == FireReason::SessionChanged || reason == FireReason::InternalFault;
 }
 
 bool FrameTxQueue::enqueue(const Frame& frame) {
@@ -281,6 +282,7 @@ void ProductionSession::handleResponse(const Frame& frame, uint32_t now_ms) {
     return;
   }
   last_rx_ms_ = now_ms;
+  if (frame.type == MessageType::Nack) ++counters_.reliable_drops;
   popReliable();
   pumpReliable(now_ms);
 }

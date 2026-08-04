@@ -15,6 +15,7 @@ namespace {
 
 constexpr uint8_t kReservedFlagsMask = 0xFC;
 constexpr size_t kProtectedHeaderBytes = 11;
+constexpr size_t kHeaderBytes = kMinFrameBytes - 2;
 
 uint16_t readBe16(const uint8_t* data) {
   return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | data[1]);
@@ -109,8 +110,8 @@ FrameError encodeFrame(const Frame& frame, uint8_t* output, size_t capacity, siz
   writeBe16(output + 5, frame.sequence);
   writeBe32(output + 7, frame.session_id);
   writeBe16(output + 11, frame.payload_length);
-  memcpy(output + 13, frame.payload, frame.payload_length);
-  writeBe16(output + 13 + frame.payload_length,
+  memcpy(output + kHeaderBytes, frame.payload, frame.payload_length);
+  writeBe16(output + kHeaderBytes + frame.payload_length,
             crc16CcittFalse(output + 2, kProtectedHeaderBytes + frame.payload_length));
   output_length = frame_length;
   return FrameError::None;
@@ -138,7 +139,7 @@ FrameError decodeFrame(const uint8_t* wire, size_t length, Frame& frame) {
   frame.sequence = readBe16(wire + 5);
   frame.session_id = session_id;
   frame.payload_length = static_cast<uint8_t>(payload_length);
-  memcpy(frame.payload, wire + 13, payload_length);
+  memcpy(frame.payload, wire + kHeaderBytes, payload_length);
   return FrameError::None;
 }
 
@@ -298,7 +299,7 @@ void IncrementalParser::feed(const uint8_t* data,
       discardPrefix(magic_at);
       candidate_active_ = false;
     }
-    if (size_ < 13) {
+    if (size_ < kHeaderBytes) {
       if (!partialExpired(now_ms)) return;
       ++counters_.timeout_errors;
       discardPrefix(1);
@@ -306,7 +307,7 @@ void IncrementalParser::feed(const uint8_t* data,
       continue;
     }
 
-    const uint16_t payload_length = readBe16(buffer_ + 11);
+    const uint16_t payload_length = readBe16(buffer_ + kHeaderBytes - 2);
     if (payload_length > kMaxPayloadBytes) {
       ++counters_.length_errors;
       discardPrefix(1);
