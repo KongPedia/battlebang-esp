@@ -30,6 +30,7 @@ class NixoFireClient {
   const char* fireStateName() const;
   uint32_t cooldownRemainingMs(uint32_t now) const;
   uint32_t cooldownDurationMs() const;
+  uint32_t fireRemainingMs(uint32_t now) const;
   const char* commandTopic() const;
 
  private:

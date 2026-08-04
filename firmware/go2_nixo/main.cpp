@@ -1,20 +1,33 @@
 #include <Arduino.h>
+#include "go2_nixo/build_config.h"
+
+#if defined(BATTLEBANG_UART_DIAGNOSTIC)
+#include "go2_nixo/serial/protocol.h"
+#else
 #include <ArduinoJson.h>
 #include <Esp.h>
 #include <WiFi.h>
 #include <bb_esp_ota/http_ota.h>
 #include <bb_esp_ota/ota_manifest.h>
 #include <bb_esp_ota/reboot_marker.h>
+#include <driver/uart.h>
+#include <esp_err.h>
+#include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include "BluetoothSerial.h"
 
 #include "go2_nixo/app/firmware_info.h"
 #include "go2_nixo/mqtt/hit_mqtt_client.h"
-#include "go2_nixo/build_config.h"
 #include "go2_nixo/nixo/nixo_fire_client.h"
+#include "go2_nixo/serial/runtime.h"
 #include "go2_nixo/display/bar_display.h"
 #include "go2_nixo/display/ring_display.h"
+#endif
 
 using namespace go2;
+
+#if !defined(BATTLEBANG_UART_DIAGNOSTIC)
 
 // Integrated Go2 hit/LED + Nixo fallback firmware:
 // - This ESP samples three piezo AO channels (ADC), accepts local hits immediately, owns
@@ -26,13 +39,15 @@ using namespace go2;
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
-HardwareSerial& JetsonSerial = Serial2;
 
 BarDisplay barDisplay;
 RingDisplay ringDisplay;
 HitMqttClient hitMqtt;
 NixoFireClient nixoFire;
 RuntimeConfig runtimeConfig;
+serial::IncrementalParser jetsonParser;
+serial::ProductionSession jetsonSession;
+QueueHandle_t jetsonUartQueue = nullptr;
 
 uint32_t hitSequence = 0;
 
@@ -42,10 +57,10 @@ struct LocalHitState {
   uint16_t acceptedHitCount = 0;
   bool down = false;
   uint32_t lastHitSequence = 0;
+  uint32_t hpRevision = 0;
 };
 
 LocalHitState localHitState;
-String jetsonCommandLine;
 String usbCommandLine;
 String btCommandLine;
 String pendingMqttConfigJson;
@@ -53,6 +68,7 @@ String pendingMqttOtaJson;
 bool pendingMqttConfig = false;
 bool pendingMqttOta = false;
 bool pendingHpResetEvent = true;
+String pendingHpResetReason = "boot";
 bool postOtaReboot = false;
 uint32_t lastDeviceStatusMs = 0;
 uint32_t lastAutoOtaCheckMs = 0;
@@ -61,17 +77,14 @@ bool hasSeenMqttConnection = false;
 bool jetsonFireHoldActive = false;
 bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
+uint32_t jetsonFireStopGuardUntilMs = 0;
+serial::CommandSource jetsonFireSource = serial::CommandSource::Unknown;
+serial::FireReason jetsonFireReason = serial::FireReason::None;
 bool hasPublishedStatusSnapshot = false;
-bool hasSentJetsonHpStatus = false;
-uint32_t jetsonBootMs = 0;
 uint16_t lastPublishedHpRemaining = 0;
 uint16_t lastPublishedMaxHits = 0;
 uint16_t lastPublishedAcceptedHitCount = 0;
 bool lastPublishedDown = false;
-uint16_t lastJetsonHpRemaining = 0;
-uint16_t lastJetsonMaxHits = 0;
-uint16_t lastJetsonAcceptedHitCount = 0;
-bool lastJetsonDead = false;
 bool lastPublishedNixoFiring = false;
 bool lastPublishedFireInhibited = false;
 bool lastPublishedJetsonHoldActive = false;
@@ -81,14 +94,31 @@ String lastPublishedNixoActiveSource;
 String lastPublishedNixoLastFireSource;
 uint32_t fireNetworkQuietUntilMs = 0;
 
+struct ProductionUartCounters {
+  uint32_t fifoOverflow = 0;
+  uint32_t bufferFull = 0;
+  uint32_t parityErrors = 0;
+  uint32_t frameErrors = 0;
+  uint32_t txErrors = 0;
+  uint32_t partialWrites = 0;
+};
+
+ProductionUartCounters jetsonUartCounters;
+uint32_t jetsonEspBootId = 0;
+
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
+constexpr uint32_t MAX_CONTINUOUS_FIRE_MS = 10000;
 constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
-constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
-constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";
+constexpr uint32_t FIRE_STOP_PRIORITY_MS = 100;
+constexpr const char* NIXO_TRANSPORT = "binary_uart+mqtt";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
+
+static void refreshNixoFireInhibit();
+static void configureJetsonSession(uint32_t now);
+static uint32_t uartOverflowCount();
 
 struct PiezoSample {
   int raw = -1;
@@ -187,8 +217,10 @@ static void resetLocalHitState() {
   localHitState.acceptedHitCount = 0;
   localHitState.down = false;
   localHitState.lastHitSequence = 0;
-  nixoFire.setFireInhibited(false);
+  ++localHitState.hpRevision;
+  refreshNixoFireInhibit();
   barDisplay.resetLocalHpState(localHitState.maxHits);
+  jetsonSession.notifyHpChanged(millis());
 }
 
 static float localHpFillRatio() {
@@ -200,7 +232,7 @@ static void syncLocalHitStateWithRuntimeConfig() {
   uint16_t nextMaxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   if (localHitState.maxHits == nextMaxHits) {
     barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
-    nixoFire.setFireInhibited(localHitState.down);
+    refreshNixoFireInhibit();
     return;
   }
 
@@ -213,8 +245,10 @@ static void syncLocalHitStateWithRuntimeConfig() {
                                     : nextMaxHits - localHitState.acceptedHitCount;
   }
   localHitState.down = localHitState.hpRemaining == 0;
-  nixoFire.setFireInhibited(localHitState.down);
+  ++localHitState.hpRevision;
+  refreshNixoFireInhibit();
   barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+  jetsonSession.notifyHpChanged(millis());
 }
 
 static bool applyLocalHit(uint32_t sequence, uint32_t now) {
@@ -226,12 +260,14 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
     localHitState.down = localHitState.hpRemaining == 0;
   }
   localHitState.lastHitSequence = sequence;
-  nixoFire.setFireInhibited(localHitState.down);
+  ++localHitState.hpRevision;
+  refreshNixoFireInhibit();
   barDisplay.setLocalHpState(localHitState.hpRemaining,
                              localHitState.maxHits,
                              localHitState.down,
                              runtimeConfig.hit.hitFlashMs,
                              now);
+  jetsonSession.notifyHpChanged(now);
   return localHitState.down;
 }
 
@@ -305,6 +341,15 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
 
   uint32_t sequence = ++hitSequence;
   const bool downNow = applyLocalHit(sequence, millis());
+  serial::HitSnapshot serialHit;
+  serialHit.hit_sequence = sequence;
+  serialHit.hp_revision = localHitState.hpRevision;
+  serialHit.sensor_id = static_cast<uint8_t>(targetId);
+  serialHit.strength = static_cast<uint16_t>(constrain(peakRaw, 0, 65535));
+  serialHit.timestamp_ms = eventTsMs;
+  serialHit.hp_remaining = localHitState.hpRemaining;
+  serialHit.down = localHitState.down;
+  jetsonSession.notifyHit(serialHit, eventTsMs);
 
   Serial.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
                 (unsigned long)sequence,
@@ -482,16 +527,6 @@ static void pollAnalogPiezo(uint32_t now) {
   printAnalogDebugTick(now);
 }
 
-static char normalizeCommandChar(char c) {
-  if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
-  return c;
-}
-
-static bool isIgnoredCommandChar(char c) {
-  return c == '\r' || c == '\n' || c == ' ' || c == '\t';
-}
-
-
 battlebang::esp::app::FirmwareIdentity firmwareIdentity() {
   battlebang::esp::app::FirmwareIdentity id;
   id.app = BB_GO2_NIXO_APP_NAME;
@@ -570,13 +605,8 @@ static void resetAll(const char* source = "serial") {
   ringDisplay.markDirty();
   Serial.printf("[RESET] source=%s ADC/local HP/display state cleared\n", source);
   if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC/local HP/display state cleared");
-  publishHpResetEventIfConnected(source);
-  publishDeviceStatusIfConnected("reset");
-}
-
-static bool sourceCanFire(const char* source) {
-  if (source == nullptr) return false;
-  return strcmp(source, "jetson") == 0 || strcmp(source, "usb") == 0;
+  pendingHpResetReason = source;
+  pendingHpResetEvent = true;
 }
 
 static void markNetworkQuietForFire(uint32_t now, uint32_t quietMs = FIRE_NETWORK_QUIET_MS) {
@@ -594,107 +624,154 @@ static bool shouldDeferNetworkForFire(uint32_t now) {
   return (int32_t)(fireNetworkQuietUntilMs - now) > 0;
 }
 
-static void stopNixoFireCommand(const char* source) {
-  markNetworkQuietForFireStop(millis());
+static void refreshNixoFireInhibit() {
+  const bool inhibited = localHitState.down || localHitState.hpRemaining == 0 ||
+                         !jetsonSession.connected();
+  if (nixoFire.fireInhibited() == inhibited) return;
+  nixoFire.setFireInhibited(inhibited);
+  if (inhibited && (localHitState.down || localHitState.hpRemaining == 0)) {
+    jetsonFireReason = serial::FireReason::HpDown;
+  } else if (!inhibited) {
+    jetsonFireReason = serial::FireReason::None;
+  }
+  jetsonSession.notifyFireStatus(millis());
+}
+
+static const char* serialFireSourceName(serial::CommandSource source) {
+  switch (source) {
+    case serial::CommandSource::Gamepad:
+      return "jetson_gamepad";
+    case serial::CommandSource::Autonomy:
+      return "jetson_autonomy";
+    case serial::CommandSource::CommandCenter:
+      return "jetson_command_center";
+    case serial::CommandSource::Diagnostic:
+      return "jetson_diagnostic";
+    default:
+      return "jetson_uart";
+  }
+}
+
+static void stopSerialFire(const char* source, serial::FireReason reason, uint32_t now) {
+  markNetworkQuietForFireStop(now);
   jetsonFireHoldActive = false;
   jetsonFireReleaseRequired = false;
+  jetsonFireSource = serial::CommandSource::Unknown;
+  jetsonFireReason = reason;
   nixoFire.stopFire(source);
   Serial.printf("[CMD] fire stopped source=%s\n", source);
-  if (SerialBT.hasClient()) {
-    SerialBT.printf("[CMD] fire stopped source=%s\n", source);
-  }
+  jetsonSession.notifyFireStatus(now);
 }
 
-static const char* defaultFireSourceForTransport(const char* source) {
-  return strcmp(source, "jetson") == 0 ? "jetson_uart" : source;
+static uint8_t onSerialFireHold(serial::CommandSource source, uint32_t now, void*) {
+  if (localHitState.down || localHitState.hpRemaining == 0 || nixoFire.fireInhibited()) {
+    jetsonFireReason = serial::FireReason::HpDown;
+    return static_cast<uint8_t>(serial::NackError::Inhibited);
+  }
+  if (static_cast<int32_t>(now - jetsonFireStopGuardUntilMs) < 0) {
+    return static_cast<uint8_t>(serial::NackError::NotReady);
+  }
+  if (jetsonFireReleaseRequired) {
+    jetsonFireReason = serial::FireReason::ReleaseRequired;
+    return static_cast<uint8_t>(serial::NackError::Busy);
+  }
+
+  const bool wasFiring = nixoFire.isFiring();
+  if (wasFiring && !jetsonFireHoldActive) {
+    jetsonFireReleaseRequired = true;
+    jetsonFireReason = serial::FireReason::SourceConflict;
+    jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+    return static_cast<uint8_t>(serial::NackError::Busy);
+  }
+  if (jetsonFireHoldActive && !wasFiring) {
+    jetsonFireReleaseRequired = true;
+    jetsonFireReason = serial::FireReason::DurationLimit;
+    jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+    return static_cast<uint8_t>(serial::NackError::Busy);
+  }
+
+  const char* sourceName = serialFireSourceName(source);
+  bool accepted = true;
+  if (wasFiring) {
+    nixoFire.noteFireSource(sourceName);
+  } else {
+    const uint32_t duration = min(runtimeConfig.nixo.fireMaxDurationMs, MAX_CONTINUOUS_FIRE_MS);
+    accepted = nixoFire.startFire(duration, sourceName, true);
+  }
+  if (!accepted) {
+    jetsonFireReason = nixoFire.fireInhibited() ? serial::FireReason::Inhibited
+                                                : serial::FireReason::SourceConflict;
+    return static_cast<uint8_t>(nixoFire.fireInhibited() ? serial::NackError::Inhibited
+                                                         : serial::NackError::Busy);
+  }
+
+  jetsonFireHoldActive = true;
+  jetsonFireSource = source;
+  jetsonFireReason = serial::FireReason::None;
+  jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+  markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
+  return 0;
 }
 
-static String parseFireSource(String line, const char* source) {
-  line.trim();
-  int split = line.indexOf(' ');
-  if (split < 0) return String(defaultFireSourceForTransport(source));
-  String fireSource = line.substring(split + 1);
-  fireSource.trim();
-  if (fireSource.startsWith("source=")) fireSource = fireSource.substring(7);
-  fireSource.trim();
-  return fireSource.length() > 0 ? fireSource : String(defaultFireSourceForTransport(source));
+static serial::AckResult onSerialFireStop(uint8_t, uint32_t now, void*) {
+  const bool changed = nixoFire.isFiring() || jetsonFireHoldActive || jetsonFireReleaseRequired;
+  jetsonFireStopGuardUntilMs = now + FIRE_STOP_PRIORITY_MS;
+  stopSerialFire("jetson-fire-stop", serial::FireReason::OperatorRelease, now);
+  return changed ? serial::AckResult::Applied : serial::AckResult::NoopAlreadySafe;
 }
 
-static void handleCommandChar(char c, const char* source, const char* fireSourceOverride = nullptr) {
-  c = normalizeCommandChar(c);
-  if (c == CMD_RESET_HIT_DISPLAY || c == 'r') {
-    resetAll(source);
-    return;
+static uint8_t onSerialHpReset(uint8_t, uint32_t now, void*) {
+  jetsonFireReason = serial::FireReason::Reset;
+  resetAll("jetson_uart");
+  jetsonSession.notifyFireStatus(now);
+  return 0;
+}
+
+static void onSerialLinkLost(serial::FireReason reason, uint32_t now, void*) {
+  jetsonFireStopGuardUntilMs = now + FIRE_STOP_PRIORITY_MS;
+  stopSerialFire(reason == serial::FireReason::LinkStale ? "jetson-link-stale"
+                                                         : "jetson-parser-fault",
+                 reason,
+                 now);
+  refreshNixoFireInhibit();
+}
+
+static serial::HpSnapshot readSerialHpSnapshot(void*) {
+  serial::HpSnapshot hp;
+  hp.revision = localHitState.hpRevision;
+  hp.remaining = localHitState.hpRemaining;
+  hp.maximum = localHitState.maxHits;
+  hp.accepted_hits = localHitState.acceptedHitCount;
+  hp.down = localHitState.down || localHitState.hpRemaining == 0;
+  hp.last_hit_sequence = localHitState.lastHitSequence;
+  return hp;
+}
+
+static serial::FireSnapshot readSerialFireSnapshot(uint32_t now, void*) {
+  serial::FireSnapshot fire;
+  fire.inhibited = nixoFire.fireInhibited();
+  fire.source = jetsonFireHoldActive ? jetsonFireSource
+                                     : (nixoFire.isFiring() ? serial::CommandSource::EspMqtt
+                                                           : serial::CommandSource::Unknown);
+  fire.remaining_ms = static_cast<uint16_t>(
+      min(nixoFire.fireRemainingMs(now), static_cast<uint32_t>(65535)));
+  fire.reason = jetsonFireReason;
+  if (jetsonFireReleaseRequired) {
+    fire.state = serial::FireState::ReleaseRequired;
+  } else if (fire.inhibited) {
+    fire.state = serial::FireState::Inhibited;
+  } else if (strcmp(nixoFire.fireStateName(), "prefire_delay") == 0) {
+    fire.state = serial::FireState::Prefire;
+  } else if (strcmp(nixoFire.fireStateName(), "flywheel_spinup") == 0) {
+    fire.state = serial::FireState::Spinup;
+  } else if (strcmp(nixoFire.fireStateName(), "firing") == 0) {
+    fire.state = serial::FireState::Firing;
+  } else if (strcmp(nixoFire.fireStateName(), "flywheel_spindown") == 0) {
+    fire.state = serial::FireState::Spindown;
+  } else {
+    fire.state = serial::FireState::Idle;
   }
-  if (c == 'x' || c == '0') {
-    stopNixoFireCommand(source);
-    return;
-  }
-  if (c == '1' || c == 'f') {
-    if (!sourceCanFire(source)) {
-      Serial.printf("[FIRE] ignored source=%s reason=jetson_uart_required\n", source);
-      if (SerialBT.hasClient() && strcmp(source, "bt") == 0) {
-        SerialBT.println("[FIRE] ignored reason=jetson_uart_required");
-      }
-      return;
-    }
-    const char* fireSource = (fireSourceOverride != nullptr && fireSourceOverride[0] != '\0')
-                                 ? fireSourceOverride
-                                 : defaultFireSourceForTransport(source);
-    if (strcmp(source, "usb") == 0) {
-      const bool accepted = nixoFire.startFire(runtimeConfig.nixo.fireDefaultDurationMs, fireSource, false);
-      Serial.printf("[CMD] USB fire %s source=%s duration_ms=%lu\n",
-                    accepted ? "started" : "ignored",
-                    fireSource,
-                    (unsigned long)runtimeConfig.nixo.fireDefaultDurationMs);
-      return;
-    }
-    const uint32_t now = millis();
-    const bool wasFiring = nixoFire.isFiring();
-    bool accepted = false;
-    if (jetsonFireReleaseRequired) {
-      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
-      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required\n", source, fireSource);
-      return;
-    }
-    if (wasFiring && !jetsonFireHoldActive) {
-      jetsonFireReleaseRequired = true;
-      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
-      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=non_jetson_fire_active\n", source, fireSource);
-      return;
-    }
-    if (jetsonFireHoldActive && !wasFiring) {
-      jetsonFireReleaseRequired = true;
-      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
-      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required_after_duration\n", source, fireSource);
-      return;
-    }
-    if (wasFiring) {
-      nixoFire.noteFireSource(fireSource);
-      accepted = true;
-    } else {
-      accepted = nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true);
-    }
-    if (accepted) {
-      jetsonFireHoldActive = true;
-      jetsonFireReleaseRequired = false;
-      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
-      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-    }
-    Serial.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
-                  accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
-                  source,
-                  fireSource,
-                  (unsigned long)JETSON_FIRE_HOLD_TIMEOUT_MS);
-    if (SerialBT.hasClient()) {
-      SerialBT.printf("[CMD] fire %s source=%s\n",
-                      accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
-                      source);
-    }
-  }
+  return fire;
 }
 
 static void replyToSource(const char* source, const String& line) {
@@ -726,6 +803,7 @@ static void addLocalHitStatus(JsonObject doc) {
   doc["hp_remaining"] = localHitState.hpRemaining;
   doc["max_hits"] = localHitState.maxHits;
   doc["down"] = localHitState.down;
+  doc["hp_revision"] = localHitState.hpRevision;
   doc["ring_fill_ratio"] = localHpFillRatio();
   doc["last_hit_sequence"] = localHitState.lastHitSequence;
 
@@ -736,6 +814,7 @@ static void addLocalHitStatus(JsonObject doc) {
   combat["max_hp"] = localHitState.maxHits;
   combat["hp_max"] = localHitState.maxHits;
   combat["down"] = localHitState.down;
+  combat["hp_revision"] = localHitState.hpRevision;
   combat["ring_fill_ratio"] = localHpFillRatio();
   combat["last_hit_sequence"] = localHitState.lastHitSequence;
 
@@ -744,6 +823,7 @@ static void addLocalHitStatus(JsonObject doc) {
   hp["current"] = localHitState.hpRemaining;
   hp["max"] = localHitState.maxHits;
   hp["down"] = localHitState.down;
+  hp["revision"] = localHitState.hpRevision;
   hp["accepted_hit_count"] = localHitState.acceptedHitCount;
   hp["ring_fill_ratio"] = localHpFillRatio();
   hp["last_hit_sequence"] = localHitState.lastHitSequence;
@@ -789,6 +869,22 @@ static void addNixoTuningStatus(JsonObject doc) {
   nixo["jetson_hold_active"] = jetsonFireHoldActive;
   nixo["jetson_release_required"] = jetsonFireReleaseRequired;
   nixo["jetson_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
+
+  JsonObject uart = doc.createNestedObject("go2_nixo_serial");
+  uart["connected"] = jetsonSession.connected();
+  uart["state"] = static_cast<uint8_t>(jetsonSession.state());
+  uart["session_id"] = jetsonSession.sessionId();
+  uart["esp_boot_id"] = jetsonSession.espBootId();
+  uart["rx_frames"] = jetsonParser.counters().frames;
+  uart["crc_errors"] = jetsonParser.counters().crc_errors;
+  uart["overflow_errors"] = uartOverflowCount();
+  uart["tx_errors"] = jetsonUartCounters.txErrors;
+  uart["partial_writes"] = jetsonUartCounters.partialWrites;
+  uart["tx_pending_bytes"] = jetsonSession.tx().pendingBytes();
+  uart["retries"] = jetsonSession.counters().reliable_retries;
+  uart["reliable_drops"] = jetsonSession.counters().reliable_drops;
+  uart["sequence_conflicts"] = jetsonSession.counters().sequence_conflicts;
+  uart["out_of_order"] = jetsonSession.counters().out_of_order;
 }
 
 static void printStatusJson(const char* source, const char* reason) {
@@ -874,72 +970,6 @@ static bool statusStateChanged() {
          lastPublishedNixoLastFireSource != nixoFire.lastFireSource();
 }
 
-static bool localHitStateDead() {
-  return localHitState.down || localHitState.hpRemaining == 0;
-}
-
-static void rememberJetsonHpStatusSnapshot() {
-  hasSentJetsonHpStatus = true;
-  lastJetsonHpRemaining = localHitState.hpRemaining;
-  lastJetsonMaxHits = localHitState.maxHits;
-  lastJetsonAcceptedHitCount = localHitState.acceptedHitCount;
-  lastJetsonDead = localHitStateDead();
-}
-
-static bool jetsonHpStatusChanged() {
-  if (!hasSentJetsonHpStatus) return true;
-  return lastJetsonHpRemaining != localHitState.hpRemaining ||
-         lastJetsonMaxHits != localHitState.maxHits ||
-         lastJetsonAcceptedHitCount != localHitState.acceptedHitCount ||
-         lastJetsonDead != localHitStateDead();
-}
-
-static void writeJetsonHpEvent(char event) {
-  // ponytail: Jetson UART is a tiny machine protocol; never mix JSON/debug text into this TX path.
-  // ESP power/reset can leave a partial byte on Jetson RX; newline once resyncs Dora's line reader.
-  static bool jetsonNeedsResync = true;
-  if (jetsonNeedsResync) {
-    JetsonSerial.write(static_cast<uint8_t>('\n'));
-    jetsonNeedsResync = false;
-  }
-  JetsonSerial.write(static_cast<uint8_t>(event));
-  JetsonSerial.write(static_cast<uint8_t>('\n'));
-}
-
-static void sendJetsonHpStatus(const char* reason) {
-  const bool isDead = localHitStateDead();
-  const bool isHit = strcmp(reason, "hit") == 0;
-  writeJetsonHpEvent(isDead ? 'd' : (isHit ? 'h' : 'r'));
-  rememberJetsonHpStatusSnapshot();
-}
-
-static void publishJetsonHpStatus() {
-  if (!hasSentJetsonHpStatus) {
-    if (millis() - jetsonBootMs < JETSON_BOOT_RESET_DELAY_MS) return;
-    sendJetsonHpStatus("reset");
-    return;
-  }
-  const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;
-  const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;
-  const bool isDead = localHitStateDead();
-  const bool becameDead = isDead && !lastJetsonDead;
-  if (becameDead) {
-    sendJetsonHpStatus("dead");
-    return;
-  }
-  if (hpDecreased) {
-    sendJetsonHpStatus("hit");
-    return;
-  }
-  if (!isDead && (hpIncreased || lastJetsonDead)) {
-    sendJetsonHpStatus("reset");
-    return;
-  }
-  if (jetsonHpStatusChanged()) {
-    rememberJetsonHpStatusSnapshot();
-  }
-}
-
 static bool publishHpResetEventIfConnected(const char* reason) {
   if (!hitMqtt.connected()) {
     pendingHpResetEvent = true;
@@ -1017,6 +1047,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
   syncLocalHitStateWithRuntimeConfig();
   resetAnalogPiezoState();
+  configureJetsonSession(millis());
   Serial.printf("[CONFIG] runtime config reapplied reason=%s configured=%s robot_id=%s nixo_id=%s broker=%s:%u event_topic=%s nixo_topic=%s\n",
                 reason,
                 runtimeConfig.common.configured ? "true" : "false",
@@ -1134,20 +1165,6 @@ static void handleCommandLine(String line, const char* source) {
   String lower = line;
   lower.toLowerCase();
 
-  if (lower == "r" || lower == "reset") {
-    resetAll(source);
-    return;
-  }
-  if (lower == "1" || lower == "f" || lower == "fire" || lower.startsWith("f ") ||
-      lower.startsWith("fire ")) {
-    String fireSource = parseFireSource(line, source);
-    handleCommandChar('f', source, fireSource.c_str());
-    return;
-  }
-  if (lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off") {
-    stopNixoFireCommand(source);
-    return;
-  }
   if (lower == "s" || lower == "status" || lower == "show-status") {
     printStatusJson(source, "serial");
     return;
@@ -1186,22 +1203,7 @@ static void handleCommandLine(String line, const char* source) {
     applyAndPersistConfig(payload, source);
     return;
   }
-  if (line.length() == 1) {
-    handleCommandChar(line[0], source);
-    return;
-  }
   replyToSource(source, String("{\"event\":\"command_ignored\",\"source\":\"") + source + "\"}");
-}
-
-static bool isImmediateCommandChar(char c) {
-  c = normalizeCommandChar(c);
-  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == '1' || c == 'f' || c == 'x' || c == '0';
-}
-
-static bool isJetsonBufferedImmediateCommand(Stream& stream, char c, const char* source) {
-  if (strcmp(source, "jetson") != 0 || !isImmediateCommandChar(c) || stream.available() == 0) return false;
-  const char next = (char)stream.peek();
-  return isIgnoredCommandChar(next) || isImmediateCommandChar(next);
 }
 
 static void pollCommandStream(Stream& stream, String& line, const char* source) {
@@ -1213,13 +1215,6 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
       line = "";
       continue;
     }
-    if (line.length() == 0 && isIgnoredCommandChar(c)) continue;
-    if (line.length() == 0 &&
-        ((isImmediateCommandChar(c) && stream.available() == 0) ||
-         isJetsonBufferedImmediateCommand(stream, c, source))) {
-      handleCommandChar(c, source);
-      continue;
-    }
     if (line.length() >= COMMAND_LINE_MAX) {
       line = "";
       replyToSource(source, "{\"event\":\"command_rejected\",\"error\":\"line too long\"}");
@@ -1229,25 +1224,163 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
   }
 }
 
-static void pollCommands() {
-  pollCommandStream(JetsonSerial, jetsonCommandLine, "jetson");
+static void pollDebugCommands() {
   pollCommandStream(Serial, usbCommandLine, "usb");
   pollCommandStream(SerialBT, btCommandLine, "bt");
 }
 
-static void updateJetsonFireHold(uint32_t now) {
-  if (!jetsonFireHoldActive && !jetsonFireReleaseRequired) return;
-  if ((int32_t)(now - jetsonFireHoldDeadlineMs) < 0) return;
-  jetsonFireHoldActive = false;
-  jetsonFireReleaseRequired = false;
-  if (nixoFire.isFiring()) {
-    markNetworkQuietForFireStop(now);
-    nixoFire.stopFire("jetson-hold-timeout");
+static uint32_t parserErrorCount() {
+  const serial::ParserCounters& counters = jetsonParser.counters();
+  return counters.overflow_errors + counters.timeout_errors + counters.length_errors +
+         counters.crc_errors + counters.version_errors + counters.type_errors +
+         counters.flag_errors + counters.session_errors;
+}
+
+static uint32_t uartOverflowCount() {
+  return jetsonUartCounters.fifoOverflow + jetsonUartCounters.bufferFull +
+         jetsonParser.counters().overflow_errors;
+}
+
+static void receiveJetsonFrame(const serial::Frame& frame, void*) {
+  jetsonSession.handleFrame(frame, millis());
+}
+
+static void recordJetsonUartEvent(const uart_event_t& event, uint32_t now) {
+  bool fault = true;
+  switch (event.type) {
+    case UART_FIFO_OVF:
+      ++jetsonUartCounters.fifoOverflow;
+      break;
+    case UART_BUFFER_FULL:
+      ++jetsonUartCounters.bufferFull;
+      break;
+    case UART_PARITY_ERR:
+      ++jetsonUartCounters.parityErrors;
+      break;
+    case UART_FRAME_ERR:
+      ++jetsonUartCounters.frameErrors;
+      break;
+    default:
+      fault = false;
+      break;
   }
+  if (fault) jetsonSession.parserFault(now);
+}
+
+static void flushJetsonTx() {
+  while (jetsonSession.tx().pendingBytes() != 0) {
+    size_t available = 0;
+    const uint8_t* bytes = jetsonSession.tx().peek(available);
+    if (bytes == nullptr || available == 0) return;
+    const size_t requested = min(available, static_cast<size_t>(128));
+    const int written = uart_tx_chars(UART_NUM_2,
+                                      reinterpret_cast<const char*>(bytes),
+                                      static_cast<uint32_t>(requested));
+    if (written < 0) {
+      ++jetsonUartCounters.txErrors;
+      return;
+    }
+    if (written == 0) return;
+    if (static_cast<size_t>(written) < requested) ++jetsonUartCounters.partialWrites;
+    jetsonSession.tx().consume(static_cast<size_t>(written));
+  }
+}
+
+static bool beginJetsonBinaryUart() {
+  uart_config_t config = {};
+  config.baud_rate = UART_BAUD;
+  config.data_bits = UART_DATA_8_BITS;
+  config.parity = UART_PARITY_DISABLE;
+  config.stop_bits = UART_STOP_BITS_1;
+  config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+  config.rx_flow_ctrl_thresh = 0;
+  config.source_clk = UART_SCLK_APB;
+
+  esp_err_t error = uart_param_config(UART_NUM_2, &config);
+  if (error == ESP_OK) {
+    error = uart_set_pin(UART_NUM_2, UART_TX_PIN, UART_RX_PIN,
+                         UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+  }
+  if (error == ESP_OK) {
+    error = uart_driver_install(UART_NUM_2, serial::kRxBufferBytes, 0, 16,
+                                &jetsonUartQueue, 0);
+  }
+  if (error != ESP_OK) {
+    Serial.printf("[UART2] binary init failed: %s\n", esp_err_to_name(error));
+    jetsonUartQueue = nullptr;
+    return false;
+  }
+  return true;
+}
+
+static void configureJetsonSession(uint32_t now) {
+  serial::SessionCallbacks callbacks;
+  callbacks.fire_hold = onSerialFireHold;
+  callbacks.fire_stop = onSerialFireStop;
+  callbacks.hp_reset = onSerialHpReset;
+  callbacks.link_lost = onSerialLinkLost;
+  callbacks.hp_snapshot = readSerialHpSnapshot;
+  callbacks.fire_snapshot = readSerialFireSnapshot;
+
+  const String& configuredDeviceId = runtimeConfig.nixo.nixoId.length() != 0
+                                         ? runtimeConfig.nixo.nixoId
+                                         : runtimeConfig.common.deviceId;
+  if (jetsonEspBootId == 0) jetsonEspBootId = esp_random();
+  if (jetsonEspBootId == 0) jetsonEspBootId = 1;
+  uint32_t capabilities = serial::CapabilityFireControl | serial::CapabilityHpStatus |
+                          serial::CapabilityHitEvent | serial::CapabilityLinkStatus;
+  if (NIXO_RELAY2_ENABLED_VALUE) capabilities |= serial::CapabilityRelay2Ch;
+  jetsonSession.begin(configuredDeviceId.c_str(),
+                       runtimeConfig.hit.robotId.c_str(),
+                       jetsonEspBootId,
+                       capabilities,
+                       callbacks,
+                       now);
+  refreshNixoFireInhibit();
+}
+
+static void pollJetsonBinaryUart(uint32_t now) {
+  if (jetsonUartQueue != nullptr) {
+    uart_event_t event;
+    while (xQueueReceive(jetsonUartQueue, &event, 0) == pdTRUE) {
+      recordJetsonUartEvent(event, now);
+    }
+
+    uint8_t bytes[128];
+    size_t available = 0;
+    while (uart_get_buffered_data_len(UART_NUM_2, &available) == ESP_OK && available != 0) {
+      const size_t requested = min(available, sizeof(bytes));
+      const int count = uart_read_bytes(UART_NUM_2, bytes, requested, 0);
+      if (count <= 0) break;
+      const uint32_t errorsBefore = parserErrorCount();
+      jetsonParser.feed(bytes, static_cast<size_t>(count), now, receiveJetsonFrame);
+      if (parserErrorCount() != errorsBefore) jetsonSession.parserFault(now);
+    }
+    const uint32_t errorsBefore = parserErrorCount();
+    jetsonParser.feed(nullptr, 0, now, receiveJetsonFrame);
+    if (parserErrorCount() != errorsBefore) jetsonSession.parserFault(now);
+  }
+
+  jetsonSession.setTransportCounters(jetsonParser.counters().crc_errors,
+                                     uartOverflowCount());
+  jetsonSession.tick(now);
+  refreshNixoFireInhibit();
+  flushJetsonTx();
+}
+
+static void updateJetsonFireHold(uint32_t now) {
+  if (!serial::isFireHoldExpired(jetsonFireHoldActive,
+                                 jetsonFireReleaseRequired,
+                                 jetsonFireHoldDeadlineMs,
+                                 now)) return;
+  stopSerialFire("jetson-hold-timeout", serial::FireReason::HoldTimeout, now);
 }
 
 
 static void processPendingMqttManagement() {
+  if (pendingHpResetEvent) {
+    publishHpResetEventIfConnected(pendingHpResetReason.c_str());
+  }
   if (pendingMqttConfig) {
     pendingMqttConfig = false;
     const String payload = pendingMqttConfigJson;
@@ -1267,7 +1400,7 @@ static void publishMqttReconnectStatus(uint32_t now) {
   const bool connected = hitMqtt.connected();
   if (connected && !lastMqttConnected) {
     lastDeviceStatusMs = now;
-    if (pendingHpResetEvent) publishHpResetEventIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "boot");
+    if (pendingHpResetEvent) publishHpResetEventIfConnected(pendingHpResetReason.c_str());
     publishDeviceStatusIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "mqtt_connected");
     hasSeenMqttConnection = true;
   }
@@ -1334,8 +1467,6 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
-  JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
-  jetsonBootMs = millis();
   SerialBT.begin(BT_NAME);
 
   postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
@@ -1348,6 +1479,8 @@ void setup() {
   hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
   nixoFire.begin(runtimeConfig);
   resetLocalHitState();
+  configureJetsonSession(millis());
+  if (!beginJetsonBinaryUart()) jetsonSession.parserFault(millis());
 
   barDisplay.markDirty();
   ringDisplay.markDirty();
@@ -1373,9 +1506,8 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
-  Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state; Jetson UART '1'/'f'=Nixo hold-fire, '0'/'x'=stop.\n",
-                CMD_RESET_HIT_DISPLAY);
-  Serial.println("USB/BT/Jetson line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  Serial.println("USB/BT debug/provisioning commands: s/status/show-status, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  Serial.println("UART2 production control: Go2/Nixo binary protocol only; no legacy character fallback.");
   Serial.print("release_repo=");
   Serial.println(BB_GO2_NIXO_RELEASE_REPO);
   Serial.print("latest_manifest=");
@@ -1412,18 +1544,19 @@ void loop() {
 
   // Local hit judgment and HP/ring rendering must keep working even when
   // Command Center/MQTT is offline, so service local paths before network IO.
-  pollCommands();
+  pollJetsonBinaryUart(now);
+  updateJetsonFireHold(now);
   pollAnalogPiezo(now);
   nixoFire.tickLocal(now);
-  updateJetsonFireHold(now);
+  refreshNixoFireInhibit();
   ringDisplay.setCooldownState(nixoFire.isFiring(),
                                nixoFire.cooldownRemainingMs(now),
                                nixoFire.cooldownDurationMs(),
                                nixoFire.fireInhibited());
   barDisplay.tick(now);
   ringDisplay.tick(now);
+  pollDebugCommands();
 
-  publishJetsonHpStatus();
   const bool deferNetworkForFire = shouldDeferNetworkForFire(now);
   if (!deferNetworkForFire) {
     nixoFire.tickNetwork(now);
@@ -1437,3 +1570,15 @@ void loop() {
 
   delay(1);
 }
+
+#endif
+
+#if defined(BATTLEBANG_UART_DIAGNOSTIC)
+void setup() {
+  serial::diagnosticSetup();
+}
+
+void loop() {
+  serial::diagnosticLoop();
+}
+#endif

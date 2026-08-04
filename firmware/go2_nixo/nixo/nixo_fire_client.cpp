@@ -236,6 +236,12 @@ uint32_t NixoFireClient::cooldownDurationMs() const {
   return fireCooldownMs_;
 }
 
+uint32_t NixoFireClient::fireRemainingMs(uint32_t now) const {
+  if (!isFiring()) return 0;
+  const uint32_t elapsed = now - lastFireStartMs_;
+  return elapsed >= activeFireDurationMs_ ? 0 : activeFireDurationMs_ - elapsed;
+}
+
 void NixoFireClient::relayOff() {
   if (NIXO_RELAY2_ENABLED_VALUE) {
     digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
