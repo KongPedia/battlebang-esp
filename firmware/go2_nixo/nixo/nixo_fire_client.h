@@ -39,7 +39,6 @@ class NixoFireClient {
     FIRE_PREFIRE_DELAY,
     FIRE_RELAY_WAIT1,
     FIRE_RELAY_WAIT2,
-    FIRE_STOP_DELAY,
   };
 
   UartFriendlyWiFiClient wifiClient_;
@@ -75,7 +74,6 @@ class NixoFireClient {
 
   void relayOff();
   void startFlywheelNow(uint32_t now);
-  void beginStopSequence(uint32_t now);
   void updateFireSequence(uint32_t now);
   void beginCooldown(uint32_t now);
   void ensureMqttConnected(uint32_t now);
