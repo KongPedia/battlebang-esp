@@ -52,6 +52,13 @@ void repairCrc(std::vector<uint8_t>& wire) {
   wire[wire.size() - 1] = static_cast<uint8_t>(crc);
 }
 
+uint32_t readBe32(const uint8_t* data) {
+  return (static_cast<uint32_t>(data[0]) << 24) |
+         (static_cast<uint32_t>(data[1]) << 16) |
+         (static_cast<uint32_t>(data[2]) << 8) |
+         static_cast<uint32_t>(data[3]);
+}
+
 struct Collector {
   std::vector<Frame> frames;
 
@@ -133,6 +140,9 @@ struct FakeRuntime {
   int fire_holds = 0;
   int fire_stops = 0;
   int hp_resets = 0;
+  int hp_damages = 0;
+  int hp_guards = 0;
+  uint16_t last_hp_guard_ms = 0;
   int link_losses = 0;
   bool firing = false;
   bool hold_active = false;
@@ -172,6 +182,24 @@ struct FakeRuntime {
     return 0;
   }
 
+  static go2::serial::AckResult hpDamage(go2::serial::CommandSource, uint32_t, void* context) {
+    FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
+    if (fake.hp.down || fake.hp.remaining == 0) return go2::serial::AckResult::NoopAlreadySafe;
+    ++fake.hp_damages;
+    ++fake.hp.revision;
+    ++fake.hp.accepted_hits;
+    --fake.hp.remaining;
+    fake.hp.down = fake.hp.remaining == 0;
+    return go2::serial::AckResult::Applied;
+  }
+
+  static go2::serial::AckResult hpGuard(uint16_t duration_ms, uint32_t, void* context) {
+    FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
+    ++fake.hp_guards;
+    fake.last_hp_guard_ms = duration_ms;
+    return go2::serial::AckResult::Applied;
+  }
+
   static void linkLost(go2::serial::FireReason reason, uint32_t, void* context) {
     FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
     ++fake.link_losses;
@@ -205,6 +233,8 @@ struct FakeRuntime {
     value.fire_hold = fireHold;
     value.fire_stop = fireStop;
     value.hp_reset = hpReset;
+    value.hp_damage = hpDamage;
+    value.hp_guard = hpGuard;
     value.link_lost = linkLost;
     value.hp_snapshot = hpSnapshot;
     value.fire_snapshot = fireSnapshot;
@@ -244,6 +274,8 @@ int main(int argc, char** argv) {
       {"fire_stop_ack", MessageType::Ack},
       {"hp_status", MessageType::HpStatus},
       {"hit_event", MessageType::HitEvent},
+      {"hp_damage", MessageType::HpDamage},
+      {"hp_guard", MessageType::HpGuard},
       {"diag_echo", MessageType::DiagEcho},
       {"diag_echo_reply", MessageType::DiagEchoReply},
   };
@@ -394,7 +426,8 @@ int main(int argc, char** argv) {
                 "go2_03",
                 0xA1B2C3D4,
                 go2::serial::CapabilityFireControl | go2::serial::CapabilityHpStatus |
-                    go2::serial::CapabilityHitEvent | go2::serial::CapabilityLinkStatus,
+                    go2::serial::CapabilityHitEvent | go2::serial::CapabilityLinkStatus |
+                    go2::serial::CapabilityHpDamage | go2::serial::CapabilityHpGuard,
                 fake.callbacks(),
                 10);
   const Frame connect = decode(vectors["connect"]);
@@ -407,6 +440,9 @@ int main(int argc, char** argv) {
   CHECK(connected_response->payload_length == 21);
   CHECK(connected_response->payload[0] == 11);
   CHECK(std::memcmp(connected_response->payload + 1, "nixo_go2_03", 11) == 0);
+  const uint32_t connected_capabilities = readBe32(connected_response->payload + 16);
+  CHECK((connected_capabilities & go2::serial::CapabilityHpDamage) != 0);
+  CHECK((connected_capabilities & go2::serial::CapabilityHpGuard) != 0);
   CHECK(findType(outgoing, MessageType::HpStatus) != nullptr);
   CHECK(findType(outgoing, MessageType::FireStatus) != nullptr);
 
@@ -520,6 +556,38 @@ int main(int argc, char** argv) {
   CHECK(outgoing[0].payload[3] ==
         static_cast<uint8_t>(go2::serial::AckResult::Duplicate));
 
+  const Frame hp_damage = makeFrame(MessageType::HpDamage,
+                                    FrameFlags::AckRequired,
+                                    5,
+                                    session.sessionId(),
+                                    std::vector<uint8_t>{1});
+  session.handleFrame(hp_damage, 50);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.hp_damages == 1);
+  const Frame* damage_ack = findType(outgoing, MessageType::Ack);
+  CHECK(damage_ack != nullptr && damage_ack->payload[3] == 0);
+  const Frame* damaged_hp = findType(outgoing, MessageType::HpStatus);
+  CHECK(damaged_hp != nullptr);
+  CHECK(damaged_hp->payload[4] == 0 && damaged_hp->payload[5] == 13);
+  session.handleFrame(hp_damage, 51);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.hp_damages == 1);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Ack);
+  CHECK(outgoing[0].payload[3] ==
+        static_cast<uint8_t>(go2::serial::AckResult::Duplicate));
+
+  const Frame hp_guard = makeFrame(MessageType::HpGuard,
+                                   FrameFlags::AckRequired,
+                                   6,
+                                   session.sessionId(),
+                                   std::vector<uint8_t>{0x22, 0xAE});
+  session.handleFrame(hp_guard, 60);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.hp_guards == 1);
+  CHECK(fake.last_hp_guard_ms == 8878);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Ack);
+  CHECK(outgoing[0].payload[3] == static_cast<uint8_t>(go2::serial::AckResult::Applied));
+
   Frame reconnect = connect;
   reconnect.sequence = 0xFFFE;
   reconnect.session_id = 0xAABBCCDD;
@@ -600,7 +668,7 @@ int main(int argc, char** argv) {
   const Frame* periodic_hp = findType(outgoing, MessageType::HpStatus);
   CHECK(periodic_hp != nullptr);
   CHECK(periodic_hp->payload_length == 15);
-  CHECK(periodic_hp->payload[3] == 22);
+  CHECK(readBe32(periodic_hp->payload) == fake.hp.revision);
 
   session.tick(1801);
   CHECK(!session.connected());

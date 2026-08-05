@@ -360,6 +360,28 @@ void ProductionSession::handleFrame(const Frame& frame, uint32_t now_ms) {
       queueHpStatus(now_ms);
       return;
     }
+    case MessageType::HpDamage: {
+      const AckResult result = callbacks_.hp_damage == nullptr
+                                   ? AckResult::NoopAlreadySafe
+                                   : callbacks_.hp_damage(static_cast<CommandSource>(frame.payload[0]),
+                                                          now_ms,
+                                                          callbacks_.context);
+      Frame response;
+      sendAck(frame, result, &response);
+      rememberRequest(frame, &response, now_ms);
+      hp_dirty_ = true;
+      queueHpStatus(now_ms);
+      return;
+    }
+    case MessageType::HpGuard: {
+      const AckResult result = callbacks_.hp_guard == nullptr
+                                   ? AckResult::NoopAlreadySafe
+                                   : callbacks_.hp_guard(readBe16(frame.payload), now_ms, callbacks_.context);
+      Frame response;
+      sendAck(frame, result, &response);
+      rememberRequest(frame, &response, now_ms);
+      return;
+    }
     default:
       sendNack(frame, NackError::UnsupportedType);
       return;
