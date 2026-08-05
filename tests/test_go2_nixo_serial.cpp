@@ -52,6 +52,13 @@ void repairCrc(std::vector<uint8_t>& wire) {
   wire[wire.size() - 1] = static_cast<uint8_t>(crc);
 }
 
+uint32_t readBe32(const uint8_t* data) {
+  return (static_cast<uint32_t>(data[0]) << 24) |
+         (static_cast<uint32_t>(data[1]) << 16) |
+         (static_cast<uint32_t>(data[2]) << 8) |
+         static_cast<uint32_t>(data[3]);
+}
+
 struct Collector {
   std::vector<Frame> frames;
 
@@ -267,6 +274,8 @@ int main(int argc, char** argv) {
       {"fire_stop_ack", MessageType::Ack},
       {"hp_status", MessageType::HpStatus},
       {"hit_event", MessageType::HitEvent},
+      {"hp_damage", MessageType::HpDamage},
+      {"hp_guard", MessageType::HpGuard},
       {"diag_echo", MessageType::DiagEcho},
       {"diag_echo_reply", MessageType::DiagEchoReply},
   };
@@ -418,7 +427,7 @@ int main(int argc, char** argv) {
                 0xA1B2C3D4,
                 go2::serial::CapabilityFireControl | go2::serial::CapabilityHpStatus |
                     go2::serial::CapabilityHitEvent | go2::serial::CapabilityLinkStatus |
-                    go2::serial::CapabilityHpGuard,
+                    go2::serial::CapabilityHpDamage | go2::serial::CapabilityHpGuard,
                 fake.callbacks(),
                 10);
   const Frame connect = decode(vectors["connect"]);
@@ -431,6 +440,9 @@ int main(int argc, char** argv) {
   CHECK(connected_response->payload_length == 21);
   CHECK(connected_response->payload[0] == 11);
   CHECK(std::memcmp(connected_response->payload + 1, "nixo_go2_03", 11) == 0);
+  const uint32_t connected_capabilities = readBe32(connected_response->payload + 16);
+  CHECK((connected_capabilities & go2::serial::CapabilityHpDamage) != 0);
+  CHECK((connected_capabilities & go2::serial::CapabilityHpGuard) != 0);
   CHECK(findType(outgoing, MessageType::HpStatus) != nullptr);
   CHECK(findType(outgoing, MessageType::FireStatus) != nullptr);
 
@@ -574,6 +586,7 @@ int main(int argc, char** argv) {
   CHECK(fake.hp_guards == 1);
   CHECK(fake.last_hp_guard_ms == 8878);
   CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Ack);
+  CHECK(outgoing[0].payload[3] == static_cast<uint8_t>(go2::serial::AckResult::Applied));
 
   Frame reconnect = connect;
   reconnect.sequence = 0xFFFE;
@@ -655,7 +668,7 @@ int main(int argc, char** argv) {
   const Frame* periodic_hp = findType(outgoing, MessageType::HpStatus);
   CHECK(periodic_hp != nullptr);
   CHECK(periodic_hp->payload_length == 15);
-  CHECK(periodic_hp->payload[3] == static_cast<uint8_t>(fake.hp.revision));
+  CHECK(readBe32(periodic_hp->payload) == fake.hp.revision);
 
   session.tick(1801);
   CHECK(!session.connected());

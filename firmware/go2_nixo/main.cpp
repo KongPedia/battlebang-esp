@@ -78,6 +78,7 @@ bool jetsonFireHoldActive = false;
 bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
 uint32_t jetsonFireStopGuardUntilMs = 0;
+bool hpGuardEnabled = false;
 uint32_t hpGuardUntilMs = 0;
 serial::CommandSource jetsonFireSource = serial::CommandSource::Unknown;
 serial::FireReason jetsonFireReason = serial::FireReason::None;
@@ -125,7 +126,11 @@ static void configureJetsonSession(uint32_t now);
 static uint32_t uartOverflowCount();
 
 static bool hpGuardActive(uint32_t now) {
-  return static_cast<int32_t>(hpGuardUntilMs - now) > 0;
+  if (!hpGuardEnabled) return false;
+  if (static_cast<int32_t>(hpGuardUntilMs - now) > 0) return true;
+  hpGuardEnabled = false;
+  hpGuardUntilMs = 0;
+  return false;
 }
 
 struct PiezoSample {
@@ -220,6 +225,7 @@ static void resetAnalogPiezoState() {
 }
 
 static void resetLocalHitState() {
+  hpGuardEnabled = false;
   hpGuardUntilMs = 0;
   localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   localHitState.hpRemaining = localHitState.maxHits;
@@ -260,7 +266,7 @@ static void syncLocalHitStateWithRuntimeConfig() {
   jetsonSession.notifyHpChanged(millis());
 }
 
-static bool applyLocalHit(uint32_t sequence, uint32_t now) {
+static bool applyLocalHit(uint32_t sequence, uint32_t now, bool notifyJetson = true) {
   if (hpGuardActive(now)) return localHitState.down;
   localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   if (localHitState.hpRemaining > localHitState.maxHits) localHitState.hpRemaining = localHitState.maxHits;
@@ -277,7 +283,7 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
                              localHitState.down,
                              runtimeConfig.hit.hitFlashMs,
                              now);
-  jetsonSession.notifyHpChanged(now);
+  if (notifyJetson) jetsonSession.notifyHpChanged(now);
   return localHitState.down;
 }
 
@@ -348,7 +354,8 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
     publishDeviceStatusIfConnected("local_hit_ignored_down");
     return;
   }
-  if (hpGuardActive(eventTsMs)) {
+  const uint32_t now = millis();
+  if (hpGuardActive(now)) {
     Serial.printf("[PIEZO AO] ignored during hp guard target=%d peak=%d hp=%u/%u ts_ms=%lu\n",
                   targetId,
                   peakRaw,
@@ -359,7 +366,7 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
   }
 
   uint32_t sequence = ++hitSequence;
-  const bool downNow = applyLocalHit(sequence, millis());
+  const bool downNow = applyLocalHit(sequence, now);
   serial::HitSnapshot serialHit;
   serialHit.hit_sequence = sequence;
   serialHit.hp_revision = localHitState.hpRevision;
@@ -757,12 +764,13 @@ static serial::AckResult onSerialHpDamage(serial::CommandSource, uint32_t now, v
   if (hpGuardActive(now) || localHitState.down || localHitState.hpRemaining == 0) {
     return serial::AckResult::NoopAlreadySafe;
   }
-  applyLocalHit(++hitSequence, now);
+  applyLocalHit(++hitSequence, now, false);
   publishDeviceStatusIfConnected("jetson_hp_damage");
   return serial::AckResult::Applied;
 }
 
 static serial::AckResult onSerialHpGuard(uint16_t durationMs, uint32_t now, void*) {
+  hpGuardEnabled = true;
   hpGuardUntilMs = now + min(durationMs, MAX_HP_GUARD_MS);
   return serial::AckResult::Applied;
 }

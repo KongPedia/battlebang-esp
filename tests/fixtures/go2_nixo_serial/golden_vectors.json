@@ -84,6 +84,16 @@
       "name": "hit_event"
     },
     {
+      "hex": "AA 55 01 23 01 10 02 01 02 03 04 00 01 01 D2 03",
+      "message_type": "HP_DAMAGE",
+      "name": "hp_damage"
+    },
+    {
+      "hex": "AA 55 01 24 01 10 03 01 02 03 04 00 02 11 94 92 49",
+      "message_type": "HP_GUARD",
+      "name": "hp_guard"
+    },
+    {
       "hex": "AA 55 01 F0 01 00 2A 01 02 03 04 00 04 00 AA 55 FF 96 92",
       "message_type": "DIAG_ECHO",
       "name": "diag_echo"

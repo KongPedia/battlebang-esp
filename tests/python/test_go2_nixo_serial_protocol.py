@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests/fixtures/go2_nixo_serial/golden_vectors.json"
-FIXTURE_SHA256 = "bbdf0b9cd1f30be9633b24b210dfe5c4c695b0b6a7c5866c13c581141645fd84"
+FIXTURE_SHA256 = "95ece74f2347ecfd3bd6f58e2732b32182425397b9ee7d2d187413d978b9b32a"
 
 
 def fixture() -> dict[str, object]:
@@ -18,7 +18,7 @@ def fixture() -> dict[str, object]:
 
 def test_canonical_fixture_hash_and_vector_count() -> None:
     assert hashlib.sha256(FIXTURE.read_bytes()).hexdigest() == FIXTURE_SHA256
-    assert len(fixture()["golden_vectors"]) == 8
+    assert len(fixture()["golden_vectors"]) == 10
 
 
 def test_diagnostic_build_is_echo_only_and_production_has_no_legacy_fallback() -> None:
@@ -80,9 +80,10 @@ def test_production_runtime_bridges_binary_uart_fire_and_hp() -> None:
     assert "resetAll(\"jetson_uart\");" in main
     assert "callbacks.hp_damage = onSerialHpDamage;" in main
     assert "callbacks.hp_guard = onSerialHpGuard;" in main
-    assert "if (hpGuardActive(eventTsMs))" in main
+    assert "bool hpGuardEnabled = false;" in main
+    assert "if (hpGuardActive(now))" in main
     assert "if (hpGuardActive(now) || localHitState.down" in main
-    assert "applyLocalHit(++hitSequence, now);" in main
+    assert "applyLocalHit(++hitSequence, now, false);" in main
     assert "CapabilityHpDamage" in main
     assert "CapabilityHpGuard" in main
     assert "fireRemainingMs" in nixo_header
