@@ -134,6 +134,8 @@ struct FakeRuntime {
   int fire_stops = 0;
   int hp_resets = 0;
   int hp_damages = 0;
+  int hp_guards = 0;
+  uint16_t last_hp_guard_ms = 0;
   int link_losses = 0;
   bool firing = false;
   bool hold_active = false;
@@ -184,6 +186,13 @@ struct FakeRuntime {
     return go2::serial::AckResult::Applied;
   }
 
+  static go2::serial::AckResult hpGuard(uint16_t duration_ms, uint32_t, void* context) {
+    FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
+    ++fake.hp_guards;
+    fake.last_hp_guard_ms = duration_ms;
+    return go2::serial::AckResult::Applied;
+  }
+
   static void linkLost(go2::serial::FireReason reason, uint32_t, void* context) {
     FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
     ++fake.link_losses;
@@ -218,6 +227,7 @@ struct FakeRuntime {
     value.fire_stop = fireStop;
     value.hp_reset = hpReset;
     value.hp_damage = hpDamage;
+    value.hp_guard = hpGuard;
     value.link_lost = linkLost;
     value.hp_snapshot = hpSnapshot;
     value.fire_snapshot = fireSnapshot;
@@ -407,7 +417,8 @@ int main(int argc, char** argv) {
                 "go2_03",
                 0xA1B2C3D4,
                 go2::serial::CapabilityFireControl | go2::serial::CapabilityHpStatus |
-                    go2::serial::CapabilityHitEvent | go2::serial::CapabilityLinkStatus,
+                    go2::serial::CapabilityHitEvent | go2::serial::CapabilityLinkStatus |
+                    go2::serial::CapabilityHpGuard,
                 fake.callbacks(),
                 10);
   const Frame connect = decode(vectors["connect"]);
@@ -552,6 +563,17 @@ int main(int argc, char** argv) {
   CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Ack);
   CHECK(outgoing[0].payload[3] ==
         static_cast<uint8_t>(go2::serial::AckResult::Duplicate));
+
+  const Frame hp_guard = makeFrame(MessageType::HpGuard,
+                                   FrameFlags::AckRequired,
+                                   6,
+                                   session.sessionId(),
+                                   std::vector<uint8_t>{0x22, 0xAE});
+  session.handleFrame(hp_guard, 60);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.hp_guards == 1);
+  CHECK(fake.last_hp_guard_ms == 8878);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Ack);
 
   Frame reconnect = connect;
   reconnect.sequence = 0xFFFE;

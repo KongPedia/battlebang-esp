@@ -52,6 +52,7 @@ bool isKnownType(uint8_t value) {
     case MessageType::HpStatus:
     case MessageType::HitEvent:
     case MessageType::HpDamage:
+    case MessageType::HpGuard:
     case MessageType::Ack:
     case MessageType::Nack:
     case MessageType::DiagEcho:
@@ -169,6 +170,8 @@ bool isPayloadValid(const Frame& frame) {
              inRange(frame.payload[17], 1);
     case MessageType::HpDamage:
       return frame.payload_length == 1 && inRange(frame.payload[0], 6);
+    case MessageType::HpGuard:
+      return frame.payload_length == 2 && readBe16(frame.payload) > 0;
     case MessageType::Ack:
       return frame.payload_length == 4 && inRange(frame.payload[3], 2);
     case MessageType::Nack:
@@ -188,6 +191,7 @@ bool hasValidFlagsForType(const Frame& frame) {
     case MessageType::HpReset:
     case MessageType::HitEvent:
     case MessageType::HpDamage:
+    case MessageType::HpGuard:
     case MessageType::DiagEcho:
       expected = FrameFlags::AckRequired;
       break;

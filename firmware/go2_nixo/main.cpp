@@ -78,6 +78,7 @@ bool jetsonFireHoldActive = false;
 bool jetsonFireReleaseRequired = false;
 uint32_t jetsonFireHoldDeadlineMs = 0;
 uint32_t jetsonFireStopGuardUntilMs = 0;
+uint32_t hpGuardUntilMs = 0;
 serial::CommandSource jetsonFireSource = serial::CommandSource::Unknown;
 serial::FireReason jetsonFireReason = serial::FireReason::None;
 bool hasPublishedStatusSnapshot = false;
@@ -114,6 +115,7 @@ constexpr uint32_t MAX_CONTINUOUS_FIRE_MS = 10000;
 constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
 constexpr uint32_t FIRE_STOP_PRIORITY_MS = 100;
 constexpr uint32_t JETSON_PARSER_FAULT_THRESHOLD = 8;
+constexpr uint16_t MAX_HP_GUARD_MS = 15000;
 constexpr const char* NIXO_TRANSPORT = "binary_uart+mqtt";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
@@ -121,6 +123,10 @@ constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 static void refreshNixoFireInhibit();
 static void configureJetsonSession(uint32_t now);
 static uint32_t uartOverflowCount();
+
+static bool hpGuardActive(uint32_t now) {
+  return static_cast<int32_t>(hpGuardUntilMs - now) > 0;
+}
 
 struct PiezoSample {
   int raw = -1;
@@ -214,6 +220,7 @@ static void resetAnalogPiezoState() {
 }
 
 static void resetLocalHitState() {
+  hpGuardUntilMs = 0;
   localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   localHitState.hpRemaining = localHitState.maxHits;
   localHitState.acceptedHitCount = 0;
@@ -254,6 +261,7 @@ static void syncLocalHitStateWithRuntimeConfig() {
 }
 
 static bool applyLocalHit(uint32_t sequence, uint32_t now) {
+  if (hpGuardActive(now)) return localHitState.down;
   localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   if (localHitState.hpRemaining > localHitState.maxHits) localHitState.hpRemaining = localHitState.maxHits;
   if (!localHitState.down && localHitState.hpRemaining > 0) {
@@ -338,6 +346,15 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
                       localHitState.maxHits);
     }
     publishDeviceStatusIfConnected("local_hit_ignored_down");
+    return;
+  }
+  if (hpGuardActive(eventTsMs)) {
+    Serial.printf("[PIEZO AO] ignored during hp guard target=%d peak=%d hp=%u/%u ts_ms=%lu\n",
+                  targetId,
+                  peakRaw,
+                  localHitState.hpRemaining,
+                  localHitState.maxHits,
+                  (unsigned long)eventTsMs);
     return;
   }
 
@@ -737,11 +754,16 @@ static uint8_t onSerialHpReset(uint8_t, uint32_t now, void*) {
 }
 
 static serial::AckResult onSerialHpDamage(serial::CommandSource, uint32_t now, void*) {
-  if (localHitState.down || localHitState.hpRemaining == 0) {
+  if (hpGuardActive(now) || localHitState.down || localHitState.hpRemaining == 0) {
     return serial::AckResult::NoopAlreadySafe;
   }
   applyLocalHit(++hitSequence, now);
   publishDeviceStatusIfConnected("jetson_hp_damage");
+  return serial::AckResult::Applied;
+}
+
+static serial::AckResult onSerialHpGuard(uint16_t durationMs, uint32_t now, void*) {
+  hpGuardUntilMs = now + min(durationMs, MAX_HP_GUARD_MS);
   return serial::AckResult::Applied;
 }
 
@@ -1346,6 +1368,7 @@ static void configureJetsonSession(uint32_t now) {
   callbacks.fire_stop = onSerialFireStop;
   callbacks.hp_reset = onSerialHpReset;
   callbacks.hp_damage = onSerialHpDamage;
+  callbacks.hp_guard = onSerialHpGuard;
   callbacks.link_lost = onSerialLinkLost;
   callbacks.hp_snapshot = readSerialHpSnapshot;
   callbacks.fire_snapshot = readSerialFireSnapshot;
@@ -1357,7 +1380,7 @@ static void configureJetsonSession(uint32_t now) {
   if (jetsonEspBootId == 0) jetsonEspBootId = 1;
   uint32_t capabilities = serial::CapabilityFireControl | serial::CapabilityHpStatus |
                           serial::CapabilityHitEvent | serial::CapabilityLinkStatus |
-                          serial::CapabilityHpDamage;
+                          serial::CapabilityHpDamage | serial::CapabilityHpGuard;
   if (NIXO_RELAY2_ENABLED_VALUE) capabilities |= serial::CapabilityRelay2Ch;
   jetsonSession.begin(configuredDeviceId.c_str(),
                        runtimeConfig.hit.robotId.c_str(),
