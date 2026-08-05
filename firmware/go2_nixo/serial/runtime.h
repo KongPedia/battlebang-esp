@@ -56,6 +56,7 @@ struct SessionCallbacks {
   uint8_t (*fire_hold)(CommandSource source, uint32_t now_ms, void* context) = nullptr;
   AckResult (*fire_stop)(uint8_t reason, uint32_t now_ms, void* context) = nullptr;
   uint8_t (*hp_reset)(uint8_t reason, uint32_t now_ms, void* context) = nullptr;
+  AckResult (*hp_damage)(CommandSource source, uint32_t now_ms, void* context) = nullptr;
   void (*link_lost)(FireReason reason, uint32_t now_ms, void* context) = nullptr;
   HpSnapshot (*hp_snapshot)(void* context) = nullptr;
   FireSnapshot (*fire_snapshot)(uint32_t now_ms, void* context) = nullptr;

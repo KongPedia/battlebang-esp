@@ -736,6 +736,15 @@ static uint8_t onSerialHpReset(uint8_t, uint32_t now, void*) {
   return 0;
 }
 
+static serial::AckResult onSerialHpDamage(serial::CommandSource, uint32_t now, void*) {
+  if (localHitState.down || localHitState.hpRemaining == 0) {
+    return serial::AckResult::NoopAlreadySafe;
+  }
+  applyLocalHit(++hitSequence, now);
+  publishDeviceStatusIfConnected("jetson_hp_damage");
+  return serial::AckResult::Applied;
+}
+
 static void onSerialLinkLost(serial::FireReason reason, uint32_t now, void*) {
   const bool uartOwnedFire = jetsonFireHoldActive;
   jetsonFireStopGuardUntilMs = now + FIRE_STOP_PRIORITY_MS;
@@ -1336,6 +1345,7 @@ static void configureJetsonSession(uint32_t now) {
   callbacks.fire_hold = onSerialFireHold;
   callbacks.fire_stop = onSerialFireStop;
   callbacks.hp_reset = onSerialHpReset;
+  callbacks.hp_damage = onSerialHpDamage;
   callbacks.link_lost = onSerialLinkLost;
   callbacks.hp_snapshot = readSerialHpSnapshot;
   callbacks.fire_snapshot = readSerialFireSnapshot;
@@ -1346,7 +1356,8 @@ static void configureJetsonSession(uint32_t now) {
   if (jetsonEspBootId == 0) jetsonEspBootId = esp_random();
   if (jetsonEspBootId == 0) jetsonEspBootId = 1;
   uint32_t capabilities = serial::CapabilityFireControl | serial::CapabilityHpStatus |
-                          serial::CapabilityHitEvent | serial::CapabilityLinkStatus;
+                          serial::CapabilityHitEvent | serial::CapabilityLinkStatus |
+                          serial::CapabilityHpDamage;
   if (NIXO_RELAY2_ENABLED_VALUE) capabilities |= serial::CapabilityRelay2Ch;
   jetsonSession.begin(configuredDeviceId.c_str(),
                        runtimeConfig.hit.robotId.c_str(),

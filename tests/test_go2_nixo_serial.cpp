@@ -133,6 +133,7 @@ struct FakeRuntime {
   int fire_holds = 0;
   int fire_stops = 0;
   int hp_resets = 0;
+  int hp_damages = 0;
   int link_losses = 0;
   bool firing = false;
   bool hold_active = false;
@@ -172,6 +173,17 @@ struct FakeRuntime {
     return 0;
   }
 
+  static go2::serial::AckResult hpDamage(go2::serial::CommandSource, uint32_t, void* context) {
+    FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
+    if (fake.hp.down || fake.hp.remaining == 0) return go2::serial::AckResult::NoopAlreadySafe;
+    ++fake.hp_damages;
+    ++fake.hp.revision;
+    ++fake.hp.accepted_hits;
+    --fake.hp.remaining;
+    fake.hp.down = fake.hp.remaining == 0;
+    return go2::serial::AckResult::Applied;
+  }
+
   static void linkLost(go2::serial::FireReason reason, uint32_t, void* context) {
     FakeRuntime& fake = *static_cast<FakeRuntime*>(context);
     ++fake.link_losses;
@@ -205,6 +217,7 @@ struct FakeRuntime {
     value.fire_hold = fireHold;
     value.fire_stop = fireStop;
     value.hp_reset = hpReset;
+    value.hp_damage = hpDamage;
     value.link_lost = linkLost;
     value.hp_snapshot = hpSnapshot;
     value.fire_snapshot = fireSnapshot;
@@ -520,6 +533,26 @@ int main(int argc, char** argv) {
   CHECK(outgoing[0].payload[3] ==
         static_cast<uint8_t>(go2::serial::AckResult::Duplicate));
 
+  const Frame hp_damage = makeFrame(MessageType::HpDamage,
+                                    FrameFlags::AckRequired,
+                                    5,
+                                    session.sessionId(),
+                                    std::vector<uint8_t>{1});
+  session.handleFrame(hp_damage, 50);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.hp_damages == 1);
+  const Frame* damage_ack = findType(outgoing, MessageType::Ack);
+  CHECK(damage_ack != nullptr && damage_ack->payload[3] == 0);
+  const Frame* damaged_hp = findType(outgoing, MessageType::HpStatus);
+  CHECK(damaged_hp != nullptr);
+  CHECK(damaged_hp->payload[4] == 0 && damaged_hp->payload[5] == 13);
+  session.handleFrame(hp_damage, 51);
+  outgoing = drainTx(session.tx());
+  CHECK(fake.hp_damages == 1);
+  CHECK(outgoing.size() == 1 && outgoing[0].type == MessageType::Ack);
+  CHECK(outgoing[0].payload[3] ==
+        static_cast<uint8_t>(go2::serial::AckResult::Duplicate));
+
   Frame reconnect = connect;
   reconnect.sequence = 0xFFFE;
   reconnect.session_id = 0xAABBCCDD;
@@ -600,7 +633,7 @@ int main(int argc, char** argv) {
   const Frame* periodic_hp = findType(outgoing, MessageType::HpStatus);
   CHECK(periodic_hp != nullptr);
   CHECK(periodic_hp->payload_length == 15);
-  CHECK(periodic_hp->payload[3] == 22);
+  CHECK(periodic_hp->payload[3] == static_cast<uint8_t>(fake.hp.revision));
 
   session.tick(1801);
   CHECK(!session.connected());

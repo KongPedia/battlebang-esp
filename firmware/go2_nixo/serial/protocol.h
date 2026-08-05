@@ -33,6 +33,7 @@ enum class MessageType : uint8_t {
   HpReset = 0x20,
   HpStatus = 0x21,
   HitEvent = 0x22,
+  HpDamage = 0x23,
   Ack = 0x7E,
   Nack = 0x7F,
   DiagEcho = 0xF0,
@@ -63,6 +64,7 @@ enum CapabilityBits : uint32_t {
   CapabilityLinkStatus = 0x00000008,
   CapabilityDiagEcho = 0x00000010,
   CapabilityRelay2Ch = 0x00000020,
+  CapabilityHpDamage = 0x00000040,
 };
 
 enum class LinkState : uint8_t {

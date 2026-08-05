@@ -78,6 +78,9 @@ def test_production_runtime_bridges_binary_uart_fire_and_hp() -> None:
     assert "localHitState.hpRevision" in main
     assert "jetsonSession.notifyHit(serialHit, eventTsMs);" in main
     assert "resetAll(\"jetson_uart\");" in main
+    assert "callbacks.hp_damage = onSerialHpDamage;" in main
+    assert "applyLocalHit(++hitSequence, now);" in main
+    assert "CapabilityHpDamage" in main
     assert "fireRemainingMs" in nixo_header
     assert "kStatusPeriodMs = 500" in (ROOT / "firmware/go2_nixo/serial/protocol.h").read_text()
     assert "kLinkStaleTimeoutMs = 1500" in (ROOT / "firmware/go2_nixo/serial/protocol.h").read_text()
@@ -89,6 +92,7 @@ def test_production_runtime_bridges_binary_uart_fire_and_hp() -> None:
     assert "NackError::SessionMismatch" in runtime
     assert "MessageType::HitEvent" in runtime and "pumpReliable" in runtime
     assert "MessageType::HpStatus" in runtime and "MessageType::LinkStatus" in runtime
+    assert "MessageType::HpDamage" in runtime
     assert "hasValidFlagsForType" in protocol
 
 
