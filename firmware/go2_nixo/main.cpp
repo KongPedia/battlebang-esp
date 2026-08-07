@@ -45,6 +45,7 @@ struct LocalHitState {
 };
 
 LocalHitState localHitState;
+int lastAcceptedHitTargetId = 3;
 String jetsonCommandLine;
 String usbCommandLine;
 String btCommandLine;
@@ -187,6 +188,7 @@ static void resetLocalHitState() {
   localHitState.acceptedHitCount = 0;
   localHitState.down = false;
   localHitState.lastHitSequence = 0;
+  lastAcceptedHitTargetId = 3;
   nixoFire.setFireInhibited(false);
   barDisplay.resetLocalHpState(localHitState.maxHits);
 }
@@ -304,6 +306,7 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
   }
 
   uint32_t sequence = ++hitSequence;
+  lastAcceptedHitTargetId = targetId;
   const bool downNow = applyLocalHit(sequence, millis());
 
   Serial.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
@@ -931,9 +934,10 @@ static void writeJetsonHpEvent(char event) {
 
 static void writeJetsonHpSnapshot() {
   beginJetsonHpLine();
-  JetsonSerial.printf("{\"type\":\"hp_status\",\"hp_remaining\":%u,\"max_hits\":%u,\"down\":false}\n",
+  JetsonSerial.printf("{\"type\":\"hp_status\",\"hp_remaining\":%u,\"max_hits\":%u,\"down\":false,\"sensor_id\":\"%s\"}\n",
                       localHitState.hpRemaining,
-                      localHitState.maxHits);
+                      localHitState.maxHits,
+                      targetIdToSensorId(lastAcceptedHitTargetId));
 }
 
 static void sendJetsonHpStatus(const char* reason) {
