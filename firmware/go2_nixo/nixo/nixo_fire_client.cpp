@@ -147,10 +147,10 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source, bool imm
     return false;
   }
 
+  lastFireStartMs_ = now;
   copyFireSource(source, activeFireSource_, sizeof(activeFireSource_));
   copyFireSource(activeFireSource_, lastFireSource_, sizeof(lastFireSource_));
   activeFireDurationMs_ = clampFireDuration(durationMs);
-  fireEndsAtMs_ = now + activeFireDurationMs_;
   if (immediateFlywheel) {
     startFlywheelNow(now);
   } else {
@@ -169,13 +169,16 @@ bool NixoFireClient::startFire(uint32_t durationMs, const char* source, bool imm
 void NixoFireClient::stopFire(const char* source) {
   bool wasFiring = isFiring();
   const uint32_t now = millis();
-  relayOff();
-  fireState_ = FIRE_IDLE;
-  fireEndsAtMs_ = 0;
-  if (wasFiring) {
-    beginCooldown(now);
+  if (NIXO_RELAY2_ENABLED_VALUE && (fireState_ == FIRE_RELAY_WAIT1 || fireState_ == FIRE_RELAY_WAIT2)) {
+    beginStopSequence(now);
+  } else {
+    relayOff();
+    fireState_ = FIRE_IDLE;
+    if (wasFiring) {
+      beginCooldown(now);
+    }
+    activeFireSource_[0] = '\0';
   }
-  activeFireSource_[0] = '\0';
   Serial.printf("[FIRE] stop source=%s\n", source);
 }
 
@@ -216,6 +219,8 @@ const char* NixoFireClient::fireStateName() const {
       return NIXO_RELAY2_ENABLED_VALUE ? "flywheel_spinup" : "firing";
     case FIRE_RELAY_WAIT2:
       return "firing";
+    case FIRE_STOP_DELAY:
+      return "flywheel_spindown";
   }
   return "unknown";
 }
@@ -229,11 +234,6 @@ uint32_t NixoFireClient::cooldownRemainingMs(uint32_t now) const {
 
 uint32_t NixoFireClient::cooldownDurationMs() const {
   return fireCooldownMs_;
-}
-
-uint32_t NixoFireClient::fireRemainingMs(uint32_t now) const {
-  if (!isFiring()) return 0;
-  return static_cast<int32_t>(now - fireEndsAtMs_) >= 0 ? 0 : fireEndsAtMs_ - now;
 }
 
 void NixoFireClient::relayOff() {
@@ -256,11 +256,17 @@ void NixoFireClient::startFlywheelNow(uint32_t now) {
   fireTimerMs_ = now;
 }
 
+void NixoFireClient::beginStopSequence(uint32_t now) {
+  digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+  Serial.printf("[RELAY] CH2 OFF pin=%d level=%d readback=%d\n",
+                NIXO_RELAY2_PIN_VALUE,
+                NIXO_RELAY_OFF_LEVEL_VALUE,
+                digitalRead(NIXO_RELAY2_PIN_VALUE));
+  fireState_ = FIRE_STOP_DELAY;
+  fireTimerMs_ = now;
+}
+
 void NixoFireClient::updateFireSequence(uint32_t now) {
-  if (fireState_ != FIRE_IDLE && static_cast<int32_t>(now - fireEndsAtMs_) >= 0) {
-    stopFire("duration-complete");
-    return;
-  }
   switch (fireState_) {
     case FIRE_IDLE:
       return;
@@ -279,7 +285,20 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
       }
       return;
     case FIRE_RELAY_WAIT1:
-      if (!NIXO_RELAY2_ENABLED_VALUE) return;
+      if (!NIXO_RELAY2_ENABLED_VALUE) {
+        if (now - fireTimerMs_ >= activeFireDurationMs_) {
+          relayOff();
+          fireState_ = FIRE_IDLE;
+          Serial.printf("[RELAY] CH1 OFF pin=%d level=%d readback=%d\n",
+                        NIXO_RELAY1_PIN_VALUE,
+                        NIXO_RELAY_OFF_LEVEL_VALUE,
+                        digitalRead(NIXO_RELAY1_PIN_VALUE));
+          Serial.println("[RELAY] ALL OFF / FIRE done");
+          activeFireSource_[0] = '\0';
+          beginCooldown(now);
+        }
+        return;
+      }
       if (now - fireTimerMs_ >= relayDelay1Ms_) {
         digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_ON_LEVEL_VALUE);
         fireState_ = FIRE_RELAY_WAIT2;
@@ -291,6 +310,22 @@ void NixoFireClient::updateFireSequence(uint32_t now) {
       }
       return;
     case FIRE_RELAY_WAIT2:
+      if (now - fireTimerMs_ >= activeFireDurationMs_) {
+        beginStopSequence(now);
+      }
+      return;
+    case FIRE_STOP_DELAY:
+      if (now - fireTimerMs_ >= relayDelay1Ms_) {
+        digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);
+        fireState_ = FIRE_IDLE;
+        Serial.printf("[RELAY] CH1 OFF pin=%d level=%d readback=%d\n",
+                      NIXO_RELAY1_PIN_VALUE,
+                      NIXO_RELAY_OFF_LEVEL_VALUE,
+                      digitalRead(NIXO_RELAY1_PIN_VALUE));
+        Serial.println("[RELAY] ALL OFF / FIRE done");
+        activeFireSource_[0] = '\0';
+        beginCooldown(now);
+      }
       return;
   }
 }

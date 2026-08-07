@@ -441,7 +441,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
     assert "localHitState.down = false;" in reset_function
     assert "barDisplay.resetLocalHpState(localHitState.maxHits);" in reset_function
 
-    reset_block = main.split("static void resetAll", 1)[1].split("static void markNetworkQuietForFire", 1)[0]
+    reset_block = main.split("static void resetAll", 1)[1].split("static void handleCommandChar", 1)[0]
     assert "resetAnalogPiezoState();" in reset_block
     assert "hitMqtt.clearOfflineQueue();" in reset_block
     assert "resetLocalHitState();" in reset_block
@@ -473,7 +473,7 @@ def assert_local_hit_state_contract(firmware_dir: str, env_prefix: str) -> None:
         assert "return mqttClient_.publish(deviceStatusTopic_, payload, true);" in mqtt_source
         assert "pendingHpResetEvent" in main
         assert 'publishHpResetEventIfConnected("mqtt_reset")' in main
-        assert "publishHpResetEventIfConnected(pendingHpResetReason.c_str())" in main
+        assert "publishHpResetEventIfConnected(hasSeenMqttConnection ? \"mqtt_reconnected\" : \"boot\")" in main
     assert "queueHitEvent" in mqtt_header
     assert "QueuedHitEvent" in mqtt_header
     assert "DynamicJsonDocument doc(MQTT_BUFFER_SIZE);" in mqtt_source
@@ -733,30 +733,27 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
         assert "clear-config" in main, firmware
         assert "pollCommandStream" in main, firmware
         assert "COMMAND_LINE_MAX = 2048" in main, firmware
-        if firmware == "go2":
-            assert "isImmediateCommandChar(c) && stream.available() == 0" in main
-        else:
-            assert "pollDebugCommands" in main
-            assert "isImmediateCommandChar" not in main
+        assert "isImmediateCommandChar(c) && stream.available() == 0" in main, firmware
 
     assert 'readStringField(root, "nixo_id", next.nixo.nixoId);' in go2_nixo_runtime_source
     assert 'readStringField(root, "nixo_command_topic_prefix", next.nixo.commandTopicPrefix);' in go2_nixo_runtime_source
     assert 'readStringField(nixo, "command_topic_prefix", next.nixo.commandTopicPrefix);' in go2_nixo_runtime_source
     assert 'root["nixo_id"] = nixo.nixoId;' in go2_nixo_runtime_source
-    assert "JetsonSerial" not in go2_nixo_main
-    assert "pollJetsonBinaryUart(now);" in go2_nixo_main
-    assert 'pollCommandStream(Serial, usbCommandLine, "usb");' in go2_nixo_main
-    assert 'pollCommandStream(SerialBT, btCommandLine, "bt");' in go2_nixo_main
-    assert 'lower == "fire"' not in go2_nixo_main
-    assert 'lower == "reset"' not in go2_nixo_main
-    assert 'lower == "stop-fire"' not in go2_nixo_main
+    assert "pollCommandStream(JetsonSerial, jetsonCommandLine, \"jetson\");" in go2_nixo_main
+    assert 'return strcmp(source, "jetson") == 0 || strcmp(source, "usb") == 0;' in go2_nixo_main
+    assert "reason=jetson_uart_required" in go2_nixo_main
+    assert 'lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off"' in go2_nixo_main
     assert "JETSON_FIRE_HOLD_TIMEOUT_MS = 300" in go2_nixo_main
     assert "jetsonFireHoldActive = true;" in go2_nixo_main
     assert "jetsonFireReleaseRequired" in go2_nixo_main
+    assert "reason=non_jetson_fire_active" in go2_nixo_main
+    assert "reason=release_required_after_duration" in go2_nixo_main
+    assert "reason=release_required" in go2_nixo_main
     assert "lastPublishedJetsonReleaseRequired" in go2_nixo_main
-    assert "MAX_CONTINUOUS_FIRE_MS = 10000" in go2_nixo_main
-    assert "nixoFire.startFire(duration, sourceName, true)" in go2_nixo_main
-    assert "isJetsonBufferedImmediateCommand" not in go2_nixo_main
+    assert "runtimeConfig.nixo.fireMaxDurationMs" in go2_nixo_main
+    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true)" in go2_nixo_main
+    assert "isJetsonBufferedImmediateCommand" in go2_nixo_main
+    assert "c == 'x' || c == '0'" in go2_nixo_main
     assert "nixo_relay2_readback" in go2_nixo_main
     assert 'doc.createNestedObject("hp")' in go2_nixo_main
     assert 'doc.createNestedObject("nixo")' in go2_nixo_main
@@ -766,14 +763,24 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'nixo["active_source"] = nixoFire.activeFireSource();' in go2_nixo_main
     assert 'doc["jetson_fire_release_required"] = jetsonFireReleaseRequired;' in go2_nixo_main
     assert 'nixo["jetson_release_required"] = jetsonFireReleaseRequired;' in go2_nixo_main
-    assert "serialFireSourceName" in go2_nixo_main
+    assert 'lower.startsWith("fire ")' in go2_nixo_main
+    assert 'if (fireSource.startsWith("source="))' in go2_nixo_main
+    assert 'return strcmp(source, "jetson") == 0 ? "jetson_uart" : source;' in go2_nixo_main
     assert "lastPublishedNixoState" in go2_nixo_main
     assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
-    assert "writeJetsonHpEvent" not in go2_nixo_main
-    assert "hasSentJetsonHpStatus" not in go2_nixo_main
-    assert "localHitState.hpRevision" in go2_nixo_main
-    assert "jetsonSession.notifyHit(serialHit, eventTsMs);" in go2_nixo_main
+    assert "writeJetsonHpEvent('d');" in go2_nixo_main
+    assert "writeJetsonHpSnapshot();" in go2_nixo_main
+    assert "writeJetsonHpEvent('r');" in go2_nixo_main
+    assert 'if (String(source) == "jetson") JetsonSerial.println(line);' not in go2_nixo_main
+    assert "lastJetsonHpStatusMs" not in go2_nixo_main
+    assert 'if (!hasSentJetsonHpStatus) {' in go2_nixo_main
+    assert 'sendJetsonHpStatus("reset");' in go2_nixo_main
+    assert 'const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;' in go2_nixo_main
+    assert 'const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;' in go2_nixo_main
+    assert 'const bool becameDead = isDead && !lastJetsonDead;' in go2_nixo_main
+    assert 'sendJetsonHpStatus("dead");' in go2_nixo_main
+    assert 'sendJetsonHpStatus("hit");' in go2_nixo_main
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
     assert 'return "ready";' in nixo_fire_source
     assert '"flywheel_spinup"' in nixo_fire_source
@@ -970,14 +977,13 @@ def test_go2_nixo_drives_ring_from_local_fire_and_cooldown_state() -> None:
     assert "void noteFireSource(const char* source);" in fire_header
     assert "bool startFire(uint32_t durationMs = 0, const char* source = \"local\", bool immediateFlywheel = false);" in fire_header
     assert "void startFlywheelNow(uint32_t now);" in fire_header
+    assert "void beginStopSequence(uint32_t now);" in fire_header
     assert "void NixoFireClient::startFlywheelNow(uint32_t now)" in fire_source
-    assert "FIRE_STOP_DELAY" not in fire_header
-    assert "FIRE_STOP_DELAY" not in fire_source
-    assert "beginStopSequence" not in fire_header
-    assert "beginStopSequence" not in fire_source
+    assert "void NixoFireClient::beginStopSequence(uint32_t now)" in fire_source
     assert "immediate_flywheel=%s" in fire_source
     assert "startFire(durationMs, source, false)" in fire_source
-    assert "nixoFire.startFire(duration, sourceName, true)" in main
+    assert "nixoFire.startFire(runtimeConfig.nixo.fireMaxDurationMs, fireSource, true)" in main
+    assert 'return "flywheel_spindown";' in fire_source
     assert 'doc["enabled"] | true' not in fire_source
     assert "uint32_t elapsed = now - cooldownStartedMs_;" in fire_source
     stop_block = fire_source.split("void NixoFireClient::stopFire", 1)[1].split(
@@ -1012,7 +1018,7 @@ def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
     assert "FIRE_NETWORK_QUIET_MS = 250" in main
     assert "markNetworkQuietForFireStop(now);" in main
     assert "shouldDeferNetworkForFire(now)" in main
-    assert 'constexpr const char* NIXO_TRANSPORT = "binary_uart+mqtt";' in main
+    assert 'constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";' in main
     assert "nixoFire.tickNetwork(now);" in main
     assert "nixoFire.tickLocal(now);" in main
     local_index = main.index("nixoFire.tickLocal(now);")
@@ -1024,11 +1030,10 @@ def test_go2_nixo_defers_network_io_during_jetson_uart_fire_window() -> None:
     assert "publishStateChangeDeviceStatus(now);" in main[network_index:]
 
 
-def test_go2_nixo_binary_fire_source_is_typed_and_bounded() -> None:
+def test_go2_nixo_rejects_null_fire_source() -> None:
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
-    assert "static const char* serialFireSourceName(serial::CommandSource source)" in main
-    assert 'return "jetson_uart";' in main
-    assert "MAX_CONTINUOUS_FIRE_MS = 10000" in main
+    assert "static bool sourceCanFire(const char* source)" in main
+    assert "if (source == nullptr) return false;" in main
 
 
 def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
@@ -1099,14 +1104,8 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert relay_off_block.index("digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);") < relay_off_block.index(
         "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);"
     )
-    explicit_stop = fire_source.split("void NixoFireClient::stopFire", 1)[1].split(
-        "const char* NixoFireClient::commandTopic",
-        1,
-    )[0]
-    assert explicit_stop.index("relayOff();") < explicit_stop.index("fireState_ = FIRE_IDLE;")
-    assert "beginStopSequence" not in explicit_stop
     start_flywheel_block = fire_source.split("void NixoFireClient::startFlywheelNow(uint32_t now)", 1)[1].split(
-        "void NixoFireClient::updateFireSequence",
+        "void NixoFireClient::beginStopSequence",
         1,
     )[0]
     assert "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_ON_LEVEL_VALUE);" in start_flywheel_block
@@ -1114,17 +1113,33 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
         start_flywheel_block.index("if (NIXO_RELAY2_ENABLED_VALUE)")
     )
     assert 'return NIXO_RELAY2_ENABLED_VALUE ? "flywheel_spinup" : "firing";' in fire_source
-    update_block = fire_source.split("void NixoFireClient::updateFireSequence", 1)[1].split(
-        "void NixoFireClient::beginCooldown",
+    update_block = fire_source.split("void NixoFireClient::updateFireSequence", 1)[1]
+    one_channel_done = update_block.split("case FIRE_RELAY_WAIT1:", 1)[1].split(
+        "if (now - fireTimerMs_ >= relayDelay1Ms_)",
         1,
     )[0]
-    assert "uint32_t fireEndsAtMs_ = 0;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
-    assert "fireEndsAtMs_ = now + activeFireDurationMs_;" in fire_source
-    assert "return static_cast<int32_t>(now - fireEndsAtMs_) >= 0 ? 0 : fireEndsAtMs_ - now;" in fire_source
-    assert "static_cast<int32_t>(now - fireEndsAtMs_) >= 0" in update_block
-    assert update_block.count('stopFire("duration-complete");') == 1
-    assert "fireEndsAtMs_ =" not in update_block
-    assert update_block.count("now - fireTimerMs_ >= relayDelay1Ms_") == 1
+    two_channel_done = update_block.split("case FIRE_RELAY_WAIT2:", 1)[1].split("case FIRE_STOP_DELAY:", 1)[0]
+    stop_delay = update_block.split("case FIRE_STOP_DELAY:", 1)[1]
+    assert "activeFireSource_[0] = '\\0';" in one_channel_done
+    assert one_channel_done.index("activeFireSource_[0] = '\\0';") < one_channel_done.index("beginCooldown(now);")
+    assert "beginStopSequence(now);" in two_channel_done
+    assert "digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
+    assert "now - fireTimerMs_ >= relayDelay1Ms_" in stop_delay
+    assert "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in stop_delay
+
+
+def test_go2_nixo_legacy_uart_admin_damage_reports_authoritative_hp() -> None:
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    damage_block = main.split("if (c == 'h')", 1)[1].split("if (c == 'x'", 1)[0]
+    hit_status_block = main.split("} else if (isHit) {", 1)[1].split("} else {", 1)[0]
+
+    assert 'strcmp(source, "jetson") != 0' in damage_block
+    assert "applyLocalHit(++hitSequence, millis());" in damage_block
+    assert 'publishDeviceStatusIfConnected("jetson_hp_damage");' in damage_block
+    assert "startFire" not in damage_block
+    assert "c == 'h'" in main.split("static bool isImmediateCommandChar", 1)[1]
+    assert r'{\"type\":\"hp_status\"' in main
+    assert hit_status_block.index("writeJetsonHpEvent('h');") < hit_status_block.index("writeJetsonHpSnapshot();")
 
 
 def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
