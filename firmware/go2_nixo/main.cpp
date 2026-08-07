@@ -942,6 +942,7 @@ static void sendJetsonHpStatus(const char* reason) {
   if (isDead) {
     writeJetsonHpEvent('d');
   } else if (isHit) {
+    writeJetsonHpEvent('h');
     writeJetsonHpSnapshot();
   } else {
     writeJetsonHpEvent('r');

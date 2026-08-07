@@ -1131,6 +1131,7 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
 def test_go2_nixo_legacy_uart_admin_damage_reports_authoritative_hp() -> None:
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
     damage_block = main.split("if (c == 'h')", 1)[1].split("if (c == 'x'", 1)[0]
+    hit_status_block = main.split("} else if (isHit) {", 1)[1].split("} else {", 1)[0]
 
     assert 'strcmp(source, "jetson") != 0' in damage_block
     assert "applyLocalHit(++hitSequence, millis());" in damage_block
@@ -1138,7 +1139,7 @@ def test_go2_nixo_legacy_uart_admin_damage_reports_authoritative_hp() -> None:
     assert "startFire" not in damage_block
     assert "c == 'h'" in main.split("static bool isImmediateCommandChar", 1)[1]
     assert r'{\"type\":\"hp_status\"' in main
-    assert "writeJetsonHpSnapshot();" in main
+    assert hit_status_block.index("writeJetsonHpEvent('h');") < hit_status_block.index("writeJetsonHpSnapshot();")
 
 
 def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
