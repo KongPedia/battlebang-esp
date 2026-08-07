@@ -1057,8 +1057,8 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert relay_1ch["nixo_relay_off_level"] == 0
     assert relay_2ch["nixo_relay1_pin"] == 22
     assert relay_2ch["nixo_relay2_pin"] == 23
-    assert relay_2ch["nixo_relay_on_level"] == 0
-    assert relay_2ch["nixo_relay_off_level"] == 1
+    assert relay_2ch["nixo_relay_on_level"] == 1
+    assert relay_2ch["nixo_relay_off_level"] == 0
     assert relay_2ch["nixo_relay_delay1_ms"] == 150
 
     assert "custom_nixo_variant = relay_1ch" in platformio
@@ -1124,6 +1124,19 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert "digitalWrite(NIXO_RELAY2_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in fire_source
     assert "now - fireTimerMs_ >= relayDelay1Ms_" in stop_delay
     assert "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in stop_delay
+
+
+def test_go2_nixo_legacy_uart_admin_damage_reports_authoritative_hp() -> None:
+    main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
+    damage_block = main.split("if (c == 'h')", 1)[1].split("if (c == 'x'", 1)[0]
+
+    assert 'strcmp(source, "jetson") != 0' in damage_block
+    assert "applyLocalHit(++hitSequence, millis());" in damage_block
+    assert 'publishDeviceStatusIfConnected("jetson_hp_damage");' in damage_block
+    assert "startFire" not in damage_block
+    assert "c == 'h'" in main.split("static bool isImmediateCommandChar", 1)[1]
+    assert r'{\"type\":\"hp_status\"' in main
+    assert "writeJetsonHpSnapshot();" in main
 
 
 def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:

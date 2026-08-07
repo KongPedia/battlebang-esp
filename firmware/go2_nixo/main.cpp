@@ -626,6 +626,24 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     resetAll(source);
     return;
   }
+  if (c == 'h') {
+    if (source == nullptr || strcmp(source, "jetson") != 0 ||
+        localHitState.down || localHitState.hpRemaining == 0) {
+      Serial.printf("[HP] admin damage ignored source=%s hp=%u/%u down=%s\n",
+                    source == nullptr ? "unknown" : source,
+                    localHitState.hpRemaining,
+                    localHitState.maxHits,
+                    localHitState.down ? "true" : "false");
+      return;
+    }
+    applyLocalHit(++hitSequence, millis());
+    publishDeviceStatusIfConnected("jetson_hp_damage");
+    Serial.printf("[HP] admin damage applied source=%s hp=%u/%u\n",
+                  source,
+                  localHitState.hpRemaining,
+                  localHitState.maxHits);
+    return;
+  }
   if (c == 'x' || c == '0') {
     stopNixoFireCommand(source);
     return;
@@ -894,22 +912,40 @@ static bool jetsonHpStatusChanged() {
          lastJetsonDead != localHitStateDead();
 }
 
-static void writeJetsonHpEvent(char event) {
-  // ponytail: Jetson UART is a tiny machine protocol; never mix JSON/debug text into this TX path.
+static bool jetsonNeedsResync = true;
+
+static void beginJetsonHpLine() {
+  // ponytail: Jetson UART is a tiny machine protocol; never mix debug text into this TX path.
   // ESP power/reset can leave a partial byte on Jetson RX; newline once resyncs Dora's line reader.
-  static bool jetsonNeedsResync = true;
   if (jetsonNeedsResync) {
     JetsonSerial.write(static_cast<uint8_t>('\n'));
     jetsonNeedsResync = false;
   }
+}
+
+static void writeJetsonHpEvent(char event) {
+  beginJetsonHpLine();
   JetsonSerial.write(static_cast<uint8_t>(event));
   JetsonSerial.write(static_cast<uint8_t>('\n'));
+}
+
+static void writeJetsonHpSnapshot() {
+  beginJetsonHpLine();
+  JetsonSerial.printf("{\"type\":\"hp_status\",\"hp_remaining\":%u,\"max_hits\":%u,\"down\":false}\n",
+                      localHitState.hpRemaining,
+                      localHitState.maxHits);
 }
 
 static void sendJetsonHpStatus(const char* reason) {
   const bool isDead = localHitStateDead();
   const bool isHit = strcmp(reason, "hit") == 0;
-  writeJetsonHpEvent(isDead ? 'd' : (isHit ? 'h' : 'r'));
+  if (isDead) {
+    writeJetsonHpEvent('d');
+  } else if (isHit) {
+    writeJetsonHpSnapshot();
+  } else {
+    writeJetsonHpEvent('r');
+  }
   rememberJetsonHpStatusSnapshot();
 }
 
@@ -1195,7 +1231,7 @@ static void handleCommandLine(String line, const char* source) {
 
 static bool isImmediateCommandChar(char c) {
   c = normalizeCommandChar(c);
-  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == '1' || c == 'f' || c == 'x' || c == '0';
+  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == 'h' || c == '1' || c == 'f' || c == 'x' || c == '0';
 }
 
 static bool isJetsonBufferedImmediateCommand(Stream& stream, char c, const char* source) {
@@ -1373,7 +1409,7 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
-  Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state; Jetson UART '1'/'f'=Nixo hold-fire, '0'/'x'=stop.\n",
+  Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state; Jetson UART 'h'=HP damage, '1'/'f'=Nixo hold-fire, '0'/'x'=stop.\n",
                 CMD_RESET_HIT_DISPLAY);
   Serial.println("USB/BT/Jetson line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   Serial.print("release_repo=");
