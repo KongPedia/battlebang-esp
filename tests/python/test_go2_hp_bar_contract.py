@@ -769,7 +769,9 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "lastPublishedNixoState" in go2_nixo_main
     assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
-    assert "writeJetsonHpEvent(isDead ? 'd' : (isHit ? 'h' : 'r'));" in go2_nixo_main
+    assert "writeJetsonHpEvent('d');" in go2_nixo_main
+    assert "writeJetsonHpSnapshot();" in go2_nixo_main
+    assert "writeJetsonHpEvent('r');" in go2_nixo_main
     assert 'if (String(source) == "jetson") JetsonSerial.println(line);' not in go2_nixo_main
     assert "lastJetsonHpStatusMs" not in go2_nixo_main
     assert 'if (!hasSentJetsonHpStatus) {' in go2_nixo_main
