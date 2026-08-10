@@ -124,11 +124,9 @@ heartbeat.
 
 ## ESP -> Jetson: UART HP status
 
-The ESP emits unsolicited Jetson UART2 single-byte HP events: `h` when HP
-decreases, `d` when HP reaches zero/dead, and `r` when HP resets/restores. This
-is fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
-Jetson owns any downstream behavior, including local Go2 `damp` when
-`hp_remaining` reaches `0`.
+The ESP emits `h1` for a front hit, `h2` for a left hit, `h3` for a right hit,
+`d` when HP reaches zero/dead, and `r` when HP resets/restores. Jetson owns downstream
+HP counting and behavior, including local Go2 `damp` after `d`.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 
