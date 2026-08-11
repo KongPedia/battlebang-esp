@@ -948,10 +948,6 @@ static void writeJetsonDirectionalHpEvent(int targetId) {
   beginJetsonHpLine();
   JetsonSerial.write(static_cast<uint8_t>('h'));
   JetsonSerial.write(static_cast<uint8_t>(targetIdToJetsonDirectionCode(targetId)));
-  JetsonSerial.write(static_cast<uint8_t>(':'));
-  JetsonSerial.print(localHitState.hpRemaining);
-  JetsonSerial.write(static_cast<uint8_t>('/'));
-  JetsonSerial.print(localHitState.maxHits);
   JetsonSerial.write(static_cast<uint8_t>('\n'));
 }
 

@@ -780,8 +780,12 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;' in go2_nixo_main
     assert 'const bool becameDead = isDead && !lastJetsonDead;' in go2_nixo_main
     assert "static char targetIdToJetsonDirectionCode(int targetId)" in go2_nixo_main
-    assert "JetsonSerial.print(localHitState.hpRemaining);" in go2_nixo_main
-    assert "JetsonSerial.print(localHitState.maxHits);" in go2_nixo_main
+    directional_writer = go2_nixo_main.split("static void writeJetsonDirectionalHpEvent", 1)[1].split(
+        "static void sendJetsonHpStatus", 1
+    )[0]
+    assert "JetsonSerial.print" not in directional_writer
+    assert "JetsonSerial.write(static_cast<uint8_t>('h'));" in directional_writer
+    assert "targetIdToJetsonDirectionCode(targetId)" in directional_writer
     assert 'sendJetsonHpStatus("dead");' in go2_nixo_main
     assert 'sendJetsonHpStatus("hit");' in go2_nixo_main
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()

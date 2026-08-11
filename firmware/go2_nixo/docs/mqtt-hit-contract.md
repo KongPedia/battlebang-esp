@@ -126,16 +126,17 @@ heartbeat.
 
 The ESP emits unsolicited newline-delimited Jetson UART2 HP events:
 
-- `hf:<remaining>/<max>`: front hit, for example `hf:13/14`;
-- `hl:<remaining>/<max>`: left hit;
-- `hr:<remaining>/<max>`: right hit;
+- `hf`: front hit;
+- `hl`: left hit;
+- `hr`: right hit;
 - `d`: HP reached zero/dead;
 - `r`: HP reset/restored.
 
 These compact ASCII tokens replace the former UART JSON snapshot and are
 fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
-Jetson calculates the 30% transition from `remaining/max` and owns downstream
-hit audio, critical directional reaction, and dead posture behavior.
+Jetson logs these tokens to verify the UART link and hit direction without
+deriving HP from them. Authoritative HP remains available through MQTT device
+status; `d` and `r` continue to drive dead/reset handling over UART.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 

@@ -135,11 +135,11 @@ duration requires release/re-press before ESP will start another UART fire. USB/
 bench/debug commands only.
 
 The ESP also emits unsolicited newline-delimited Jetson UART2 HP events. Hits
-are `hf:<remaining>/<max>`, `hl:...`, or `hr:...` for front/left/right; for
-example `hl:4/14`. `d` means zero/dead and `r` means reset/restored. These
-compact ASCII tokens replace the former UART JSON snapshot and let Dora own the
-30% calculation. They are fire-and-forget: no ACK, retry, or read confirmation
-is required from Jetson.
+are fixed tokens `hf`, `hl`, or `hr` for front/left/right. `d` means zero/dead
+and `r` means reset/restored. These compact ASCII tokens replace the former
+UART JSON snapshot. Dora currently uses them to verify the UART link and hit
+direction without deriving HP. They are fire-and-forget: no ACK, retry, or read
+confirmation is required from Jetson.
 
 ```json
 {
