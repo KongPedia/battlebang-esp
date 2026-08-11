@@ -46,6 +46,7 @@ struct LocalHitState {
 
 LocalHitState localHitState;
 int lastAcceptedHitTargetId = 3;
+bool lastAcceptedHitEnteredCritical = false;
 String jetsonCommandLine;
 String usbCommandLine;
 String btCommandLine;
@@ -189,6 +190,7 @@ static void resetLocalHitState() {
   localHitState.down = false;
   localHitState.lastHitSequence = 0;
   lastAcceptedHitTargetId = 3;
+  lastAcceptedHitEnteredCritical = false;
   nixoFire.setFireInhibited(false);
   barDisplay.resetLocalHpState(localHitState.maxHits);
 }
@@ -215,6 +217,9 @@ static void syncLocalHitStateWithRuntimeConfig() {
                                     : nextMaxHits - localHitState.acceptedHitCount;
   }
   localHitState.down = localHitState.hpRemaining == 0;
+  lastAcceptedHitEnteredCritical = false;
+  hasSentJetsonHpStatus = false;
+  jetsonBootMs = millis() - JETSON_BOOT_RESET_DELAY_MS;
   nixoFire.setFireInhibited(localHitState.down);
   barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
 }
@@ -222,10 +227,15 @@ static void syncLocalHitStateWithRuntimeConfig() {
 static bool applyLocalHit(uint32_t sequence, uint32_t now) {
   localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   if (localHitState.hpRemaining > localHitState.maxHits) localHitState.hpRemaining = localHitState.maxHits;
+  const uint16_t previousHpRemaining = localHitState.hpRemaining;
+  lastAcceptedHitEnteredCritical = false;
   if (!localHitState.down && localHitState.hpRemaining > 0) {
     localHitState.hpRemaining--;
     localHitState.acceptedHitCount++;
     localHitState.down = localHitState.hpRemaining == 0;
+    lastAcceptedHitEnteredCritical =
+      static_cast<uint32_t>(previousHpRemaining) * 10 > static_cast<uint32_t>(localHitState.maxHits) * 3 &&
+      static_cast<uint32_t>(localHitState.hpRemaining) * 10 <= static_cast<uint32_t>(localHitState.maxHits) * 3;
   }
   localHitState.lastHitSequence = sequence;
   nixoFire.setFireInhibited(localHitState.down);
@@ -639,6 +649,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
                     localHitState.down ? "true" : "false");
       return;
     }
+    lastAcceptedHitTargetId = 3;
     applyLocalHit(++hitSequence, millis());
     publishDeviceStatusIfConnected("jetson_hp_damage");
     Serial.printf("[HP] admin damage applied source=%s hp=%u/%u\n",
@@ -944,9 +955,9 @@ static char targetIdToJetsonDirectionCode(int targetId) {
   }
 }
 
-static void writeJetsonDirectionalHpEvent(int targetId) {
+static void writeJetsonDirectionalHpEvent(int targetId, bool critical) {
   beginJetsonHpLine();
-  JetsonSerial.write(static_cast<uint8_t>('h'));
+  JetsonSerial.write(static_cast<uint8_t>(critical ? 'c' : 'h'));
   JetsonSerial.write(static_cast<uint8_t>(targetIdToJetsonDirectionCode(targetId)));
   JetsonSerial.write(static_cast<uint8_t>('\n'));
 }
@@ -957,7 +968,7 @@ static void sendJetsonHpStatus(const char* reason) {
   if (isDead) {
     writeJetsonHpEvent('d');
   } else if (isHit) {
-    writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId);
+    writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId, lastAcceptedHitEnteredCritical);
   } else {
     writeJetsonHpEvent('r');
   }

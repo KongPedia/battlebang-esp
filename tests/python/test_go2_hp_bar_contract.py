@@ -770,7 +770,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
     assert "writeJetsonHpEvent('d');" in go2_nixo_main
-    assert "writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId);" in go2_nixo_main
+    assert "writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId, lastAcceptedHitEnteredCritical);" in go2_nixo_main
     assert "writeJetsonHpEvent('r');" in go2_nixo_main
     assert 'if (String(source) == "jetson") JetsonSerial.println(line);' not in go2_nixo_main
     assert "lastJetsonHpStatusMs" not in go2_nixo_main
@@ -784,7 +784,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
         "static void sendJetsonHpStatus", 1
     )[0]
     assert "JetsonSerial.print" not in directional_writer
-    assert "JetsonSerial.write(static_cast<uint8_t>('h'));" in directional_writer
+    assert "JetsonSerial.write(static_cast<uint8_t>(critical ? 'c' : 'h'));" in directional_writer
     assert "targetIdToJetsonDirectionCode(targetId)" in directional_writer
     assert 'sendJetsonHpStatus("dead");' in go2_nixo_main
     assert 'sendJetsonHpStatus("hit");' in go2_nixo_main
@@ -1148,8 +1148,11 @@ def test_go2_nixo_legacy_uart_admin_damage_reports_compact_directional_hp_events
     assert "startFire" not in damage_block
     assert "c == 'h'" in main.split("static bool isImmediateCommandChar", 1)[1]
     assert r'{\"type\":\"hp_status\"' not in main
-    assert "writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId);" in hit_status_block
-    assert "enteredCriticalHp" not in main
+    assert "writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId, lastAcceptedHitEnteredCritical);" in hit_status_block
+    assert "static_cast<uint32_t>(previousHpRemaining) * 10" in main
+    assert "static_cast<uint32_t>(localHitState.hpRemaining) * 10" in main
+    assert "lastAcceptedHitEnteredCritical = false;" in main
+    assert "lastAcceptedHitTargetId = 3;" in damage_block
 
 
 def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:

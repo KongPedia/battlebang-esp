@@ -134,12 +134,12 @@ keepalive packets stop, ESP fails safe after `300 ms`. Holding past the max fire
 duration requires release/re-press before ESP will start another UART fire. USB/BT keep non-fire
 bench/debug commands only.
 
-The ESP also emits unsolicited newline-delimited Jetson UART2 HP events. Hits
-are fixed tokens `hf`, `hl`, or `hr` for front/left/right. `d` means zero/dead
-and `r` means reset/restored. These compact ASCII tokens replace the former
-UART JSON snapshot. Dora currently uses them to verify the UART link and hit
-direction without deriving HP. They are fire-and-forget: no ACK, retry, or read
-confirmation is required from Jetson.
+The ESP also emits unsolicited newline-delimited Jetson UART2 HP events. Normal
+hits are `hf`, `hl`, or `hr` for front/left/right. The first hit that crosses
+from above 30% to 30% or below, using the current NVS/MQTT `max_hits`, is `cf`,
+`cl`, or `cr`. `d` means zero/dead and `r` means reset/restored. These compact
+ASCII tokens replace the former UART JSON snapshot. They are fire-and-forget:
+no ACK, retry, or read confirmation is required from Jetson.
 
 ```json
 {
