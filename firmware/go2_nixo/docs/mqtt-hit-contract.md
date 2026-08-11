@@ -124,9 +124,18 @@ heartbeat.
 
 ## ESP -> Jetson: UART HP status
 
-The ESP emits `h1` for a front hit, `h2` for a left hit, `h3` for a right hit,
-`d` when HP reaches zero/dead, and `r` when HP resets/restores. Jetson owns downstream
-HP counting and behavior, including local Go2 `damp` after `d`.
+The ESP emits unsolicited newline-delimited Jetson UART2 HP events:
+
+- `hf:<remaining>/<max>`: front hit, for example `hf:13/14`;
+- `hl:<remaining>/<max>`: left hit;
+- `hr:<remaining>/<max>`: right hit;
+- `d`: HP reached zero/dead;
+- `r`: HP reset/restored.
+
+These compact ASCII tokens replace the former UART JSON snapshot and are
+fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
+Jetson calculates the 30% transition from `remaining/max` and owns downstream
+hit audio, critical directional reaction, and dead posture behavior.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 

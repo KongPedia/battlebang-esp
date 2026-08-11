@@ -639,7 +639,6 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
                     localHitState.down ? "true" : "false");
       return;
     }
-    lastAcceptedHitTargetId = 3;
     applyLocalHit(++hitSequence, millis());
     publishDeviceStatusIfConnected("jetson_hp_damage");
     Serial.printf("[HP] admin damage applied source=%s hp=%u/%u\n",
@@ -933,16 +932,26 @@ static void writeJetsonHpEvent(char event) {
   JetsonSerial.write(static_cast<uint8_t>('\n'));
 }
 
-static char jetsonHitDirectionCode(int targetId) {
-  if (targetId == 1) return '2';
-  if (targetId == 2) return '3';
-  return '1';
+static char targetIdToJetsonDirectionCode(int targetId) {
+  switch (targetId) {
+  case 1:
+    return 'l';
+  case 2:
+    return 'r';
+  case 3:
+  default:
+    return 'f';
+  }
 }
 
-static void writeJetsonHpHitEvent() {
+static void writeJetsonDirectionalHpEvent(int targetId) {
   beginJetsonHpLine();
   JetsonSerial.write(static_cast<uint8_t>('h'));
-  JetsonSerial.write(static_cast<uint8_t>(jetsonHitDirectionCode(lastAcceptedHitTargetId)));
+  JetsonSerial.write(static_cast<uint8_t>(targetIdToJetsonDirectionCode(targetId)));
+  JetsonSerial.write(static_cast<uint8_t>(':'));
+  JetsonSerial.print(localHitState.hpRemaining);
+  JetsonSerial.write(static_cast<uint8_t>('/'));
+  JetsonSerial.print(localHitState.maxHits);
   JetsonSerial.write(static_cast<uint8_t>('\n'));
 }
 
@@ -952,7 +961,7 @@ static void sendJetsonHpStatus(const char* reason) {
   if (isDead) {
     writeJetsonHpEvent('d');
   } else if (isHit) {
-    writeJetsonHpHitEvent();
+    writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId);
   } else {
     writeJetsonHpEvent('r');
   }

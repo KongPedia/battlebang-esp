@@ -770,7 +770,7 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert "lastPublishedNixoActiveSource" in go2_nixo_main
     assert 'publishDeviceStatusIfConnected("state_changed")' in go2_nixo_main
     assert "writeJetsonHpEvent('d');" in go2_nixo_main
-    assert "writeJetsonHpHitEvent();" in go2_nixo_main
+    assert "writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId);" in go2_nixo_main
     assert "writeJetsonHpEvent('r');" in go2_nixo_main
     assert 'if (String(source) == "jetson") JetsonSerial.println(line);' not in go2_nixo_main
     assert "lastJetsonHpStatusMs" not in go2_nixo_main
@@ -779,9 +779,9 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
     assert 'const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;' in go2_nixo_main
     assert 'const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;' in go2_nixo_main
     assert 'const bool becameDead = isDead && !lastJetsonDead;' in go2_nixo_main
-    assert "if (targetId == 1) return '2';" in go2_nixo_main
-    assert "if (targetId == 2) return '3';" in go2_nixo_main
-    assert "return '1';" in go2_nixo_main
+    assert "static char targetIdToJetsonDirectionCode(int targetId)" in go2_nixo_main
+    assert "JetsonSerial.print(localHitState.hpRemaining);" in go2_nixo_main
+    assert "JetsonSerial.print(localHitState.maxHits);" in go2_nixo_main
     assert 'sendJetsonHpStatus("dead");' in go2_nixo_main
     assert 'sendJetsonHpStatus("hit");' in go2_nixo_main
     assert "const char* fireStateName() const;" in (ROOT / "firmware/go2_nixo/nixo/nixo_fire_client.h").read_text()
@@ -1131,18 +1131,21 @@ def test_go2_nixo_integrated_fire_supports_1ch_and_2ch_variants() -> None:
     assert "digitalWrite(NIXO_RELAY1_PIN_VALUE, NIXO_RELAY_OFF_LEVEL_VALUE);" in stop_delay
 
 
-def test_go2_nixo_legacy_uart_admin_damage_reports_front_hit() -> None:
+def test_go2_nixo_legacy_uart_admin_damage_reports_compact_directional_hp_events() -> None:
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
     damage_block = main.split("if (c == 'h')", 1)[1].split("if (c == 'x'", 1)[0]
-    hit_status_block = main.split("} else if (isHit) {", 1)[1].split("} else {", 1)[0]
+    hit_status_block = main.split("static void sendJetsonHpStatus", 1)[1].split(
+        "static void publishJetsonHpStatus", 1
+    )[0]
 
     assert 'strcmp(source, "jetson") != 0' in damage_block
     assert "applyLocalHit(++hitSequence, millis());" in damage_block
     assert 'publishDeviceStatusIfConnected("jetson_hp_damage");' in damage_block
     assert "startFire" not in damage_block
     assert "c == 'h'" in main.split("static bool isImmediateCommandChar", 1)[1]
-    assert "lastAcceptedHitTargetId = 3;" in damage_block
-    assert "writeJetsonHpHitEvent();" in hit_status_block
+    assert r'{\"type\":\"hp_status\"' not in main
+    assert "writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId);" in hit_status_block
+    assert "enteredCriticalHp" not in main
 
 
 def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
