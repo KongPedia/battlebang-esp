@@ -37,15 +37,14 @@ def _env_block(platformio: str, name: str) -> str:
     return platformio[start:] if end < 0 else platformio[start:end]
 
 
-def test_packet_v2_is_opt_in_and_existing_envs_remain_legacy() -> None:
+def test_packet_v2_is_the_canonical_go2_nixo_uart_protocol() -> None:
     platformio = read("platformio.ini")
-    assert "-<../firmware/go2_nixo/uart/**>" in _env_block(platformio, "esp32dev_go2_nixo")
+    base = _env_block(platformio, "esp32dev_go2_nixo")
+    assert "GO2_NIXO_UART_PACKET_V2=1" in base
+    assert "-<../firmware/go2_nixo/uart/**>" not in base
     for name in ("esp32dev_go2_nixo_1ch", "esp32dev_go2_nixo_2ch"):
-        assert "GO2_NIXO_UART_PACKET_V2" not in _env_block(platformio, name)
-    for name in ("esp32dev_go2_nixo_1ch_packet_v2", "esp32dev_go2_nixo_2ch_packet_v2"):
-        block = _env_block(platformio, name)
-        assert "GO2_NIXO_UART_PACKET_V2=1" in block
-        assert "+<../firmware/go2_nixo/uart/**>" in block
+        assert f"[env:{name}]" in platformio
+        assert f"[env:{name}_packet_v2]" not in platformio
 
     main = read("firmware/go2_nixo/main.cpp")
     assert "GO2_NIXO_UART_PACKET_V2" in main
@@ -64,11 +63,17 @@ def test_packet_v2_is_opt_in_and_existing_envs_remain_legacy() -> None:
     assert "jetsonReliableAdmissionErrors" in main
 
     config_script = read("scripts/go2_nixo_config.py")
-    assert 'PIO_ENV.endswith("_packet_v2")' in config_script
-    assert '"-packet-v2" if packet_v2 else ""' in config_script
+    assert 'PIO_ENV.endswith("_packet_v2")' not in config_script
     readme = read("firmware/go2_nixo/README.md")
-    assert "go2-nixo-1ch-packet-v2" in readme
-    assert "go2-nixo-2ch-packet-v2" in readme
+    assert "go2-nixo-1ch-packet-v2" not in readme
+    assert "go2-nixo-2ch-packet-v2" not in readme
+
+
+def test_manual_usb_build_has_an_explicit_firmware_version() -> None:
+    version_header = read("firmware/go2_nixo/app/version_autogen.h")
+    assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in version_header
+    assert "#define BB_GO2_NIXO_BUILD 1029" in version_header
+    assert "commonDefaults.otaAutoCheckEnabled = false;" in read("firmware/go2_nixo/config/runtime_config.cpp")
 
 
 def test_packet_v2_safety_contract_is_not_session_gated() -> None:

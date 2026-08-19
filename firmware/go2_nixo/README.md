@@ -85,6 +85,8 @@ cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
 ./.venv-pio/bin/python scripts/go2_nixo/provision.py --command clear-config --serial-port /dev/cu.usbserial-XXXX
 ```
 
+The current manual USB image reports firmware version `0.2.29` and build `1029` in `show-status`.
+
 `firmware/go2_nixo/.env.go2_nixo` is the canonical local secret/config input for
 standardized builds. `local_secrets.h` is not read by default; only enable it for
 explicit legacy/factory fallback with `BATTLEBANG_ENABLE_LOCAL_SECRETS`.
@@ -110,13 +112,11 @@ OTA is split by relay hardware variant because 1ch and 2ch use different relay p
 
 | Build env | Relay variant | OTA channel | Stable manifest | Firmware hardware id |
 | --- | --- | --- | --- | --- |
-| `esp32dev_go2_nixo_1ch` | `relay_1ch`, legacy line UART | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
-| `esp32dev_go2_nixo_2ch` | `relay_2ch`, legacy line UART | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
-| `esp32dev_go2_nixo_1ch_packet_v2` | `relay_1ch`, packet v2 opt-in | `go2-nixo-1ch-packet-v2` | 전용 release 전 manifest 없음 | `esp32dev-go2-nixo-relay-1ch-packet-v2-v1` |
-| `esp32dev_go2_nixo_2ch_packet_v2` | `relay_2ch`, packet v2 opt-in | `go2-nixo-2ch-packet-v2` | 전용 release 전 manifest 없음 | `esp32dev-go2-nixo-relay-2ch-packet-v2-v1` |
+| `esp32dev_go2_nixo_1ch` | `relay_1ch`, packet v2 UART | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
+| `esp32dev_go2_nixo_2ch` | `relay_2ch`, packet v2 UART | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
 
-packet-v2 hardware ID와 OTA channel은 legacy image와 wire-incompatible하므로 반드시 분리한다. 기존 legacy manifest를
-packet-v2 장치에 전달해도 hardware mismatch로 거부되어야 한다.
+Automatic OTA remains disabled by default. Current deployment uses direct USB serial flashing, while the existing
+hardware IDs and channels remain available for an explicitly requested future OTA workflow.
 
 Provision NVS with the matching `GO2_NIXO_RELAY_VARIANT` or `scripts/go2_nixo/provision.py --relay-variant ...`; otherwise OTA channel and manifest URL will not match the flashed relay hardware.
 
@@ -148,9 +148,8 @@ no ACK, retry, or read confirmation is required from Jetson.
 
 ### Packet v2 UART
 
-The opt-in `esp32dev_go2_nixo_1ch_packet_v2`/`esp32dev_go2_nixo_2ch_packet_v2` build environments replace only
-Jetson UART2 with a bounded binary protocol. The existing `esp32dev_go2_nixo_1ch`/`esp32dev_go2_nixo_2ch`
-environments keep the old newline protocol unchanged. USB/BT keep the legacy bench commands. The wire frame is
+The canonical `esp32dev_go2_nixo_1ch`/`esp32dev_go2_nixo_2ch` build environments use the bounded packet-v2 protocol
+on Jetson UART2. USB/BT keep the legacy bench commands. The wire frame is
 `AA 55`, version `02`, typed message, exact flags, sequence, boot-specific sender
 epoch, payload length, payload, and CRC16/CCITT-FALSE.
 
