@@ -88,7 +88,8 @@ cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
 ./.venv-pio/bin/python scripts/go2_nixo/provision.py --command clear-config --serial-port /dev/cu.usbserial-XXXX
 ```
 
-The current manual USB image reports firmware version `0.2.29` and build `1029` in `show-status`.
+Firmware version/build are injected into `version_autogen.h` by the main/release workflow. Branch-local USB builds do not
+hardcode a release version.
 
 `firmware/go2_nixo/.env.go2_nixo` is the canonical local secret/config input for
 standardized builds. `local_secrets.h` is not read by default; only enable it for

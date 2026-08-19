@@ -5,7 +5,7 @@ hardware, display, MQTT, NVS, and relay modules under `firmware/go2_nixo`, but
 has its own `main.cpp` and framed UART codec/runtime.
 
 - App: `battlebang-go2-nixo-framed-packet-uart`
-- Manual version/build: `0.2.29` / `1029`
+- Version/build: injected by the main/release workflow; not hardcoded on feature branches
 - NVS provisioning template: `.env.go2_nixo_framed_packet_uart.example`
 - Automatic OTA polling remains disabled by the shared runtime default.
 

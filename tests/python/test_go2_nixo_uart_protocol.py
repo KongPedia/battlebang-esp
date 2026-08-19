@@ -75,15 +75,19 @@ def test_go2_nixo_line_and_framed_packet_firmware_are_separate() -> None:
     assert '{"single_char_newline", "framed_packet_uart"}' in config_script
     assert 'f"go2-nixo-framed-packet-uart-{slug}"' in config_script
 
-def test_manual_usb_build_has_an_explicit_firmware_version() -> None:
-    version_header = read("firmware/go2_nixo/app/version.h")
-    assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in version_header
-    assert "#define BB_GO2_NIXO_BUILD 1029" in version_header
+def test_firmware_versions_are_release_generated_not_branch_hardcoded() -> None:
+    assert not (ROOT / "firmware/go2_nixo/app/version.h").exists()
+    assert not (ROOT / "firmware/go2_nixo_framed_packet_uart/app/version.h").exists()
     assert read("firmware/go2_nixo/app/version_autogen.h") == "#pragma once\n"
-    framed_version_header = read("firmware/go2_nixo_framed_packet_uart/app/version.h")
-    assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in framed_version_header
-    assert "#define BB_GO2_NIXO_BUILD 1029" in framed_version_header
     assert read("firmware/go2_nixo_framed_packet_uart/app/version_autogen.h") == "#pragma once\n"
+    for path in (
+        "firmware/go2_nixo/app/firmware_info.h",
+        "firmware/go2_nixo_framed_packet_uart/app/firmware_info.h",
+    ):
+        info = read(path)
+        assert '#include "version.h"' not in info
+        assert '#define BB_GO2_NIXO_VERSION "0.1.0-local"' in info
+        assert "#define BB_GO2_NIXO_BUILD 1" in info
     assert "commonDefaults.otaAutoCheckEnabled = false;" in read("firmware/go2_nixo/config/runtime_config.cpp")
 
 
