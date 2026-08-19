@@ -5,7 +5,8 @@ ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에
 | PlatformIO env | Source entrypoint | Purpose | Runtime config |
 | --- | --- | --- | --- |
 | `esp32dev_go2` | `firmware/go2/main.cpp` | Go2-mounted hit/LED ESP: local piezo hit/HP/down + ESP-owned HP bar display | NVS: identity, stage/group/location, Wi-Fi, MQTT, OTA, hit tuning |
-| `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/main.cpp` | Optional one-ESP fallback: hit/LED + Nixo relay | NVS: same as Go2 plus Nixo identity/topic and fire timing; relay pins/polarity/channel count stay build variant |
+| `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/main.cpp` | Go2/Nixo single-character forced-newline UART firmware | NVS: same as Go2 plus Nixo identity/topic and fire timing; relay pins/polarity/channel count stay build variant |
+| `esp32dev_go2_nixo_framed_packet_uart_1ch`, `esp32dev_go2_nixo_framed_packet_uart_2ch` | `firmware/go2_nixo_framed_packet_uart/main.cpp` | Refactored Go2/Nixo framed packet UART firmware | Reuses Go2/Nixo NVS and relay hardware variants |
 | `esp32dev_boss_target` | `firmware/boss_target/main.cpp` | Boss target firmware | NVS/MQTT/OTA standard template |
 | `esp32dev_heavy_blaster` | `firmware/heavy_blaster/main.cpp` | Heavy blaster firmware | NVS/MQTT/OTA standard template |
 | `esp32dev_turret_fleet` | `firmware/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware | NVS: turret/device/stage identity, Wi-Fi, MQTT, motion/fire config, OTA |
@@ -26,7 +27,8 @@ ESP32 uploads are full-flash images. Pick the correct PlatformIO environment bef
   - NVS 튜닝: `robot_id`, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, `max_hits`, `hit_flash_ms`, offline queue, LED brightness
 - Optional one-ESP fallback/reference: `firmware/go2_nixo/`
   - hit/LED/Nixo relay가 한 ESP에 통합된 경로
-  - 빌드/업로드 env: `esp32dev_go2_nixo`(default 1ch), `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch`
+  - 단일 문자 강제 개행 env: `esp32dev_go2_nixo`(default 2ch), `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch`
+  - framed packet env: `esp32dev_go2_nixo_framed_packet_uart_1ch`, `esp32dev_go2_nixo_framed_packet_uart_2ch`
   - NVS 튜닝: Go2 hit 튜닝 + `nixo_id`, `nixo_command_topic_prefix`, ring brightness, Nixo fire duration/cooldown/prefire/relay delay
   - relay pin/polarity/channel count는 안전상 build variant/hardware profile에 남깁니다.
 - Standalone Nixo `src/nIxo/`는 현재 active path가 아니며 compatibility env만 유지합니다.
@@ -42,6 +44,8 @@ cp firmware/go2/.env.go2.example firmware/go2/.env.go2
 
 # Optional integrated Go2+Nixo 2ch fallback
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
+# Refactored framed packet UART 2ch
+./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_uart_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
 cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
 # edit GO2_NIXO_ROBOT_ID=go2_03, GO2_NIXO_NIXO_ID=nixo_go2_03, GO2_NIXO_STAGE_ID=stage_1
 ./.venv-pio/bin/python scripts/go2_nixo/provision.py --serial-port /dev/cu.usbserial-ZZZZ

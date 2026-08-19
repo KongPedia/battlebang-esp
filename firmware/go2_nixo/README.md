@@ -4,7 +4,8 @@
 
 This firmware is also **generic image + NVS runtime config**:
 
-- Build envs select hardware/relay variant only: `esp32dev_go2_nixo`/`esp32dev_go2_nixo_2ch` for 2ch, `esp32dev_go2_nixo_1ch` for 1ch.
+- `esp32dev_go2_nixo_1ch/2ch` preserve the single-character forced-newline Jetson UART firmware.
+- `esp32dev_go2_nixo_framed_packet_uart_1ch/2ch` build the refactored framed UART firmware.
 - `go2_01`, `go2_02`, `go2_03` etc. are not build envs. They are runtime `robot_id` values stored in ESP32 NVS.
 - `nixo_id` and Nixo command topic are also NVS runtime config.
 - Nixo fire timing/envelope (`default/min/max duration`, prefire delay, relay inter-channel delay) is NVS runtime config; ESP cooldown is disabled.
@@ -65,12 +66,14 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 ## Build, upload, provision
 
 ```bash
-# Build/upload the 2ch integrated image
-./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-XXXX
+# Build/upload the refactored framed 2ch image
+./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_uart_2ch -t upload --upload-port /dev/cu.usbserial-XXXX
 
 # Or explicit variants
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_1ch
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch
+./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_uart_1ch
+./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_uart_2ch
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-XXXX
 
 # Provision runtime identity, stage, network, MQTT, OTA, hit/display tuning including local HP count/flash, and Nixo fire timing
@@ -114,6 +117,8 @@ OTA is split by relay hardware variant because 1ch and 2ch use different relay p
 | --- | --- | --- | --- | --- |
 | `esp32dev_go2_nixo_1ch` | `relay_1ch` | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
 | `esp32dev_go2_nixo_2ch` | `relay_2ch` | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
+| `esp32dev_go2_nixo_framed_packet_uart_1ch` | `relay_1ch` | `go2-nixo-framed-packet-uart-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-framed-packet-uart-1ch-latest/go2-nixo-framed-packet-uart-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
+| `esp32dev_go2_nixo_framed_packet_uart_2ch` | `relay_2ch` | `go2-nixo-framed-packet-uart-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-framed-packet-uart-2ch-latest/go2-nixo-framed-packet-uart-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
 
 Automatic OTA remains disabled by default. Current deployment uses direct USB serial flashing, while the existing
 hardware IDs and channels remain available for an explicitly requested future OTA workflow.
@@ -131,14 +136,14 @@ After provisioning `go2_03`:
 
 ### Single-character line commands
 
-The existing single-character/line command parser remains available for USB/BT
-bench and debug commands. Jetson UART2 does not feed bytes into that parser; it
-uses the framed protocol below exclusively.
+`esp32dev_go2_nixo_1ch/2ch` keep the existing Jetson UART2 single-character
+forced-newline implementation and its USB/BT line commands.
 
 ### Jetson UART
 
-The canonical `esp32dev_go2_nixo_1ch`/`esp32dev_go2_nixo_2ch` build environments use the bounded framed protocol
-on Jetson UART2. USB/BT keep the legacy bench commands. The wire frame is
+The new `esp32dev_go2_nixo_framed_packet_uart_1ch/2ch` environments use the bounded framed packet protocol
+on Jetson UART2. They reuse the shared Go2/Nixo hardware, display, MQTT, NVS, and relay modules without compiling the
+single-character `main.cpp`. The wire frame is
 `AA 55`, version `02`, typed message, exact flags, sequence, boot-specific sender
 epoch, payload length, payload, and CRC16/CCITT-FALSE.
 
@@ -147,7 +152,7 @@ epoch, payload length, payload, and CRC16/CCITT-FALSE.
 - `DEVICE_STATUS` and absolute `HP_SNAPSHOT` are sent immediately and periodically.
 - `HIT_EVENT` is retried until ACK/NACK or the bounded attempt limit.
 - Invalid frames are discarded and resynchronized; there is no mandatory CONNECT/CONNECTED session gate.
-- Packet bytes are never auto-detected or reinterpreted as legacy characters.
+- Framed bytes are never auto-detected or reinterpreted as single-character commands.
 
 Use Dora with the matching `GO2_DORA_NIXO_ID`. Complete the
 software, USB-TTL, Jetson UART, and dummy-load gates before connecting the live relay/blaster.

@@ -17,7 +17,7 @@ def test_uart_fixture_and_cpp_contract_are_present() -> None:
     assert payload["frame_format_version"] == 2
     assert len(payload["golden_vectors"]) == 10
 
-    header = read("firmware/go2_nixo/uart/protocol.h")
+    header = read("firmware/go2_nixo_framed_packet_uart/uart/protocol.h")
     assert "kFrameVersion = 2" in header
     assert "CapabilitiesRequest = 0x01" in header
     assert "DeviceStatus = 0x02" in header
@@ -37,42 +37,58 @@ def _env_block(platformio: str, name: str) -> str:
     return platformio[start:] if end < 0 else platformio[start:end]
 
 
-def test_go2_nixo_firmware_uses_single_uart_protocol() -> None:
+def test_go2_nixo_line_and_framed_packet_firmware_are_separate() -> None:
     platformio = read("platformio.ini")
     base = _env_block(platformio, "esp32dev_go2_nixo")
     assert "GO2_NIXO_UART_PACKET_V2" not in base
-    assert "-<../firmware/go2_nixo/uart/**>" not in base
     for name in ("esp32dev_go2_nixo_1ch", "esp32dev_go2_nixo_2ch"):
         assert f"[env:{name}]" in platformio
+    for name in (
+        "esp32dev_go2_nixo_framed_packet_uart_1ch",
+        "esp32dev_go2_nixo_framed_packet_uart_2ch",
+    ):
+        assert f"[env:{name}]" in platformio
 
-    main = read("firmware/go2_nixo/main.cpp")
-    assert "GO2_NIXO_UART_PACKET_V2" not in main
-    assert "pollJetsonUart" in main
-    assert "pollCommandStream(JetsonSerial" not in main
-    assert "jetsonCommandLine" not in main
-    assert "writeJetsonHpEvent" not in main
-    assert 'doc["jetson_uart_protocol"] = "framed"' in main
-    assert "jetsonAuthorizedHostEpoch" in main
-    assert "packetRobotIdentityMatches" in main
-    assert "packetCommandNeedsAuthority" in main
-    assert 'doc["jetson_uart_rx_frames"]' in main
-    assert 'doc["jetson_uart_rx_discarded_bytes"]' in main
-    assert 'doc["jetson_uart_rx_crc_errors"]' in main
-    assert 'doc["jetson_uart_rx_last_hex"]' in main
-    assert "queueJetsonFireStatusPacket(nextJetsonPacketSequence())" in main
-    assert "jetsonLastFireReason = FireReason::HoldTimeout" in main
-    assert "jetsonReliableAdmissionErrors" in main
+    line_main = read("firmware/go2_nixo/main.cpp")
+    assert 'pollCommandStream(JetsonSerial, jetsonCommandLine, "jetson")' in line_main
+    assert "pollJetsonUart" not in line_main
+
+    framed_main = read("firmware/go2_nixo_framed_packet_uart/main.cpp")
+    assert "GO2_NIXO_UART_PACKET_V2" not in framed_main
+    assert "pollJetsonUart" in framed_main
+    assert "pollCommandStream(JetsonSerial" not in framed_main
+    assert "jetsonCommandLine" not in framed_main
+    assert 'doc["jetson_uart_protocol"] = "framed"' in framed_main
+    assert "jetsonAuthorizedHostEpoch" in framed_main
+    assert "packetRobotIdentityMatches" in framed_main
+    assert "packetCommandNeedsAuthority" in framed_main
+    assert 'doc["jetson_uart_rx_frames"]' in framed_main
+    assert 'doc["jetson_uart_rx_discarded_bytes"]' in framed_main
+    assert 'doc["jetson_uart_rx_crc_errors"]' in framed_main
+    assert 'doc["jetson_uart_rx_last_hex"]' in framed_main
+    assert "queueJetsonFireStatusPacket(nextJetsonPacketSequence())" in framed_main
+    assert "jetsonLastFireReason = FireReason::HoldTimeout" in framed_main
+    assert "jetsonReliableAdmissionErrors" in framed_main
+
+    config_script = read("scripts/go2_nixo_config.py")
+    assert 'project_option("custom_go2_nixo_firmware")' in config_script
+    assert '{"single_char_newline", "framed_packet_uart"}' in config_script
+    assert 'f"go2-nixo-framed-packet-uart-{slug}"' in config_script
 
 def test_manual_usb_build_has_an_explicit_firmware_version() -> None:
     version_header = read("firmware/go2_nixo/app/version.h")
     assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in version_header
     assert "#define BB_GO2_NIXO_BUILD 1029" in version_header
     assert read("firmware/go2_nixo/app/version_autogen.h") == "#pragma once\n"
+    framed_version_header = read("firmware/go2_nixo_framed_packet_uart/app/version.h")
+    assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in framed_version_header
+    assert "#define BB_GO2_NIXO_BUILD 1029" in framed_version_header
+    assert read("firmware/go2_nixo_framed_packet_uart/app/version_autogen.h") == "#pragma once\n"
     assert "commonDefaults.otaAutoCheckEnabled = false;" in read("firmware/go2_nixo/config/runtime_config.cpp")
 
 
 def test_uart_safety_contract_is_not_session_gated() -> None:
-    runtime = read("firmware/go2_nixo/uart/runtime.cpp")
+    runtime = read("firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp")
     assert "MessageType::FireStop" in runtime
     assert "applyFireStop" in runtime
     assert "SessionRequired" not in runtime
@@ -82,7 +98,7 @@ def test_uart_safety_contract_is_not_session_gated() -> None:
 
 
 def test_uart_flags_match_python_registry() -> None:
-    protocol = read("firmware/go2_nixo/uart/protocol.cpp")
+    protocol = read("firmware/go2_nixo_framed_packet_uart/uart/protocol.cpp")
     assert "case MessageType::FireStop:" in protocol
     assert "case MessageType::HpReset:" in protocol
     assert "case MessageType::HpDamage:" in protocol
@@ -90,7 +106,7 @@ def test_uart_flags_match_python_registry() -> None:
     assert "case MessageType::DiagEcho:" in protocol
     assert "return frame.flags == FrameFlags::AckRequired;" in protocol
     assert "return frame.flags == FrameFlags::Response;" in protocol
-    runtime = read("firmware/go2_nixo/uart/runtime.cpp")
+    runtime = read("firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp")
     assert "void composeFireStatus(" in runtime
 
 

@@ -1,4 +1,4 @@
-#include "go2_nixo/uart/protocol.h"
+#include "go2_nixo_framed_packet_uart/uart/protocol.h"
 
 #include <string.h>
 

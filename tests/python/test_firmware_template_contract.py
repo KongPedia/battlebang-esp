@@ -100,7 +100,15 @@ def test_firmware_root_has_migrated_families_so_far() -> None:
         for path in (ROOT / "firmware").iterdir()
         if path.is_dir() and path.name != "_template"
     }
-    assert firmware_dirs == {"go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"}
+    assert firmware_dirs == {
+        "go2",
+        "go2_nixo",
+        "go2_nixo_framed_packet_uart",
+        "boss_target",
+        "heavy_blaster",
+        "station",
+        "turret_fleet",
+    }
 
     docs = read("firmware/README.md") + read("firmware/MIGRATION_PLAN.md")
     assert "Go2 physical migration is complete" in docs
@@ -243,6 +251,8 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "esp32dev_go2",
         "esp32dev_go2_nixo_1ch",
         "esp32dev_go2_nixo_2ch",
+        "esp32dev_go2_nixo_framed_packet_uart_1ch",
+        "esp32dev_go2_nixo_framed_packet_uart_2ch",
         "esp32dev_heavy_blaster",
         "esp32dev_station",
         "esp32dev_turret_fleet",
@@ -250,6 +260,8 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "go2-manifest.json",
         "go2-nixo-1ch-manifest.json",
         "go2-nixo-2ch-manifest.json",
+        "go2-nixo-framed-packet-uart-1ch-manifest.json",
+        "go2-nixo-framed-packet-uart-2ch-manifest.json",
         "heavy-blaster-manifest.json",
         "station-manifest.json",
         "manifest.json",
@@ -257,6 +269,8 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "go2-latest",
         "go2-nixo-1ch-latest",
         "go2-nixo-2ch-latest",
+        "go2-nixo-framed-packet-uart-1ch-latest",
+        "go2-nixo-framed-packet-uart-2ch-latest",
         "heavy-blaster-latest",
         "station-latest",
         "turret-fleet-latest",
@@ -290,6 +304,7 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert 'r"^firmware/boss_target/"' in workflow
     assert 'r"^firmware/go2/"' in workflow
     assert 'r"^firmware/go2_nixo/"' in workflow
+    assert 'r"^firmware/go2_nixo_framed_packet_uart/"' in workflow
     assert 'r"^firmware/heavy_blaster/"' in workflow
     assert 'r"^firmware/station/"' in workflow
     assert 'r"^firmware/turret_fleet/"' in workflow

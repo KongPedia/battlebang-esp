@@ -1,6 +1,6 @@
 #pragma once
 
-#include "go2_nixo/uart/protocol.h"
+#include "go2_nixo_framed_packet_uart/uart/protocol.h"
 
 namespace battlebang {
 namespace go2_nixo {

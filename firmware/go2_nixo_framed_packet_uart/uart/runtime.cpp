@@ -1,4 +1,4 @@
-#include "go2_nixo/uart/runtime.h"
+#include "go2_nixo_framed_packet_uart/uart/runtime.h"
 
 #include <string.h>
 
