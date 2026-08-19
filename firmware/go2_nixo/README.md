@@ -112,8 +112,8 @@ OTA is split by relay hardware variant because 1ch and 2ch use different relay p
 
 | Build env | Relay variant | OTA channel | Stable manifest | Firmware hardware id |
 | --- | --- | --- | --- | --- |
-| `esp32dev_go2_nixo_1ch` | `relay_1ch`, packet v2 UART | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
-| `esp32dev_go2_nixo_2ch` | `relay_2ch`, packet v2 UART | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
+| `esp32dev_go2_nixo_1ch` | `relay_1ch` | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
+| `esp32dev_go2_nixo_2ch` | `relay_2ch` | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
 
 Automatic OTA remains disabled by default. Current deployment uses direct USB serial flashing, while the existing
 hardware IDs and channels remain available for an explicitly requested future OTA workflow.
@@ -146,9 +146,9 @@ from above 30% to 30% or below, using the current NVS/MQTT `max_hits`, is `cf`,
 ASCII tokens replace the former UART JSON snapshot. They are fire-and-forget:
 no ACK, retry, or read confirmation is required from Jetson.
 
-### Packet v2 UART
+### Jetson UART
 
-The canonical `esp32dev_go2_nixo_1ch`/`esp32dev_go2_nixo_2ch` build environments use the bounded packet-v2 protocol
+The canonical `esp32dev_go2_nixo_1ch`/`esp32dev_go2_nixo_2ch` build environments use the bounded framed protocol
 on Jetson UART2. USB/BT keep the legacy bench commands. The wire frame is
 `AA 55`, version `02`, typed message, exact flags, sequence, boot-specific sender
 epoch, payload length, payload, and CRC16/CCITT-FALSE.
@@ -160,7 +160,7 @@ epoch, payload length, payload, and CRC16/CCITT-FALSE.
 - Invalid frames are discarded and resynchronized; there is no mandatory CONNECT/CONNECTED session gate.
 - Packet bytes are never auto-detected or reinterpreted as legacy characters.
 
-Use packet v2 with Dora `GO2_DORA_NIXO_UART_PROTOCOL=packet_v2` and the matching `GO2_DORA_NIXO_ID`. Complete the
+Use Dora `GO2_DORA_NIXO_UART_PROTOCOL=packet_v2` with the matching `GO2_DORA_NIXO_ID`. Complete the
 software, USB-TTL, Jetson UART, and dummy-load gates before connecting the live relay/blaster.
 
 ```json
