@@ -16,7 +16,8 @@ firmware/go2_nixo/
 ├─ config/                          # runtime config + NVS bridge
 ├─ display/                         # HP bar + Nixo fire-state ring
 ├─ mqtt/                            # hit/display/config/OTA MQTT bridge
-└─ nixo/                            # MQTT Nixo fire command / relay sequence
+├─ nixo/                            # MQTT Nixo fire command / relay sequence
+└─ uart/                            # opt-in Jetson UART packet-v2 codec/parser/reliability helpers
 ```
 
 Identity, stage, Wi-Fi, MQTT, OTA, piezo threshold/rearm/capture/debug, hit cooldown, offline queue, local HP count/flash, HP brightness, ring brightness, and Nixo fire duration/prefire/relay-delay timing are NVS runtime config; ESP cooldown is disabled. The 3ch piezo GPIO pins stay in the hardware profile; relay pins, polarity, and channel count stay build variants.

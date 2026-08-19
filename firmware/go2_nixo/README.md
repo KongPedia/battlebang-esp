@@ -110,8 +110,13 @@ OTA is split by relay hardware variant because 1ch and 2ch use different relay p
 
 | Build env | Relay variant | OTA channel | Stable manifest | Firmware hardware id |
 | --- | --- | --- | --- | --- |
-| `esp32dev_go2_nixo_1ch` | `relay_1ch` | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
-| `esp32dev_go2_nixo_2ch` | `relay_2ch` | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
+| `esp32dev_go2_nixo_1ch` | `relay_1ch`, legacy line UART | `go2-nixo-1ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `esp32dev-go2-nixo-relay-1ch-v1` |
+| `esp32dev_go2_nixo_2ch` | `relay_2ch`, legacy line UART | `go2-nixo-2ch` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `esp32dev-go2-nixo-relay-2ch-v1` |
+| `esp32dev_go2_nixo_1ch_packet_v2` | `relay_1ch`, packet v2 opt-in | `go2-nixo-1ch-packet-v2` | 전용 release 전 manifest 없음 | `esp32dev-go2-nixo-relay-1ch-packet-v2-v1` |
+| `esp32dev_go2_nixo_2ch_packet_v2` | `relay_2ch`, packet v2 opt-in | `go2-nixo-2ch-packet-v2` | 전용 release 전 manifest 없음 | `esp32dev-go2-nixo-relay-2ch-packet-v2-v1` |
+
+packet-v2 hardware ID와 OTA channel은 legacy image와 wire-incompatible하므로 반드시 분리한다. 기존 legacy manifest를
+packet-v2 장치에 전달해도 hardware mismatch로 거부되어야 한다.
 
 Provision NVS with the matching `GO2_NIXO_RELAY_VARIANT` or `scripts/go2_nixo/provision.py --relay-variant ...`; otherwise OTA channel and manifest URL will not match the flashed relay hardware.
 
@@ -124,7 +129,7 @@ After provisioning `go2_03`:
 [NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1 relay_on=1 relay_off=0 delay1_ms=800 fire_default_ms=3000 fire_min_ms=100 fire_max_ms=10000 cooldown_ms=0 prefire_ms=600
 ```
 
-Nixo fire command example:
+### Legacy line UART
 
 Jetson UART2 uses hold-fire control: send `f`, `fire`, or `1` repeatedly while
 L2+R2 is held; send `x`, `0`, `stop-fire`, or `fire off` immediately on release.
@@ -140,6 +145,24 @@ from above 30% to 30% or below, using the current NVS/MQTT `max_hits`, is `cf`,
 `cl`, or `cr`. `d` means zero/dead and `r` means reset/restored. These compact
 ASCII tokens replace the former UART JSON snapshot. They are fire-and-forget:
 no ACK, retry, or read confirmation is required from Jetson.
+
+### Packet v2 UART
+
+The opt-in `esp32dev_go2_nixo_1ch_packet_v2`/`esp32dev_go2_nixo_2ch_packet_v2` build environments replace only
+Jetson UART2 with a bounded binary protocol. The existing `esp32dev_go2_nixo_1ch`/`esp32dev_go2_nixo_2ch`
+environments keep the old newline protocol unchanged. USB/BT keep the legacy bench commands. The wire frame is
+`AA 55`, version `02`, typed message, exact flags, sequence, boot-specific sender
+epoch, payload length, payload, and CRC16/CCITT-FALSE.
+
+- `FIRE_HOLD` carries a bounded lease; lease expiry stops the relay locally.
+- `FIRE_STOP`, `HP_RESET`, and `HP_DAMAGE` are ACKed and duplicate-safe.
+- `DEVICE_STATUS` and absolute `HP_SNAPSHOT` are sent immediately and periodically.
+- `HIT_EVENT` is retried until ACK/NACK or the bounded attempt limit.
+- Invalid frames are discarded and resynchronized; there is no mandatory CONNECT/CONNECTED session gate.
+- Packet bytes are never auto-detected or reinterpreted as legacy characters.
+
+Use packet v2 with Dora `GO2_DORA_NIXO_UART_PROTOCOL=packet_v2` and the matching `GO2_DORA_NIXO_ID`. Complete the
+software, USB-TTL, Jetson UART, and dummy-load gates before connecting the live relay/blaster.
 
 ```json
 {

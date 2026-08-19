@@ -14,6 +14,15 @@
 #include "go2_nixo/display/bar_display.h"
 #include "go2_nixo/display/ring_display.h"
 
+#ifndef GO2_NIXO_UART_PACKET_V2
+#define GO2_NIXO_UART_PACKET_V2 0
+#endif
+
+#if GO2_NIXO_UART_PACKET_V2
+#include "go2_nixo/uart/protocol.h"
+#include "go2_nixo/uart/runtime.h"
+#endif
+
 using namespace go2;
 
 // Integrated Go2 hit/LED + Nixo fallback firmware:
@@ -47,6 +56,10 @@ struct LocalHitState {
 LocalHitState localHitState;
 int lastAcceptedHitTargetId = 3;
 bool lastAcceptedHitEnteredCritical = false;
+#if GO2_NIXO_UART_PACKET_V2
+uint16_t lastAcceptedHitStrength = 0;
+uint32_t lastAcceptedHitTimestampMs = 0;
+#endif
 String jetsonCommandLine;
 String usbCommandLine;
 String btCommandLine;
@@ -82,6 +95,51 @@ const char* lastPublishedNixoState = "";
 String lastPublishedNixoActiveSource;
 String lastPublishedNixoLastFireSource;
 uint32_t fireNetworkQuietUntilMs = 0;
+#if GO2_NIXO_UART_PACKET_V2
+uint32_t localHpRevision = 0;
+using battlebang::go2_nixo::uart::AckResult;
+using battlebang::go2_nixo::uart::CommandSource;
+using battlebang::go2_nixo::uart::composeAck;
+using battlebang::go2_nixo::uart::composeDeviceStatus;
+using battlebang::go2_nixo::uart::composeDiagEchoReply;
+using battlebang::go2_nixo::uart::composeFireStatus;
+using battlebang::go2_nixo::uart::composeHpSnapshot;
+using battlebang::go2_nixo::uart::composeLinkMetrics;
+using battlebang::go2_nixo::uart::composeNack;
+using battlebang::go2_nixo::uart::Frame;
+using battlebang::go2_nixo::uart::FrameFlags;
+using battlebang::go2_nixo::uart::FireReason;
+using battlebang::go2_nixo::uart::FireSnapshot;
+using battlebang::go2_nixo::uart::FireState;
+using battlebang::go2_nixo::uart::DedupeResult;
+using battlebang::go2_nixo::uart::FrameTxQueue;
+using battlebang::go2_nixo::uart::HpSnapshot;
+using battlebang::go2_nixo::uart::InboundDedupe;
+using battlebang::go2_nixo::uart::IncrementalParser;
+using battlebang::go2_nixo::uart::isNewerSequence;
+using battlebang::go2_nixo::uart::isPayloadValid;
+using battlebang::go2_nixo::uart::MessageType;
+using battlebang::go2_nixo::uart::NackError;
+using battlebang::go2_nixo::uart::ReliableFrameTracker;
+using battlebang::go2_nixo::uart::LinkState;
+
+IncrementalParser jetsonPacketParser;
+FrameTxQueue jetsonPacketTx;
+InboundDedupe jetsonInboundDedupe;
+ReliableFrameTracker jetsonReliableTx;
+uint8_t jetsonLastRxBytes[16] = {};
+size_t jetsonLastRxLength = 0;
+size_t jetsonLastRxChunkLength = 0;
+uint16_t jetsonPacketTxSequence = 0;
+uint32_t jetsonPacketSenderEpoch = 1;
+uint32_t jetsonAuthorizedHostEpoch = 0;
+bool jetsonHostCommandSequenceSeen = false;
+uint16_t jetsonLastHostCommandSequence = 0;
+uint32_t lastJetsonPacketStatusMs = 0;
+CommandSource jetsonLastFireCommandSource = CommandSource::Unknown;
+FireReason jetsonLastFireReason = FireReason::None;
+uint32_t jetsonReliableAdmissionErrors = 0;
+#endif
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -192,6 +250,9 @@ static void resetLocalHitState() {
   lastAcceptedHitTargetId = 3;
   lastAcceptedHitEnteredCritical = false;
   nixoFire.setFireInhibited(false);
+#if GO2_NIXO_UART_PACKET_V2
+  ++localHpRevision;
+#endif
   barDisplay.resetLocalHpState(localHitState.maxHits);
 }
 
@@ -217,6 +278,9 @@ static void syncLocalHitStateWithRuntimeConfig() {
                                     : nextMaxHits - localHitState.acceptedHitCount;
   }
   localHitState.down = localHitState.hpRemaining == 0;
+#if GO2_NIXO_UART_PACKET_V2
+  ++localHpRevision;
+#endif
   lastAcceptedHitEnteredCritical = false;
   hasSentJetsonHpStatus = false;
   jetsonBootMs = millis() - JETSON_BOOT_RESET_DELAY_MS;
@@ -239,6 +303,9 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
   }
   localHitState.lastHitSequence = sequence;
   nixoFire.setFireInhibited(localHitState.down);
+#if GO2_NIXO_UART_PACKET_V2
+  ++localHpRevision;
+#endif
   barDisplay.setLocalHpState(localHitState.hpRemaining,
                              localHitState.maxHits,
                              localHitState.down,
@@ -317,6 +384,10 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
 
   uint32_t sequence = ++hitSequence;
   lastAcceptedHitTargetId = targetId;
+#if GO2_NIXO_UART_PACKET_V2
+  lastAcceptedHitStrength = static_cast<uint16_t>(constrain(peakRaw, 0, 65535));
+  lastAcceptedHitTimestampMs = eventTsMs;
+#endif
   const bool downNow = applyLocalHit(sequence, millis());
 
   Serial.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
@@ -577,6 +648,9 @@ static void resetAll(const char* source = "serial") {
   hitMqtt.clearOfflineQueue();
   nixoFire.stopFire("reset");
   resetLocalHitState();
+#if GO2_NIXO_UART_PACKET_V2
+  jetsonLastFireReason = FireReason::Reset;
+#endif
   barDisplay.clearRemoteDisplay();
   barDisplay.markDirty();
   ringDisplay.clearCooldown();
@@ -844,6 +918,27 @@ static void printStatusJson(const char* source, const char* reason) {
   doc["nixo_transport"] = NIXO_TRANSPORT;
   doc["nixo_mqtt_configured"] = nixoFire.configured();
   doc["nixo_mqtt_connected"] = nixoFire.connected();
+  doc["jetson_uart_protocol"] = GO2_NIXO_UART_PACKET_V2 ? "packet_v2" : "legacy_line";
+  doc["jetson_uart_rx_pin"] = UART_RX_PIN;
+  doc["jetson_uart_tx_pin"] = UART_TX_PIN;
+  doc["jetson_uart_baud"] = UART_BAUD;
+  doc["jetson_uart_rx_readback"] = digitalRead(UART_RX_PIN);
+  doc["jetson_uart_tx_readback"] = digitalRead(UART_TX_PIN);
+#if GO2_NIXO_UART_PACKET_V2
+  const auto& uartCounters = jetsonPacketParser.counters();
+  doc["jetson_uart_rx_frames"] = uartCounters.frames;
+  doc["jetson_uart_rx_discarded_bytes"] = uartCounters.discarded_bytes;
+  doc["jetson_uart_rx_crc_errors"] = uartCounters.crc_errors;
+  doc["jetson_uart_tx_overflow_errors"] = jetsonPacketTx.overflowErrors();
+  doc["jetson_uart_reliable_admission_errors"] = jetsonReliableAdmissionErrors;
+  doc["jetson_uart_reliable_active"] = jetsonReliableTx.activeCount();
+  char uartRxHex[sizeof(jetsonLastRxBytes) * 2 + 1] = {};
+  for (size_t i = 0; i < jetsonLastRxLength; ++i) {
+    snprintf(uartRxHex + i * 2, 3, "%02x", jetsonLastRxBytes[i]);
+  }
+  doc["jetson_uart_rx_last_chunk_bytes"] = jetsonLastRxChunkLength;
+  doc["jetson_uart_rx_last_hex"] = uartRxHex;
+#endif
   doc["mqtt_auth_configured"] =
       runtimeConfig.common.mqttUsername.length() > 0 || runtimeConfig.common.mqttPassword.length() > 0;
   doc["mqtt_host"] = runtimeConfig.common.mqttHost;
@@ -926,6 +1021,363 @@ static bool jetsonHpStatusChanged() {
          lastJetsonDead != localHitStateDead();
 }
 
+
+#if GO2_NIXO_UART_PACKET_V2
+static uint16_t readPacketBe16(const uint8_t* data) {
+  return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | data[1]);
+}
+
+static void writePacketBe16(uint8_t* data, uint16_t value) {
+  data[0] = static_cast<uint8_t>(value >> 8);
+  data[1] = static_cast<uint8_t>(value);
+}
+
+static void writePacketBe32(uint8_t* data, uint32_t value) {
+  data[0] = static_cast<uint8_t>(value >> 24);
+  data[1] = static_cast<uint8_t>(value >> 16);
+  data[2] = static_cast<uint8_t>(value >> 8);
+  data[3] = static_cast<uint8_t>(value);
+}
+
+static uint32_t jetsonPacketCapabilities() {
+  uint32_t caps = battlebang::go2_nixo::uart::CapabilityFireControl |
+                  battlebang::go2_nixo::uart::CapabilityHpSnapshot |
+                  battlebang::go2_nixo::uart::CapabilityHitEvent |
+                  battlebang::go2_nixo::uart::CapabilityHpDamage |
+                  battlebang::go2_nixo::uart::CapabilityLinkMetrics |
+                  battlebang::go2_nixo::uart::CapabilityDiagEcho;
+  if (NIXO_RELAY2_ENABLED_VALUE) caps |= battlebang::go2_nixo::uart::CapabilityRelay2Ch;
+  return caps;
+}
+
+static uint16_t nextJetsonPacketSequence() {
+  const uint16_t sequence = jetsonPacketTxSequence;
+  jetsonPacketTxSequence = battlebang::go2_nixo::uart::nextSequence(jetsonPacketTxSequence);
+  return sequence;
+}
+
+static bool queueJetsonPacket(Frame& frame, bool reliable = false) {
+  if (frame.sender_epoch == 0) frame.sender_epoch = jetsonPacketSenderEpoch;
+  if (reliable && !jetsonReliableTx.track(frame, millis())) {
+    ++jetsonReliableAdmissionErrors;
+    return false;
+  }
+  return jetsonPacketTx.enqueue(frame);
+}
+
+static HpSnapshot currentHpPacketSnapshot() {
+  HpSnapshot hp;
+  hp.revision = localHpRevision;
+  hp.remaining = localHitState.hpRemaining;
+  hp.maximum = localHitState.maxHits;
+  hp.accepted_hits = localHitState.acceptedHitCount;
+  hp.down = localHitStateDead();
+  hp.last_hit_sequence = localHitState.lastHitSequence;
+  return hp;
+}
+
+static FireState currentFirePacketState(uint32_t now) {
+  if (nixoFire.fireInhibited()) return FireState::Inhibited;
+  if (jetsonFireReleaseRequired) return FireState::ReleaseRequired;
+  const char* state = nixoFire.fireStateName();
+  if (strcmp(state, "prefire_delay") == 0) return FireState::Prefire;
+  if (strcmp(state, "flywheel_spinup") == 0) return FireState::Spinup;
+  if (strcmp(state, "firing") == 0) return FireState::Firing;
+  if (strcmp(state, "flywheel_spindown") == 0) return FireState::Spindown;
+  if (nixoFire.cooldownRemainingMs(now) > 0) return FireState::Cooldown;
+  if (strcmp(state, "ready") == 0) return FireState::Idle;
+  return FireState::Fault;
+}
+
+static CommandSource currentFirePacketSource() {
+  const char* source = nixoFire.activeFireSource();
+  if (source == nullptr || source[0] == '\0') source = nixoFire.lastFireSource();
+  if (source != nullptr && strstr(source, "mqtt") != nullptr) return CommandSource::EspMqtt;
+  if (source != nullptr && strstr(source, "packet_v2") != nullptr) return jetsonLastFireCommandSource;
+  if (source != nullptr && strstr(source, "jetson") != nullptr) return jetsonLastFireCommandSource;
+  return CommandSource::Unknown;
+}
+
+static FireSnapshot currentFirePacketSnapshot(uint32_t now) {
+  FireSnapshot fire;
+  fire.state = currentFirePacketState(now);
+  fire.inhibited = nixoFire.fireInhibited();
+  fire.source = currentFirePacketSource();
+  fire.remaining_ms = nixoFire.isFiring() && (int32_t)(jetsonFireHoldDeadlineMs - now) > 0
+                          ? static_cast<uint16_t>(min(static_cast<uint32_t>(jetsonFireHoldDeadlineMs - now),
+                                                      static_cast<uint32_t>(0xFFFF)))
+                          : 0;
+  if (fire.inhibited) {
+    fire.reason = FireReason::HpDown;
+  } else if (fire.state == FireState::ReleaseRequired) {
+    fire.reason = FireReason::ReleaseRequired;
+  } else if (fire.state == FireState::Prefire || fire.state == FireState::Spinup || fire.state == FireState::Firing) {
+    fire.reason = FireReason::None;
+  } else {
+    fire.reason = jetsonLastFireReason;
+  }
+  return fire;
+}
+
+static void queueJetsonDeviceStatusPacket() {
+  Frame frame;
+  composeDeviceStatus(runtimeConfig.nixo.nixoId.c_str(),
+                      jetsonPacketCapabilities(),
+                      jetsonPacketSenderEpoch,
+                      nextJetsonPacketSequence(),
+                      frame);
+  queueJetsonPacket(frame);
+}
+
+static void queueJetsonHpSnapshotPacket() {
+  Frame frame;
+  composeHpSnapshot(currentHpPacketSnapshot(), jetsonPacketSenderEpoch, nextJetsonPacketSequence(), frame);
+  queueJetsonPacket(frame);
+}
+
+static void queueJetsonLinkMetricsPacket() {
+  const auto& counters = jetsonPacketParser.counters();
+  Frame frame;
+  composeLinkMetrics(
+      millis(),
+      static_cast<uint16_t>(min(counters.crc_errors, static_cast<uint32_t>(0xFFFF))),
+      static_cast<uint16_t>(min(counters.overflow_errors + jetsonPacketTx.overflowErrors() +
+                                    jetsonReliableAdmissionErrors,
+                                static_cast<uint32_t>(0xFFFF))),
+      static_cast<uint16_t>(min(jetsonReliableTx.retryCount(), static_cast<uint32_t>(0xFFFF))),
+      LinkState::Healthy,
+      jetsonPacketSenderEpoch,
+      nextJetsonPacketSequence(),
+      frame);
+  queueJetsonPacket(frame);
+}
+
+static void queueJetsonHitEventPacket() {
+  Frame frame;
+  frame.type = MessageType::HitEvent;
+  frame.flags = FrameFlags::AckRequired;
+  frame.sequence = nextJetsonPacketSequence();
+  frame.sender_epoch = jetsonPacketSenderEpoch;
+  frame.payload_length = 18;
+  writePacketBe32(frame.payload + 0, hitSequence);
+  writePacketBe32(frame.payload + 4, localHpRevision);
+  frame.payload[8] = static_cast<uint8_t>(lastAcceptedHitTargetId);
+  writePacketBe16(frame.payload + 9, lastAcceptedHitStrength);
+  writePacketBe32(frame.payload + 11, lastAcceptedHitTimestampMs);
+  writePacketBe16(frame.payload + 15, localHitState.hpRemaining);
+  frame.payload[17] = localHitStateDead() ? 1 : 0;
+  queueJetsonPacket(frame, true);
+}
+
+static void queueJetsonFireStatusPacket(uint16_t sequence) {
+  Frame frame;
+  composeFireStatus(currentFirePacketSnapshot(millis()), jetsonPacketSenderEpoch, sequence, frame);
+  queueJetsonPacket(frame);
+}
+
+static void ackJetsonPacket(const Frame& request, AckResult result) {
+  Frame response;
+  composeAck(request, result, response, jetsonPacketSenderEpoch);
+  queueJetsonPacket(response);
+}
+
+static void nackJetsonPacket(const Frame& request, NackError error) {
+  Frame response;
+  composeNack(request, error, response, jetsonPacketSenderEpoch);
+  queueJetsonPacket(response);
+}
+
+static bool replayOrRejectDuplicate(const Frame& request) {
+  if (request.flags != FrameFlags::AckRequired) return false;
+  Frame cached;
+  const DedupeResult result = jetsonInboundDedupe.check(request, cached, millis());
+  if (result == DedupeResult::Duplicate) {
+    queueJetsonPacket(cached);
+    return true;
+  }
+  if (result == DedupeResult::Conflict) {
+    nackJetsonPacket(request, NackError::SequenceConflict);
+    return true;
+  }
+  return false;
+}
+
+static void rememberReliableRequest(const Frame& request, const Frame& response) {
+  if (request.flags == FrameFlags::AckRequired) jetsonInboundDedupe.remember(request, response, millis());
+}
+
+static uint16_t clampJetsonLeaseMs(uint16_t requested) {
+  if (requested < 50) return 50;
+  if (requested > JETSON_FIRE_HOLD_TIMEOUT_MS) return JETSON_FIRE_HOLD_TIMEOUT_MS;
+  return requested;
+}
+
+static uint16_t readHpDamageAmount(const Frame& frame) {
+  return readPacketBe16(frame.payload);
+}
+
+static AckResult applyPacketHpDamage(uint16_t amount) {
+  if (amount == 0 || localHitStateDead()) return AckResult::NoopAlreadySafe;
+  uint16_t applied = 0;
+  while (applied < amount && localHitState.hpRemaining > 0 && !localHitState.down) {
+    lastAcceptedHitTargetId = 3;
+    lastAcceptedHitStrength = 0;
+    lastAcceptedHitTimestampMs = millis();
+    applyLocalHit(++hitSequence, millis());
+    ++applied;
+  }
+  return applied == 0 ? AckResult::NoopAlreadySafe : AckResult::Applied;
+}
+
+static bool packetRobotIdentityMatches(const Frame& frame) {
+  if (frame.type != MessageType::CapabilitiesRequest || frame.payload_length < 5) return false;
+  const uint8_t idLength = frame.payload[0];
+  if (idLength == 0 || frame.payload_length != static_cast<uint8_t>(idLength + 5)) return false;
+  const String& robotId = runtimeConfig.hit.robotId;
+  return robotId.length() == idLength && memcmp(frame.payload + 1, robotId.c_str(), idLength) == 0;
+}
+
+static bool packetCommandNeedsAuthority(MessageType type) {
+  return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage;
+}
+
+static void resetJetsonHostCommandSequence() {
+  jetsonHostCommandSequenceSeen = false;
+  jetsonLastHostCommandSequence = 0;
+}
+
+static void rememberJetsonHostCommandSequence(const Frame& frame) {
+  if (frame.sender_epoch != jetsonAuthorizedHostEpoch) return;
+  if (!jetsonHostCommandSequenceSeen || isNewerSequence(frame.sequence, jetsonLastHostCommandSequence)) {
+    jetsonHostCommandSequenceSeen = true;
+    jetsonLastHostCommandSequence = frame.sequence;
+  }
+}
+
+static bool staleJetsonActiveCommand(const Frame& frame) {
+  return packetCommandNeedsAuthority(frame.type) && jetsonHostCommandSequenceSeen &&
+         frame.sender_epoch == jetsonAuthorizedHostEpoch &&
+         !isNewerSequence(frame.sequence, jetsonLastHostCommandSequence);
+}
+
+static void handleJetsonPacketV2(const Frame& frame) {
+  if (!battlebang::go2_nixo::uart::hasValidFlagsForType(frame)) {
+    nackJetsonPacket(frame, NackError::InvalidFlags);
+    return;
+  }
+  if (!isPayloadValid(frame) || frame.sender_epoch == 0) {
+    nackJetsonPacket(frame, NackError::InvalidPayload);
+    return;
+  }
+  if (frame.type == MessageType::Ack || frame.type == MessageType::Nack) {
+    if (frame.sender_epoch == jetsonAuthorizedHostEpoch) jetsonReliableTx.handleAckFrame(frame);
+    return;
+  }
+  if (packetCommandNeedsAuthority(frame.type) && frame.sender_epoch != jetsonAuthorizedHostEpoch) {
+    nackJetsonPacket(frame, NackError::NotReady);
+    return;
+  }
+  if (replayOrRejectDuplicate(frame)) return;
+  if (staleJetsonActiveCommand(frame)) {
+    nackJetsonPacket(frame, NackError::NotReady);
+    return;
+  }
+  switch (frame.type) {
+    case MessageType::CapabilitiesRequest:
+      if (!packetRobotIdentityMatches(frame)) {
+        nackJetsonPacket(frame, NackError::IdentityMismatch);
+        return;
+      }
+      if (jetsonAuthorizedHostEpoch != frame.sender_epoch) resetJetsonHostCommandSequence();
+      jetsonAuthorizedHostEpoch = frame.sender_epoch;
+      queueJetsonDeviceStatusPacket();
+      queueJetsonHpSnapshotPacket();
+      return;
+    case MessageType::FireHold: {
+      rememberJetsonHostCommandSequence(frame);
+      jetsonLastFireCommandSource = static_cast<CommandSource>(frame.payload[0]);
+      jetsonLastFireReason = FireReason::None;
+      char fireSource[24];
+      snprintf(fireSource, sizeof(fireSource), "packet_v2:%u", frame.payload[0]);
+      const uint16_t leaseMs = clampJetsonLeaseMs(readPacketBe16(frame.payload + 1));
+      handleCommandChar('f', "jetson", fireSource);
+      if (jetsonFireHoldActive) {
+        jetsonFireHoldDeadlineMs = millis() + leaseMs;
+        markNetworkQuietForFire(millis(), leaseMs + FIRE_NETWORK_QUIET_MS);
+      }
+      queueJetsonFireStatusPacket(frame.sequence);
+      return;
+    }
+    case MessageType::FireStop: {
+      rememberJetsonHostCommandSequence(frame);
+      jetsonLastFireReason = static_cast<FireReason>(frame.payload[0]);
+      stopNixoFireCommand("jetson_packet_v2");
+      Frame response;
+      composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonFireStatusPacket(frame.sequence);
+      return;
+    }
+    case MessageType::HpReset: {
+      rememberJetsonHostCommandSequence(frame);
+      resetAll("jetson_packet_v2");
+      Frame response;
+      composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::HpDamage: {
+      rememberJetsonHostCommandSequence(frame);
+      const AckResult result = applyPacketHpDamage(readHpDamageAmount(frame));
+      Frame response;
+      composeAck(frame, result, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::DiagEcho: {
+      Frame response;
+      if (composeDiagEchoReply(frame, response)) {
+        response.sender_epoch = jetsonPacketSenderEpoch;
+        queueJetsonPacket(response);
+        rememberReliableRequest(frame, response);
+      }
+      return;
+    }
+    default:
+      nackJetsonPacket(frame, NackError::UnsupportedType);
+      return;
+  }
+}
+
+static void pollJetsonPacketV2() {
+  uint8_t data[64];
+  while (JetsonSerial.available() > 0) {
+    const size_t readCount = JetsonSerial.readBytes(data, min(static_cast<size_t>(JetsonSerial.available()), sizeof(data)));
+    jetsonLastRxChunkLength = readCount;
+    jetsonLastRxLength = min(readCount, sizeof(jetsonLastRxBytes));
+    memcpy(jetsonLastRxBytes, data, jetsonLastRxLength);
+    jetsonPacketParser.feed(data, readCount, millis(), handleJetsonPacketV2);
+  }
+  jetsonReliableTx.retryDue(millis(), jetsonPacketTx);
+  while (jetsonPacketTx.pendingBytes() > 0) {
+    size_t length = 0;
+    const uint8_t* bytes = jetsonPacketTx.peek(length);
+    if (bytes == nullptr || length == 0) return;
+    const int writable = JetsonSerial.availableForWrite();
+    if (writable <= 0) return;
+    const size_t chunk = min(length, static_cast<size_t>(writable));
+    const size_t written = JetsonSerial.write(bytes, chunk);
+    if (written == 0) return;
+    jetsonPacketTx.consume(written);
+  }
+}
+#endif
+
 static bool jetsonNeedsResync = true;
 
 static void beginJetsonHpLine() {
@@ -963,6 +1415,12 @@ static void writeJetsonDirectionalHpEvent(int targetId, bool critical) {
 }
 
 static void sendJetsonHpStatus(const char* reason) {
+#if GO2_NIXO_UART_PACKET_V2
+  if (strcmp(reason, "hit") == 0) queueJetsonHitEventPacket();
+  queueJetsonHpSnapshotPacket();
+  rememberJetsonHpStatusSnapshot();
+  return;
+#endif
   const bool isDead = localHitStateDead();
   const bool isHit = strcmp(reason, "hit") == 0;
   if (isDead) {
@@ -1291,8 +1749,23 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
   }
 }
 
+#if GO2_NIXO_UART_PACKET_V2
+static void publishPeriodicJetsonPacketStatus(uint32_t now) {
+  if (now - lastJetsonPacketStatusMs < battlebang::go2_nixo::uart::kStatusPeriodMs) return;
+  lastJetsonPacketStatusMs = now;
+  queueJetsonDeviceStatusPacket();
+  queueJetsonHpSnapshotPacket();
+  queueJetsonFireStatusPacket(nextJetsonPacketSequence());
+  queueJetsonLinkMetricsPacket();
+}
+#endif
+
 static void pollCommands() {
+#if GO2_NIXO_UART_PACKET_V2
+  pollJetsonPacketV2();
+#else
   pollCommandStream(JetsonSerial, jetsonCommandLine, "jetson");
+#endif
   pollCommandStream(Serial, usbCommandLine, "usb");
   pollCommandStream(SerialBT, btCommandLine, "bt");
 }
@@ -1304,8 +1777,14 @@ static void updateJetsonFireHold(uint32_t now) {
   jetsonFireReleaseRequired = false;
   if (nixoFire.isFiring()) {
     markNetworkQuietForFireStop(now);
+#if GO2_NIXO_UART_PACKET_V2
+    jetsonLastFireReason = FireReason::HoldTimeout;
+#endif
     nixoFire.stopFire("jetson-hold-timeout");
   }
+#if GO2_NIXO_UART_PACKET_V2
+  queueJetsonFireStatusPacket(nextJetsonPacketSequence());
+#endif
 }
 
 
@@ -1397,6 +1876,11 @@ void setup() {
   delay(200);
 
   JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
+#if GO2_NIXO_UART_PACKET_V2
+  jetsonPacketSenderEpoch = esp_random();
+  if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = static_cast<uint32_t>(ESP.getEfuseMac() ^ (ESP.getEfuseMac() >> 32));
+  if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = 1;
+#endif
   jetsonBootMs = millis();
   SerialBT.begin(BT_NAME);
 
@@ -1438,6 +1922,9 @@ void setup() {
   Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state; Jetson UART 'h'=HP damage, '1'/'f'=Nixo hold-fire, '0'/'x'=stop.\n",
                 CMD_RESET_HIT_DISPLAY);
   Serial.println("USB/BT/Jetson line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+#if GO2_NIXO_UART_PACKET_V2
+  Serial.printf("[UART] Jetson packet_v2 enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
+#endif
   Serial.print("release_repo=");
   Serial.println(BB_GO2_NIXO_RELEASE_REPO);
   Serial.print("latest_manifest=");
@@ -1467,6 +1954,10 @@ void setup() {
                 (unsigned long)runtimeConfig.nixo.fireMaxDurationMs,
                 (unsigned long)runtimeConfig.nixo.fireCooldownMs,
                 (unsigned long)runtimeConfig.nixo.prefireDelayMs);
+#if GO2_NIXO_UART_PACKET_V2
+  queueJetsonDeviceStatusPacket();
+  queueJetsonHpSnapshotPacket();
+#endif
 }
 
 void loop() {
@@ -1486,6 +1977,9 @@ void loop() {
   ringDisplay.tick(now);
 
   publishJetsonHpStatus();
+#if GO2_NIXO_UART_PACKET_V2
+  publishPeriodicJetsonPacketStatus(now);
+#endif
   const bool deferNetworkForFire = shouldDeferNetworkForFire(now);
   if (!deferNetworkForFire) {
     nixoFire.tickNetwork(now);

@@ -62,11 +62,13 @@ def relay_variant_slug(name: str) -> str:
 
 def append_variant_identity_defines(defines: list[tuple[str, str]], variant_name: str) -> None:
     slug = relay_variant_slug(variant_name)
-    channel = f"go2-nixo-{slug}"
+    packet_v2 = PIO_ENV.endswith("_packet_v2")
+    channel = f"go2-nixo-{slug}{'-packet-v2' if packet_v2 else ''}"
+    hardware = f"esp32dev-go2-nixo-relay-{slug}{'-packet-v2' if packet_v2 else ''}-v1"
     defines.extend(
         [
             ("BB_GO2_NIXO_RELAY_VARIANT", c_string(variant_name)),
-            ("BB_GO2_NIXO_HARDWARE", c_string(f"esp32dev-go2-nixo-relay-{slug}-v1")),
+            ("BB_GO2_NIXO_HARDWARE", c_string(hardware)),
             ("BB_GO2_NIXO_OTA_CHANNEL", c_string(channel)),
             ("BB_GO2_NIXO_STABLE_TAG", c_string(f"{channel}-latest")),
             ("BB_GO2_NIXO_MANIFEST_NAME", c_string(f"{channel}-manifest.json")),
@@ -217,6 +219,8 @@ with CONFIG_PATH.open("r", encoding="utf-8") as f:
 variant_name = relay_variant_name()
 relay_variant = load_relay_variant(variant_name)
 profile = deep_merge(config.get("defaults", {}), relay_variant)
+packet_v2 = PIO_ENV.endswith("_packet_v2")
+identity_suffix = "-packet-v2" if packet_v2 else ""
 defines: list[tuple[str, str]] = []
 append_variant_identity_defines(defines, variant_name)
 append_profile_defines(defines, profile)
@@ -241,8 +245,8 @@ print(
     f"ring_num_leds={profile.get('ring_num_leds', 'default')} "
     f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')} "
     f"nixo_id=NVS-derived "
-    f"hardware=esp32dev-go2-nixo-relay-{relay_variant_slug(variant_name)}-v1 "
-    f"ota_channel=go2-nixo-{relay_variant_slug(variant_name)} "
+    f"hardware=esp32dev-go2-nixo-relay-{relay_variant_slug(variant_name)}{identity_suffix}-v1 "
+    f"ota_channel=go2-nixo-{relay_variant_slug(variant_name)}{identity_suffix} "
     f"nixo_variant={variant_name} "
     f"nixo_relay1={profile.get('nixo_relay1_pin', 'default')} "
     f"nixo_relay2={profile.get('nixo_relay2_pin', 'default')} "
