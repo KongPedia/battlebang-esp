@@ -40,17 +40,19 @@ def _env_block(platformio: str, name: str) -> str:
 def test_packet_v2_is_the_canonical_go2_nixo_uart_protocol() -> None:
     platformio = read("platformio.ini")
     base = _env_block(platformio, "esp32dev_go2_nixo")
-    assert "GO2_NIXO_UART_PACKET_V2=1" in base
+    assert "GO2_NIXO_UART_PACKET_V2" not in base
     assert "-<../firmware/go2_nixo/uart/**>" not in base
     for name in ("esp32dev_go2_nixo_1ch", "esp32dev_go2_nixo_2ch"):
         assert f"[env:{name}]" in platformio
         assert f"[env:{name}_packet_v2]" not in platformio
 
     main = read("firmware/go2_nixo/main.cpp")
-    assert "GO2_NIXO_UART_PACKET_V2" in main
+    assert "GO2_NIXO_UART_PACKET_V2" not in main
     assert "pollJetsonPacketV2" in main
-    assert "pollCommandStream(JetsonSerial" in main
-    assert "#if GO2_NIXO_UART_PACKET_V2" in main
+    assert "pollCommandStream(JetsonSerial" not in main
+    assert "jetsonCommandLine" not in main
+    assert "writeJetsonHpEvent" not in main
+    assert 'doc["jetson_uart_protocol"] = "packet_v2"' in main
     assert "jetsonAuthorizedHostEpoch" in main
     assert "packetRobotIdentityMatches" in main
     assert "packetCommandNeedsAuthority" in main

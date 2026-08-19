@@ -13,15 +13,8 @@
 #include "go2_nixo/nixo/nixo_fire_client.h"
 #include "go2_nixo/display/bar_display.h"
 #include "go2_nixo/display/ring_display.h"
-
-#ifndef GO2_NIXO_UART_PACKET_V2
-#define GO2_NIXO_UART_PACKET_V2 0
-#endif
-
-#if GO2_NIXO_UART_PACKET_V2
 #include "go2_nixo/uart/protocol.h"
 #include "go2_nixo/uart/runtime.h"
-#endif
 
 using namespace go2;
 
@@ -56,11 +49,8 @@ struct LocalHitState {
 LocalHitState localHitState;
 int lastAcceptedHitTargetId = 3;
 bool lastAcceptedHitEnteredCritical = false;
-#if GO2_NIXO_UART_PACKET_V2
 uint16_t lastAcceptedHitStrength = 0;
 uint32_t lastAcceptedHitTimestampMs = 0;
-#endif
-String jetsonCommandLine;
 String usbCommandLine;
 String btCommandLine;
 String pendingMqttConfigJson;
@@ -95,7 +85,6 @@ const char* lastPublishedNixoState = "";
 String lastPublishedNixoActiveSource;
 String lastPublishedNixoLastFireSource;
 uint32_t fireNetworkQuietUntilMs = 0;
-#if GO2_NIXO_UART_PACKET_V2
 uint32_t localHpRevision = 0;
 using battlebang::go2_nixo::uart::AckResult;
 using battlebang::go2_nixo::uart::CommandSource;
@@ -139,7 +128,6 @@ uint32_t lastJetsonPacketStatusMs = 0;
 CommandSource jetsonLastFireCommandSource = CommandSource::Unknown;
 FireReason jetsonLastFireReason = FireReason::None;
 uint32_t jetsonReliableAdmissionErrors = 0;
-#endif
 
 constexpr size_t COMMAND_LINE_MAX = 2048;
 constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
@@ -250,9 +238,7 @@ static void resetLocalHitState() {
   lastAcceptedHitTargetId = 3;
   lastAcceptedHitEnteredCritical = false;
   nixoFire.setFireInhibited(false);
-#if GO2_NIXO_UART_PACKET_V2
   ++localHpRevision;
-#endif
   barDisplay.resetLocalHpState(localHitState.maxHits);
 }
 
@@ -278,9 +264,7 @@ static void syncLocalHitStateWithRuntimeConfig() {
                                     : nextMaxHits - localHitState.acceptedHitCount;
   }
   localHitState.down = localHitState.hpRemaining == 0;
-#if GO2_NIXO_UART_PACKET_V2
   ++localHpRevision;
-#endif
   lastAcceptedHitEnteredCritical = false;
   hasSentJetsonHpStatus = false;
   jetsonBootMs = millis() - JETSON_BOOT_RESET_DELAY_MS;
@@ -303,9 +287,7 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
   }
   localHitState.lastHitSequence = sequence;
   nixoFire.setFireInhibited(localHitState.down);
-#if GO2_NIXO_UART_PACKET_V2
   ++localHpRevision;
-#endif
   barDisplay.setLocalHpState(localHitState.hpRemaining,
                              localHitState.maxHits,
                              localHitState.down,
@@ -384,10 +366,8 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
 
   uint32_t sequence = ++hitSequence;
   lastAcceptedHitTargetId = targetId;
-#if GO2_NIXO_UART_PACKET_V2
   lastAcceptedHitStrength = static_cast<uint16_t>(constrain(peakRaw, 0, 65535));
   lastAcceptedHitTimestampMs = eventTsMs;
-#endif
   const bool downNow = applyLocalHit(sequence, millis());
 
   Serial.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
@@ -648,9 +628,7 @@ static void resetAll(const char* source = "serial") {
   hitMqtt.clearOfflineQueue();
   nixoFire.stopFire("reset");
   resetLocalHitState();
-#if GO2_NIXO_UART_PACKET_V2
   jetsonLastFireReason = FireReason::Reset;
-#endif
   barDisplay.clearRemoteDisplay();
   barDisplay.markDirty();
   ringDisplay.clearCooldown();
@@ -918,13 +896,12 @@ static void printStatusJson(const char* source, const char* reason) {
   doc["nixo_transport"] = NIXO_TRANSPORT;
   doc["nixo_mqtt_configured"] = nixoFire.configured();
   doc["nixo_mqtt_connected"] = nixoFire.connected();
-  doc["jetson_uart_protocol"] = GO2_NIXO_UART_PACKET_V2 ? "packet_v2" : "legacy_line";
+  doc["jetson_uart_protocol"] = "packet_v2";
   doc["jetson_uart_rx_pin"] = UART_RX_PIN;
   doc["jetson_uart_tx_pin"] = UART_TX_PIN;
   doc["jetson_uart_baud"] = UART_BAUD;
   doc["jetson_uart_rx_readback"] = digitalRead(UART_RX_PIN);
   doc["jetson_uart_tx_readback"] = digitalRead(UART_TX_PIN);
-#if GO2_NIXO_UART_PACKET_V2
   const auto& uartCounters = jetsonPacketParser.counters();
   doc["jetson_uart_rx_frames"] = uartCounters.frames;
   doc["jetson_uart_rx_discarded_bytes"] = uartCounters.discarded_bytes;
@@ -938,7 +915,6 @@ static void printStatusJson(const char* source, const char* reason) {
   }
   doc["jetson_uart_rx_last_chunk_bytes"] = jetsonLastRxChunkLength;
   doc["jetson_uart_rx_last_hex"] = uartRxHex;
-#endif
   doc["mqtt_auth_configured"] =
       runtimeConfig.common.mqttUsername.length() > 0 || runtimeConfig.common.mqttPassword.length() > 0;
   doc["mqtt_host"] = runtimeConfig.common.mqttHost;
@@ -1022,7 +998,6 @@ static bool jetsonHpStatusChanged() {
 }
 
 
-#if GO2_NIXO_UART_PACKET_V2
 static uint16_t readPacketBe16(const uint8_t* data) {
   return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | data[1]);
 }
@@ -1376,60 +1351,10 @@ static void pollJetsonPacketV2() {
     jetsonPacketTx.consume(written);
   }
 }
-#endif
-
-static bool jetsonNeedsResync = true;
-
-static void beginJetsonHpLine() {
-  // ponytail: Jetson UART is a tiny machine protocol; never mix debug text into this TX path.
-  // ESP power/reset can leave a partial byte on Jetson RX; newline once resyncs Dora's line reader.
-  if (jetsonNeedsResync) {
-    JetsonSerial.write(static_cast<uint8_t>('\n'));
-    jetsonNeedsResync = false;
-  }
-}
-
-static void writeJetsonHpEvent(char event) {
-  beginJetsonHpLine();
-  JetsonSerial.write(static_cast<uint8_t>(event));
-  JetsonSerial.write(static_cast<uint8_t>('\n'));
-}
-
-static char targetIdToJetsonDirectionCode(int targetId) {
-  switch (targetId) {
-  case 1:
-    return 'l';
-  case 2:
-    return 'r';
-  case 3:
-  default:
-    return 'f';
-  }
-}
-
-static void writeJetsonDirectionalHpEvent(int targetId, bool critical) {
-  beginJetsonHpLine();
-  JetsonSerial.write(static_cast<uint8_t>(critical ? 'c' : 'h'));
-  JetsonSerial.write(static_cast<uint8_t>(targetIdToJetsonDirectionCode(targetId)));
-  JetsonSerial.write(static_cast<uint8_t>('\n'));
-}
 
 static void sendJetsonHpStatus(const char* reason) {
-#if GO2_NIXO_UART_PACKET_V2
   if (strcmp(reason, "hit") == 0) queueJetsonHitEventPacket();
   queueJetsonHpSnapshotPacket();
-  rememberJetsonHpStatusSnapshot();
-  return;
-#endif
-  const bool isDead = localHitStateDead();
-  const bool isHit = strcmp(reason, "hit") == 0;
-  if (isDead) {
-    writeJetsonHpEvent('d');
-  } else if (isHit) {
-    writeJetsonDirectionalHpEvent(lastAcceptedHitTargetId, lastAcceptedHitEnteredCritical);
-  } else {
-    writeJetsonHpEvent('r');
-  }
   rememberJetsonHpStatusSnapshot();
 }
 
@@ -1749,7 +1674,6 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
   }
 }
 
-#if GO2_NIXO_UART_PACKET_V2
 static void publishPeriodicJetsonPacketStatus(uint32_t now) {
   if (now - lastJetsonPacketStatusMs < battlebang::go2_nixo::uart::kStatusPeriodMs) return;
   lastJetsonPacketStatusMs = now;
@@ -1758,14 +1682,9 @@ static void publishPeriodicJetsonPacketStatus(uint32_t now) {
   queueJetsonFireStatusPacket(nextJetsonPacketSequence());
   queueJetsonLinkMetricsPacket();
 }
-#endif
 
 static void pollCommands() {
-#if GO2_NIXO_UART_PACKET_V2
   pollJetsonPacketV2();
-#else
-  pollCommandStream(JetsonSerial, jetsonCommandLine, "jetson");
-#endif
   pollCommandStream(Serial, usbCommandLine, "usb");
   pollCommandStream(SerialBT, btCommandLine, "bt");
 }
@@ -1777,14 +1696,10 @@ static void updateJetsonFireHold(uint32_t now) {
   jetsonFireReleaseRequired = false;
   if (nixoFire.isFiring()) {
     markNetworkQuietForFireStop(now);
-#if GO2_NIXO_UART_PACKET_V2
     jetsonLastFireReason = FireReason::HoldTimeout;
-#endif
     nixoFire.stopFire("jetson-hold-timeout");
   }
-#if GO2_NIXO_UART_PACKET_V2
   queueJetsonFireStatusPacket(nextJetsonPacketSequence());
-#endif
 }
 
 
@@ -1876,11 +1791,9 @@ void setup() {
   delay(200);
 
   JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
-#if GO2_NIXO_UART_PACKET_V2
   jetsonPacketSenderEpoch = esp_random();
   if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = static_cast<uint32_t>(ESP.getEfuseMac() ^ (ESP.getEfuseMac() >> 32));
   if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = 1;
-#endif
   jetsonBootMs = millis();
   SerialBT.begin(BT_NAME);
 
@@ -1919,12 +1832,10 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
-  Serial.printf("USB/BT/Jetson CMD: '%c'=reset ADC hit/display state; Jetson UART 'h'=HP damage, '1'/'f'=Nixo hold-fire, '0'/'x'=stop.\n",
+  Serial.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses packet-v2 only.\n",
                 CMD_RESET_HIT_DISPLAY);
-  Serial.println("USB/BT/Jetson line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
-#if GO2_NIXO_UART_PACKET_V2
+  Serial.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   Serial.printf("[UART] Jetson packet_v2 enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
-#endif
   Serial.print("release_repo=");
   Serial.println(BB_GO2_NIXO_RELEASE_REPO);
   Serial.print("latest_manifest=");
@@ -1954,10 +1865,8 @@ void setup() {
                 (unsigned long)runtimeConfig.nixo.fireMaxDurationMs,
                 (unsigned long)runtimeConfig.nixo.fireCooldownMs,
                 (unsigned long)runtimeConfig.nixo.prefireDelayMs);
-#if GO2_NIXO_UART_PACKET_V2
   queueJetsonDeviceStatusPacket();
   queueJetsonHpSnapshotPacket();
-#endif
 }
 
 void loop() {
@@ -1977,9 +1886,7 @@ void loop() {
   ringDisplay.tick(now);
 
   publishJetsonHpStatus();
-#if GO2_NIXO_UART_PACKET_V2
   publishPeriodicJetsonPacketStatus(now);
-#endif
   const bool deferNetworkForFire = shouldDeferNetworkForFire(now);
   if (!deferNetworkForFire) {
     nixoFire.tickNetwork(now);
