@@ -11,9 +11,11 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from SCons.Script import Exit, Import  # type: ignore
 
+env: Any = None
 Import("env")
 
 PROJECT_DIR = Path(env.subst("$PROJECT_DIR"))
@@ -26,7 +28,7 @@ LOG_PREFIX = "[go2_nixo_config]"
 def project_option(name: str) -> str:
     try:
         value = env.GetProjectOption(name)
-    except Exception:
+    except Exception:  # noqa: BLE001 - SCons raises different option errors across PlatformIO versions.
         return ""
     return "" if value is None else str(value).strip()
 
@@ -60,9 +62,22 @@ def relay_variant_slug(name: str) -> str:
     return name.replace("relay_", "").replace("_", "-")
 
 
-def append_variant_identity_defines(defines: list[tuple[str, str]], variant_name: str) -> None:
+def firmware_name() -> str:
+    value = clean_string_value(project_option("custom_go2_nixo_firmware")) or "single_char_newline"
+    if value not in {"single_char_newline", "framed_packet_uart"}:
+        raise ValueError(f"invalid Go2 Nixo firmware name: {value!r}")
+    return value
+
+
+def append_variant_identity_defines(
+    defines: list[tuple[str, str]], variant_name: str, selected_firmware: str
+) -> None:
     slug = relay_variant_slug(variant_name)
-    channel = f"go2-nixo-{slug}"
+    channel = (
+        f"go2-nixo-{slug}"
+        if selected_firmware == "single_char_newline"
+        else f"go2-nixo-framed-packet-uart-{slug}"
+    )
     defines.extend(
         [
             ("BB_GO2_NIXO_RELAY_VARIANT", c_string(variant_name)),
@@ -72,6 +87,8 @@ def append_variant_identity_defines(defines: list[tuple[str, str]], variant_name
             ("BB_GO2_NIXO_MANIFEST_NAME", c_string(f"{channel}-manifest.json")),
         ]
     )
+    if selected_firmware == "framed_packet_uart":
+        defines.append(("BB_GO2_NIXO_APP_NAME", c_string("battlebang-go2-nixo-framed-packet-uart")))
 
 
 def load_relay_variant(name: str) -> dict:
@@ -215,10 +232,11 @@ with CONFIG_PATH.open("r", encoding="utf-8") as f:
     config = json.load(f)
 
 variant_name = relay_variant_name()
+selected_firmware = firmware_name()
 relay_variant = load_relay_variant(variant_name)
 profile = deep_merge(config.get("defaults", {}), relay_variant)
 defines: list[tuple[str, str]] = []
-append_variant_identity_defines(defines, variant_name)
+append_variant_identity_defines(defines, variant_name, selected_firmware)
 append_profile_defines(defines, profile)
 append_env_defines(defines)
 
@@ -242,7 +260,7 @@ print(
     f"mqtt_topic_prefix={profile.get('mqtt_topic_prefix', 'default')} "
     f"nixo_id=NVS-derived "
     f"hardware=esp32dev-go2-nixo-relay-{relay_variant_slug(variant_name)}-v1 "
-    f"ota_channel=go2-nixo-{relay_variant_slug(variant_name)} "
+    f"firmware={selected_firmware} "
     f"nixo_variant={variant_name} "
     f"nixo_relay1={profile.get('nixo_relay1_pin', 'default')} "
     f"nixo_relay2={profile.get('nixo_relay2_pin', 'default')} "
