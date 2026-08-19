@@ -129,22 +129,11 @@ After provisioning `go2_03`:
 [NIXO] mqtt=enabled nixo_id=nixo_go2_03 command_topic=battlebang/nixo/nixo_go2_03/command relay1=23 relay2=-1 relay_on=1 relay_off=0 delay1_ms=800 fire_default_ms=3000 fire_min_ms=100 fire_max_ms=10000 cooldown_ms=0 prefire_ms=600
 ```
 
-### Legacy line UART
+### Single-character line commands
 
-Jetson UART2 uses hold-fire control: send `f`, `fire`, or `1` repeatedly while
-L2+R2 is held; send `x`, `0`, `stop-fire`, or `fire off` immediately on release.
-To expose the origin in MQTT status, send `fire gamepad_mapping` or
-`fire source=patrol_person_detect`; plain `f` reports `jetson_uart`. If Jetson
-keepalive packets stop, ESP fails safe after `300 ms`. Holding past the max fire
-duration requires release/re-press before ESP will start another UART fire. USB/BT keep non-fire
-bench/debug commands only.
-
-The ESP also emits unsolicited newline-delimited Jetson UART2 HP events. Normal
-hits are `hf`, `hl`, or `hr` for front/left/right. The first hit that crosses
-from above 30% to 30% or below, using the current NVS/MQTT `max_hits`, is `cf`,
-`cl`, or `cr`. `d` means zero/dead and `r` means reset/restored. These compact
-ASCII tokens replace the former UART JSON snapshot. They are fire-and-forget:
-no ACK, retry, or read confirmation is required from Jetson.
+The existing single-character/line command parser remains available for USB/BT
+bench and debug commands. Jetson UART2 does not feed bytes into that parser; it
+uses the framed protocol below exclusively.
 
 ### Jetson UART
 
