@@ -2,6 +2,10 @@
 
 #include "version_autogen.h"
 
+#ifndef BB_GO2_NIXO_VERSION
+#include "version.h"
+#endif
+
 #ifndef BB_GO2_NIXO_APP_NAME
 #define BB_GO2_NIXO_APP_NAME "battlebang-go2-nixo"
 #endif

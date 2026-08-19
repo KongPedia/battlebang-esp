@@ -64,9 +64,10 @@ def test_go2_nixo_firmware_uses_single_uart_protocol() -> None:
     assert "jetsonReliableAdmissionErrors" in main
 
 def test_manual_usb_build_has_an_explicit_firmware_version() -> None:
-    version_header = read("firmware/go2_nixo/app/version_autogen.h")
+    version_header = read("firmware/go2_nixo/app/version.h")
     assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in version_header
     assert "#define BB_GO2_NIXO_BUILD 1029" in version_header
+    assert read("firmware/go2_nixo/app/version_autogen.h") == "#pragma once\n"
     assert "commonDefaults.otaAutoCheckEnabled = false;" in read("firmware/go2_nixo/config/runtime_config.cpp")
 
 
