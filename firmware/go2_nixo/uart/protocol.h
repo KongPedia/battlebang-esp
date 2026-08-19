@@ -22,7 +22,7 @@ constexpr size_t kDedupeEntryCount = 16;
 constexpr size_t kReliableEntryCount = 8;
 constexpr uint8_t kMaxTransmitAttempts = 3;
 
-// Packet v2 header: AA 55, version, type, flags, sequence, sender_epoch, payload_length, payload, crc16.
+// Framed UART header (wire format version 2): AA 55, version, type, flags, sequence, sender_epoch, payload_length, payload, crc16.
 enum class MessageType : uint8_t {
   CapabilitiesRequest = 0x01,
   DeviceStatus = 0x02,

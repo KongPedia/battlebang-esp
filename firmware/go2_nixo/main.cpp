@@ -691,25 +691,6 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     resetAll(source);
     return;
   }
-  if (c == 'h') {
-    if (source == nullptr || strcmp(source, "jetson") != 0 ||
-        localHitState.down || localHitState.hpRemaining == 0) {
-      Serial.printf("[HP] admin damage ignored source=%s hp=%u/%u down=%s\n",
-                    source == nullptr ? "unknown" : source,
-                    localHitState.hpRemaining,
-                    localHitState.maxHits,
-                    localHitState.down ? "true" : "false");
-      return;
-    }
-    lastAcceptedHitTargetId = 3;
-    applyLocalHit(++hitSequence, millis());
-    publishDeviceStatusIfConnected("jetson_hp_damage");
-    Serial.printf("[HP] admin damage applied source=%s hp=%u/%u\n",
-                  source,
-                  localHitState.hpRemaining,
-                  localHitState.maxHits);
-    return;
-  }
   if (c == 'x' || c == '0') {
     stopNixoFireCommand(source);
     return;
@@ -896,7 +877,7 @@ static void printStatusJson(const char* source, const char* reason) {
   doc["nixo_transport"] = NIXO_TRANSPORT;
   doc["nixo_mqtt_configured"] = nixoFire.configured();
   doc["nixo_mqtt_connected"] = nixoFire.connected();
-  doc["jetson_uart_protocol"] = "packet_v2";
+  doc["jetson_uart_protocol"] = "framed";
   doc["jetson_uart_rx_pin"] = UART_RX_PIN;
   doc["jetson_uart_tx_pin"] = UART_TX_PIN;
   doc["jetson_uart_baud"] = UART_BAUD;
@@ -1068,7 +1049,6 @@ static CommandSource currentFirePacketSource() {
   const char* source = nixoFire.activeFireSource();
   if (source == nullptr || source[0] == '\0') source = nixoFire.lastFireSource();
   if (source != nullptr && strstr(source, "mqtt") != nullptr) return CommandSource::EspMqtt;
-  if (source != nullptr && strstr(source, "packet_v2") != nullptr) return jetsonLastFireCommandSource;
   if (source != nullptr && strstr(source, "jetson") != nullptr) return jetsonLastFireCommandSource;
   return CommandSource::Unknown;
 }
@@ -1235,7 +1215,7 @@ static bool staleJetsonActiveCommand(const Frame& frame) {
          !isNewerSequence(frame.sequence, jetsonLastHostCommandSequence);
 }
 
-static void handleJetsonPacketV2(const Frame& frame) {
+static void handleJetsonFrame(const Frame& frame) {
   if (!battlebang::go2_nixo::uart::hasValidFlagsForType(frame)) {
     nackJetsonPacket(frame, NackError::InvalidFlags);
     return;
@@ -1273,7 +1253,7 @@ static void handleJetsonPacketV2(const Frame& frame) {
       jetsonLastFireCommandSource = static_cast<CommandSource>(frame.payload[0]);
       jetsonLastFireReason = FireReason::None;
       char fireSource[24];
-      snprintf(fireSource, sizeof(fireSource), "packet_v2:%u", frame.payload[0]);
+      snprintf(fireSource, sizeof(fireSource), "jetson_uart:%u", frame.payload[0]);
       const uint16_t leaseMs = clampJetsonLeaseMs(readPacketBe16(frame.payload + 1));
       handleCommandChar('f', "jetson", fireSource);
       if (jetsonFireHoldActive) {
@@ -1286,7 +1266,7 @@ static void handleJetsonPacketV2(const Frame& frame) {
     case MessageType::FireStop: {
       rememberJetsonHostCommandSequence(frame);
       jetsonLastFireReason = static_cast<FireReason>(frame.payload[0]);
-      stopNixoFireCommand("jetson_packet_v2");
+      stopNixoFireCommand("jetson_uart");
       Frame response;
       composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
       queueJetsonPacket(response);
@@ -1296,7 +1276,7 @@ static void handleJetsonPacketV2(const Frame& frame) {
     }
     case MessageType::HpReset: {
       rememberJetsonHostCommandSequence(frame);
-      resetAll("jetson_packet_v2");
+      resetAll("jetson_uart");
       Frame response;
       composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
       queueJetsonPacket(response);
@@ -1329,14 +1309,14 @@ static void handleJetsonPacketV2(const Frame& frame) {
   }
 }
 
-static void pollJetsonPacketV2() {
+static void pollJetsonUart() {
   uint8_t data[64];
   while (JetsonSerial.available() > 0) {
     const size_t readCount = JetsonSerial.readBytes(data, min(static_cast<size_t>(JetsonSerial.available()), sizeof(data)));
     jetsonLastRxChunkLength = readCount;
     jetsonLastRxLength = min(readCount, sizeof(jetsonLastRxBytes));
     memcpy(jetsonLastRxBytes, data, jetsonLastRxLength);
-    jetsonPacketParser.feed(data, readCount, millis(), handleJetsonPacketV2);
+    jetsonPacketParser.feed(data, readCount, millis(), handleJetsonFrame);
   }
   jetsonReliableTx.retryDue(millis(), jetsonPacketTx);
   while (jetsonPacketTx.pendingBytes() > 0) {
@@ -1640,13 +1620,7 @@ static void handleCommandLine(String line, const char* source) {
 
 static bool isImmediateCommandChar(char c) {
   c = normalizeCommandChar(c);
-  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == 'h' || c == '1' || c == 'f' || c == 'x' || c == '0';
-}
-
-static bool isJetsonBufferedImmediateCommand(Stream& stream, char c, const char* source) {
-  if (strcmp(source, "jetson") != 0 || !isImmediateCommandChar(c) || stream.available() == 0) return false;
-  const char next = (char)stream.peek();
-  return isIgnoredCommandChar(next) || isImmediateCommandChar(next);
+  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == '1' || c == 'f' || c == 'x' || c == '0';
 }
 
 static void pollCommandStream(Stream& stream, String& line, const char* source) {
@@ -1659,9 +1633,7 @@ static void pollCommandStream(Stream& stream, String& line, const char* source) 
       continue;
     }
     if (line.length() == 0 && isIgnoredCommandChar(c)) continue;
-    if (line.length() == 0 &&
-        ((isImmediateCommandChar(c) && stream.available() == 0) ||
-         isJetsonBufferedImmediateCommand(stream, c, source))) {
+    if (line.length() == 0 && isImmediateCommandChar(c) && stream.available() == 0) {
       handleCommandChar(c, source);
       continue;
     }
@@ -1684,7 +1656,7 @@ static void publishPeriodicJetsonPacketStatus(uint32_t now) {
 }
 
 static void pollCommands() {
-  pollJetsonPacketV2();
+  pollJetsonUart();
   pollCommandStream(Serial, usbCommandLine, "usb");
   pollCommandStream(SerialBT, btCommandLine, "bt");
 }
@@ -1832,10 +1804,10 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
-  Serial.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses packet-v2 only.\n",
+  Serial.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
                 CMD_RESET_HIT_DISPLAY);
   Serial.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
-  Serial.printf("[UART] Jetson packet_v2 enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
+  Serial.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
   Serial.print("release_repo=");
   Serial.println(BB_GO2_NIXO_RELEASE_REPO);
   Serial.print("latest_manifest=");

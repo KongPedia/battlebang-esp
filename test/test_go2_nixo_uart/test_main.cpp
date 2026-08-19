@@ -63,7 +63,7 @@ struct FixtureVector {
 };
 
 std::vector<FixtureVector> readFixtureVectors() {
-  std::ifstream file("tests/fixtures/go2_nixo_uart_packet_v2/golden_vectors.json");
+  std::ifstream file("tests/fixtures/go2_nixo_uart/golden_vectors.json");
   std::string json((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
   std::vector<FixtureVector> vectors;
   size_t pos = 0;
@@ -90,7 +90,7 @@ Frame decodeExpected(const std::vector<uint8_t>& wire) {
 }  // namespace
 
 
-TEST(Go2NixoPacketV2, SharedFixtureVectorsDecodeAndRoundTrip) {
+TEST(Go2NixoUartProtocol, SharedFixtureVectorsDecodeAndRoundTrip) {
   const auto vectors = readFixtureVectors();
   ASSERT_EQ(vectors.size(), 20u);
   for (const auto& vector : vectors) {
@@ -117,19 +117,19 @@ TEST(Go2NixoPacketV2, SharedFixtureVectorsDecodeAndRoundTrip) {
   }
 }
 
-TEST(Go2NixoPacketV2, CrcMatchesCcittFalseCheckVector) {
+TEST(Go2NixoUartProtocol, CrcMatchesCcittFalseCheckVector) {
   const uint8_t data[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
   EXPECT_EQ(crc16CcittFalse(data, sizeof(data)), 0x29B1);
 }
 
-TEST(Go2NixoPacketV2, SequenceOrderingHandlesWrapAndRejectsStaleValues) {
+TEST(Go2NixoUartProtocol, SequenceOrderingHandlesWrapAndRejectsStaleValues) {
   EXPECT_TRUE(isNewerSequence(0x0000, 0xFFFF));
   EXPECT_TRUE(isNewerSequence(0x0001, 0xFFFF));
   EXPECT_FALSE(isNewerSequence(0xFFFF, 0x0000));
   EXPECT_FALSE(isNewerSequence(0x1234, 0x1234));
 }
 
-TEST(Go2NixoPacketV2, EncodesAndDecodesFireStopGoldenVector) {
+TEST(Go2NixoUartProtocol, EncodesAndDecodesFireStopGoldenVector) {
   const std::array<uint8_t, 16> expected = {
       0xAA, 0x55, 0x02, 0x11, 0x01, 0x00, 0x03, 0x01,
       0x02, 0x03, 0x04, 0x00, 0x01, 0x01, 0x9C, 0x45,
@@ -148,7 +148,7 @@ TEST(Go2NixoPacketV2, EncodesAndDecodesFireStopGoldenVector) {
   EXPECT_EQ(decoded.type, MessageType::FireStop);
 }
 
-TEST(Go2NixoPacketV2, DeviceStatusMatchesSharedGoldenVector) {
+TEST(Go2NixoUartProtocol, DeviceStatusMatchesSharedGoldenVector) {
   const std::array<uint8_t, 36> expected = {
       0xAA, 0x55, 0x02, 0x02, 0x00, 0x00, 0x01, 0xA1, 0xB2, 0xC3, 0xD4, 0x00,
       0x15, 0x0B, 0x6E, 0x69, 0x78, 0x6F, 0x5F, 0x67, 0x6F, 0x32, 0x5F, 0x30,
@@ -163,7 +163,7 @@ TEST(Go2NixoPacketV2, DeviceStatusMatchesSharedGoldenVector) {
   EXPECT_TRUE(std::equal(expected.begin(), expected.end(), wire.begin()));
 }
 
-TEST(Go2NixoPacketV2, LinkMetricsUsesTypedBoundedPayload) {
+TEST(Go2NixoUartProtocol, LinkMetricsUsesTypedBoundedPayload) {
   Frame frame{};
   composeLinkMetrics(1234, 1, 2, 3, LinkState::Healthy, 0xA1B2C3D4, 9, frame);
   ASSERT_EQ(frame.type, MessageType::LinkMetrics);
@@ -175,7 +175,7 @@ TEST(Go2NixoPacketV2, LinkMetricsUsesTypedBoundedPayload) {
   EXPECT_EQ(frame.payload[10], static_cast<uint8_t>(LinkState::Healthy));
 }
 
-TEST(Go2NixoPacketV2, FireStatusPreservesActualStateSourceReasonAndLease) {
+TEST(Go2NixoUartProtocol, FireStatusPreservesActualStateSourceReasonAndLease) {
   FireSnapshot fire{};
   fire.state = FireState::Spindown;
   fire.inhibited = false;
@@ -195,7 +195,7 @@ TEST(Go2NixoPacketV2, FireStatusPreservesActualStateSourceReasonAndLease) {
   EXPECT_EQ(frame.payload[5], static_cast<uint8_t>(FireReason::HoldTimeout));
 }
 
-TEST(Go2NixoPacketV2, ExactFlagsMatchPythonRegistry) {
+TEST(Go2NixoUartProtocol, ExactFlagsMatchPythonRegistry) {
   EXPECT_TRUE(hasValidFlagsForType(makeFrame(MessageType::FireHold, FrameFlags::None, 1, {1, 0x01, 0x2C})));
   EXPECT_FALSE(hasValidFlagsForType(makeFrame(MessageType::FireHold, FrameFlags::AckRequired, 1, {1, 0x01, 0x2C})));
   EXPECT_TRUE(hasValidFlagsForType(makeFrame(MessageType::HpDamage, FrameFlags::AckRequired, 2, {0, 1, 1})));
@@ -204,7 +204,7 @@ TEST(Go2NixoPacketV2, ExactFlagsMatchPythonRegistry) {
   EXPECT_FALSE(hasValidFlagsForType(makeFrame(MessageType::Ack, FrameFlags::AckRequired, 3, {0x11, 0, 3, 0})));
 }
 
-TEST(Go2NixoPacketV2, IncrementalParserRecoversAfterNoiseAndSplitFrame) {
+TEST(Go2NixoUartProtocol, IncrementalParserRecoversAfterNoiseAndSplitFrame) {
   Frame frame = makeFrame(MessageType::FireStop, FrameFlags::AckRequired, 3, {1});
   std::array<uint8_t, kMaxFrameBytes> wire{};
   size_t length = 0;
@@ -225,13 +225,13 @@ TEST(Go2NixoPacketV2, IncrementalParserRecoversAfterNoiseAndSplitFrame) {
   EXPECT_EQ(parser.counters().frames, 1u);
 }
 
-TEST(Go2NixoPacketV2, StopIsValidBeforeAnyCapabilityHandshake) {
+TEST(Go2NixoUartProtocol, StopIsValidBeforeAnyCapabilityHandshake) {
   Frame stop = makeFrame(MessageType::FireStop, FrameFlags::AckRequired, 7, {1});
   EXPECT_TRUE(isPayloadValid(stop));
   EXPECT_TRUE(hasValidFlagsForType(stop));
 }
 
-TEST(Go2NixoPacketV2, HitEventPayloadMatchesPythonGoldenLayout) {
+TEST(Go2NixoUartProtocol, HitEventPayloadMatchesPythonGoldenLayout) {
   Frame hit = makeFrame(MessageType::HitEvent, FrameFlags::AckRequired, 0x1001,
                         {0, 0, 0, 2, 0, 0, 0, 21, 1, 0x01, 0xB6, 0, 0, 0x3B, 0x7E, 0, 12, 0});
   ASSERT_TRUE(isPayloadValid(hit));
@@ -244,7 +244,7 @@ TEST(Go2NixoPacketV2, HitEventPayloadMatchesPythonGoldenLayout) {
   EXPECT_EQ(hit.payload[17], 0u);
 }
 
-TEST(Go2NixoPacketV2, InboundDedupeReplaysDuplicateHpDamageAndRejectsConflict) {
+TEST(Go2NixoUartProtocol, InboundDedupeReplaysDuplicateHpDamageAndRejectsConflict) {
   InboundDedupe dedupe;
   Frame request = makeFrame(MessageType::HpDamage, FrameFlags::AckRequired, 4, {0, 2, 1});
   Frame response{};
@@ -262,7 +262,7 @@ TEST(Go2NixoPacketV2, InboundDedupeReplaysDuplicateHpDamageAndRejectsConflict) {
 }
 
 
-TEST(Go2NixoPacketV2, ReliableHitEventRetriesAfterFullTxQueue) {
+TEST(Go2NixoUartProtocol, ReliableHitEventRetriesAfterFullTxQueue) {
   ReliableFrameTracker reliable;
   FrameTxQueue tx;
   Frame filler = makeFrame(MessageType::DeviceStatus, FrameFlags::None, 1, std::vector<uint8_t>(60, 1));
@@ -278,7 +278,7 @@ TEST(Go2NixoPacketV2, ReliableHitEventRetriesAfterFullTxQueue) {
   EXPECT_GT(tx.pendingBytes(), 0u);
 }
 
-TEST(Go2NixoPacketV2, ReliableHitEventRetriesUntilAck) {
+TEST(Go2NixoUartProtocol, ReliableHitEventRetriesUntilAck) {
   ReliableFrameTracker reliable;
   FrameTxQueue tx;
   Frame hit = makeFrame(MessageType::HitEvent, FrameFlags::AckRequired, 22,
@@ -298,7 +298,7 @@ TEST(Go2NixoPacketV2, ReliableHitEventRetriesUntilAck) {
   EXPECT_EQ(tx.pendingBytes(), 0u);
 }
 
-TEST(Go2NixoPacketV2, ReliableTrackerRejectsAdmissionWhenCapacityIsFull) {
+TEST(Go2NixoUartProtocol, ReliableTrackerRejectsAdmissionWhenCapacityIsFull) {
   ReliableFrameTracker reliable;
   for (size_t index = 0; index < kReliableEntryCount; ++index) {
     Frame hit = makeFrame(MessageType::HitEvent, FrameFlags::AckRequired, static_cast<uint16_t>(index + 1),

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "tests/fixtures/go2_nixo_uart_packet_v2/golden_vectors.json"
+FIXTURE = ROOT / "tests/fixtures/go2_nixo_uart/golden_vectors.json"
 FIXTURE_SHA256 = "83383d602a195388425e549f58e05fead5c75df93d8b779c3778687b5460a45a"
 
 
@@ -11,7 +11,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_packet_v2_fixture_and_cpp_contract_are_present() -> None:
+def test_uart_fixture_and_cpp_contract_are_present() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert hashlib.sha256(FIXTURE.read_bytes()).hexdigest() == FIXTURE_SHA256
     assert payload["frame_format_version"] == 2
@@ -37,22 +37,21 @@ def _env_block(platformio: str, name: str) -> str:
     return platformio[start:] if end < 0 else platformio[start:end]
 
 
-def test_packet_v2_is_the_canonical_go2_nixo_uart_protocol() -> None:
+def test_go2_nixo_firmware_uses_single_uart_protocol() -> None:
     platformio = read("platformio.ini")
     base = _env_block(platformio, "esp32dev_go2_nixo")
     assert "GO2_NIXO_UART_PACKET_V2" not in base
     assert "-<../firmware/go2_nixo/uart/**>" not in base
     for name in ("esp32dev_go2_nixo_1ch", "esp32dev_go2_nixo_2ch"):
         assert f"[env:{name}]" in platformio
-        assert f"[env:{name}_packet_v2]" not in platformio
 
     main = read("firmware/go2_nixo/main.cpp")
     assert "GO2_NIXO_UART_PACKET_V2" not in main
-    assert "pollJetsonPacketV2" in main
+    assert "pollJetsonUart" in main
     assert "pollCommandStream(JetsonSerial" not in main
     assert "jetsonCommandLine" not in main
     assert "writeJetsonHpEvent" not in main
-    assert 'doc["jetson_uart_protocol"] = "packet_v2"' in main
+    assert 'doc["jetson_uart_protocol"] = "framed"' in main
     assert "jetsonAuthorizedHostEpoch" in main
     assert "packetRobotIdentityMatches" in main
     assert "packetCommandNeedsAuthority" in main
@@ -64,13 +63,6 @@ def test_packet_v2_is_the_canonical_go2_nixo_uart_protocol() -> None:
     assert "jetsonLastFireReason = FireReason::HoldTimeout" in main
     assert "jetsonReliableAdmissionErrors" in main
 
-    config_script = read("scripts/go2_nixo_config.py")
-    assert 'PIO_ENV.endswith("_packet_v2")' not in config_script
-    readme = read("firmware/go2_nixo/README.md")
-    assert "go2-nixo-1ch-packet-v2" not in readme
-    assert "go2-nixo-2ch-packet-v2" not in readme
-
-
 def test_manual_usb_build_has_an_explicit_firmware_version() -> None:
     version_header = read("firmware/go2_nixo/app/version_autogen.h")
     assert '#define BB_GO2_NIXO_VERSION "0.2.29"' in version_header
@@ -78,7 +70,7 @@ def test_manual_usb_build_has_an_explicit_firmware_version() -> None:
     assert "commonDefaults.otaAutoCheckEnabled = false;" in read("firmware/go2_nixo/config/runtime_config.cpp")
 
 
-def test_packet_v2_safety_contract_is_not_session_gated() -> None:
+def test_uart_safety_contract_is_not_session_gated() -> None:
     runtime = read("firmware/go2_nixo/uart/runtime.cpp")
     assert "MessageType::FireStop" in runtime
     assert "applyFireStop" in runtime
@@ -88,7 +80,7 @@ def test_packet_v2_safety_contract_is_not_session_gated() -> None:
     assert "DeviceStatus" in runtime
 
 
-def test_packet_v2_flags_match_python_registry() -> None:
+def test_uart_flags_match_python_registry() -> None:
     protocol = read("firmware/go2_nixo/uart/protocol.cpp")
     assert "case MessageType::FireStop:" in protocol
     assert "case MessageType::HpReset:" in protocol
@@ -128,7 +120,7 @@ def _decode_frame(wire: bytes) -> dict[str, int | bytes]:
     }
 
 
-def test_packet_v2_fixture_vectors_parse_without_cpp_source_grep() -> None:
+def test_uart_fixture_vectors_parse_without_cpp_source_grep() -> None:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     vectors = payload["golden_vectors"] + payload["edge_vectors"]
     assert len(vectors) == 20

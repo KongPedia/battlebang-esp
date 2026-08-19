@@ -160,7 +160,7 @@ epoch, payload length, payload, and CRC16/CCITT-FALSE.
 - Invalid frames are discarded and resynchronized; there is no mandatory CONNECT/CONNECTED session gate.
 - Packet bytes are never auto-detected or reinterpreted as legacy characters.
 
-Use Dora `GO2_DORA_NIXO_UART_PROTOCOL=packet_v2` with the matching `GO2_DORA_NIXO_ID`. Complete the
+Use Dora with the matching `GO2_DORA_NIXO_ID`. Complete the
 software, USB-TTL, Jetson UART, and dummy-load gates before connecting the live relay/blaster.
 
 ```json
