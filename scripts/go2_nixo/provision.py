@@ -47,6 +47,7 @@ RELAY_VARIANT_TO_OTA = {
         "go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json",
     ),
 }
+SUPPORTED_FIRMWARES = ("single_char_newline", "framed_packet_uart")
 
 
 def prefixed_tuning_keys(suffix: str) -> tuple[str, ...]:
@@ -87,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Go2 robot id/device id; overrides GO2_NIXO_ROBOT_ID/GO2_ROBOT_ID/GO2_ID/ROBOT_ID/ESP_ROBOT_ID/BATTLEBANG_ROBOT_ID",
     )
     parser.add_argument("--nixo-id", help="Nixo command identity; default nixo_<robot-id>")
+    parser.add_argument(
+        "--firmware",
+        choices=SUPPORTED_FIRMWARES,
+        help="flashed UART firmware family; controls the default OTA channel/manifest URL",
+    )
     parser.add_argument(
         "--relay-variant",
         choices=tuple(sorted(RELAY_VARIANT_TO_OTA)),
@@ -175,14 +181,35 @@ def detect_relay_variant(env: dict[str, str], cli_relay_variant: str | None) -> 
     return variant
 
 
+def detect_firmware(env: dict[str, str], cli_firmware: str | None) -> str:
+    firmware = cli_firmware or env_first(
+        env,
+        "GO2_NIXO_FIRMWARE",
+        "BATTLEBANG_GO2_NIXO_FIRMWARE",
+        default="single_char_newline",
+    )
+    if firmware not in SUPPORTED_FIRMWARES:
+        supported = ", ".join(SUPPORTED_FIRMWARES)
+        raise ProvisioningError(f"unsupported firmware {firmware!r}; expected one of: {supported}")
+    return firmware
+
+
 def build_payload(
     env: dict[str, str],
     action: str,
     robot_id: str,
     nixo_id: str,
     relay_variant: str,
+    firmware: str = "single_char_newline",
 ) -> dict[str, Any]:
     ota_channel_default, ota_manifest_default = RELAY_VARIANT_TO_OTA[relay_variant]
+    if firmware == "framed_packet_uart":
+        slug = "1ch" if relay_variant == "relay_1ch" else "2ch"
+        ota_channel_default = f"go2-nixo-framed-packet-uart-{slug}"
+        ota_manifest_default = (
+            "https://github.com/KongPedia/battlebang-esp/releases/download/"
+            f"{ota_channel_default}-latest/{ota_channel_default}-manifest.json"
+        )
     doc = build_common_runtime_doc(
         env,
         prefixes=PREFIXES,
@@ -267,7 +294,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             robot_id = detect_robot_id(env, args.robot_id)
             nixo_id = detect_nixo_id(env, args.nixo_id, robot_id)
             relay_variant = detect_relay_variant(env, args.relay_variant)
-            payload = build_payload(env, args.command, robot_id, nixo_id, relay_variant)
+            firmware = detect_firmware(env, args.firmware)
+            payload = build_payload(env, args.command, robot_id, nixo_id, relay_variant, firmware)
             if args.print_json or args.print_json_secrets:
                 print_payload(payload, args.print_json_secrets)
 

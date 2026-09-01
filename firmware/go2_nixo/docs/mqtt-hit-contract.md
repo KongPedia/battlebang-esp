@@ -124,11 +124,23 @@ heartbeat.
 
 ## ESP -> Jetson: UART HP status
 
-The ESP emits unsolicited Jetson UART2 single-byte HP events: `h` when HP
-decreases, `d` when HP reaches zero/dead, and `r` when HP resets/restores. This
-is fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
-Jetson owns any downstream behavior, including local Go2 `damp` when
-`hp_remaining` reaches `0`.
+The ESP emits unsolicited newline-delimited Jetson UART2 HP events:
+
+- `hf`: front hit;
+- `hl`: left hit;
+- `hr`: right hit;
+- `cf`: front hit that first enters 30% HP;
+- `cl`: left hit that first enters 30% HP;
+- `cr`: right hit that first enters 30% HP;
+- `d`: HP reached zero/dead;
+- `r`: HP reset/restored.
+
+These compact ASCII tokens replace the former UART JSON snapshot and are
+fire-and-forget: no ACK, retry, or read confirmation is required from Jetson.
+ESP calculates the 30% crossing from its current `hp_remaining` and dynamic
+`max_hits`; Jetson therefore does not duplicate that configuration or derive
+HP from bare hit tokens. Authoritative HP remains available through MQTT device
+status; `d` and `r` continue to drive dead/reset handling over UART.
 
 ## Command Center -> ESP: ring_display reset/debug compatibility
 

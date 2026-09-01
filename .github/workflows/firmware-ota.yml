@@ -13,6 +13,7 @@ on:
       - "firmware/boss_target/**"
       - "firmware/go2/**"
       - "firmware/go2_nixo/**"
+      - "firmware/go2_nixo_framed_packet_uart/**"
       - "firmware/heavy_blaster/**"
       - "firmware/station/**"
       - "firmware/turret_fleet/**"
@@ -149,6 +150,38 @@ jobs:
                   "version_tag_prefix": "go2-nixo-2ch-v",
                   "stable_tag": "go2-nixo-2ch-latest",
                   "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+              },
+              {
+                  "id": "go2-nixo-framed-packet-uart-1ch",
+                  "env": "esp32dev_go2_nixo_framed_packet_uart_1ch",
+                  "app": "battlebang-go2-nixo-framed-packet-uart",
+                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
+                  "channel": "go2-nixo-framed-packet-uart-1ch",
+                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-uart-1ch",
+                  "manifest_name": "go2-nixo-framed-packet-uart-1ch-manifest.json",
+                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
+                  "version_macro": "BB_GO2_NIXO_VERSION",
+                  "build_macro": "BB_GO2_NIXO_BUILD",
+                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
+                  "version_tag_prefix": "go2-nixo-framed-packet-uart-1ch-v",
+                  "stable_tag": "go2-nixo-framed-packet-uart-1ch-latest",
+                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+              },
+              {
+                  "id": "go2-nixo-framed-packet-uart-2ch",
+                  "env": "esp32dev_go2_nixo_framed_packet_uart_2ch",
+                  "app": "battlebang-go2-nixo-framed-packet-uart",
+                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
+                  "channel": "go2-nixo-framed-packet-uart-2ch",
+                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-uart-2ch",
+                  "manifest_name": "go2-nixo-framed-packet-uart-2ch-manifest.json",
+                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
+                  "version_macro": "BB_GO2_NIXO_VERSION",
+                  "build_macro": "BB_GO2_NIXO_BUILD",
+                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
+                  "version_tag_prefix": "go2-nixo-framed-packet-uart-2ch-v",
+                  "stable_tag": "go2-nixo-framed-packet-uart-2ch-latest",
+                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "heavy-blaster",
