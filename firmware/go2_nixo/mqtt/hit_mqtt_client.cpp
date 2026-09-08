@@ -1,6 +1,7 @@
 #include <WiFi.h>
 
 #include "go2_nixo/mqtt/hit_mqtt_client.h"
+#include "go2_nixo/debug_serial.h"
 
 #include <bb_esp_core/config/string_buffer.h>
 #include <bb_esp_core/mqtt/device_topics.h>
@@ -40,7 +41,7 @@ void addSourceMetadata(JsonDocument& doc, const char* clientId) {
 
 void copyStringOrWarn(const char* label, const String& value, char* buffer, size_t length) {
   if (!battlebang::esp::config::copyToFixedBuffer(value, buffer, length)) {
-    Serial.printf("[CONFIG] %s truncated length=%u capacity=%u\n",
+    BB_DEBUG_SERIAL.printf("[CONFIG] %s truncated length=%u capacity=%u\n",
                   label,
                   static_cast<unsigned int>(value.length()),
                   static_cast<unsigned int>(length));
@@ -49,7 +50,7 @@ void copyStringOrWarn(const char* label, const String& value, char* buffer, size
 
 void warnIfFormatTruncated(const char* label, int written, size_t capacity) {
   if (written < 0 || static_cast<size_t>(written) >= capacity) {
-    Serial.printf("[CONFIG] %s truncated formatted_length=%d capacity=%u\n",
+    BB_DEBUG_SERIAL.printf("[CONFIG] %s truncated formatted_length=%d capacity=%u\n",
                   label,
                   written,
                   static_cast<unsigned int>(capacity));
@@ -194,7 +195,7 @@ bool HitMqttClient::publishHitEvent(int targetId,
   size_t size = serializeJson(doc, buffer);
   bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer.c_str()), size, false);
   if (ok) {
-    Serial.printf("[HIT] published hit_event seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queued=%s topic=%s\n",
+    BB_DEBUG_SERIAL.printf("[HIT] published hit_event seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queued=%s topic=%s\n",
                   (unsigned long)sequence,
                   targetId,
                   hpRemaining,
@@ -205,7 +206,7 @@ bool HitMqttClient::publishHitEvent(int targetId,
                   queued ? "true" : "false",
                   eventTopic_);
   } else {
-    Serial.printf("[HIT] hit_event publish failed seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queued=%s\n",
+    BB_DEBUG_SERIAL.printf("[HIT] hit_event publish failed seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queued=%s\n",
                   (unsigned long)sequence,
                   targetId,
                   hpRemaining,
@@ -259,7 +260,7 @@ bool HitMqttClient::publishHpResetEvent(uint32_t sequence,
   buffer.reserve(MQTT_BUFFER_SIZE);
   size_t size = serializeJson(doc, buffer);
   bool ok = mqttClient_.publish(eventTopic_, reinterpret_cast<const uint8_t*>(buffer.c_str()), size, false);
-  Serial.printf("[HIT] hp_reset publish %s seq=%lu hp=%u/%u down=%s reason=%s topic=%s\n",
+  BB_DEBUG_SERIAL.printf("[HIT] hp_reset publish %s seq=%lu hp=%u/%u down=%s reason=%s topic=%s\n",
                 ok ? "ok" : "failed",
                 (unsigned long)sequence,
                 hpRemaining,
@@ -284,7 +285,7 @@ void HitMqttClient::queueHitEvent(int targetId,
     offlineQueueHead_ = (offlineQueueHead_ + 1) % offlineQueueCapacity_;
     offlineQueueCount_--;
     offlineQueueDropped_++;
-    Serial.printf("[HIT] offline queue full; dropped oldest seq=%lu target=%d dropped_total=%lu\n",
+    BB_DEBUG_SERIAL.printf("[HIT] offline queue full; dropped oldest seq=%lu target=%d dropped_total=%lu\n",
                   (unsigned long)dropped.sequence,
                   dropped.targetId,
                   (unsigned long)offlineQueueDropped_);
@@ -303,7 +304,7 @@ void HitMqttClient::queueHitEvent(int targetId,
   queued.down = down;
   offlineQueue_[insertIndex] = queued;
   offlineQueueCount_++;
-  Serial.printf("[HIT] queued offline hit_event seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queue=%u/%u\n",
+  BB_DEBUG_SERIAL.printf("[HIT] queued offline hit_event seq=%lu target=%d hp=%u/%u down=%s peak=%d threshold=%d queue=%u/%u\n",
                 (unsigned long)sequence,
                 targetId,
                 hpRemaining,
@@ -370,7 +371,7 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
   StaticJsonDocument<MQTT_BUFFER_SIZE> doc;
   DeserializationError error = deserializeJson(doc, payload, length);
   if (error) {
-    Serial.printf("[MQTT] invalid ring JSON: %s\n", error.c_str());
+    BB_DEBUG_SERIAL.printf("[MQTT] invalid ring JSON: %s\n", error.c_str());
     return;
   }
 
@@ -378,7 +379,7 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
   if (strcmp(command, "ring_display") != 0) return;
   const char* robotId = doc["robot_id"] | robotId_;
   if (strcmp(robotId, robotId_) != 0) {
-    Serial.printf("[MQTT] ring command ignored for robot_id=%s local=%s\n", robotId, robotId_);
+    BB_DEBUG_SERIAL.printf("[MQTT] ring command ignored for robot_id=%s local=%s\n", robotId, robotId_);
     return;
   }
 
@@ -391,12 +392,12 @@ void HitMqttClient::handleMqttMessage(char* topic, byte* payload, unsigned int l
   update.debugOverride = (doc["debug_override"] | false) || (doc["maintenance_override"] | false);
 
   if (!update.resetHitState && !update.debugOverride) {
-    Serial.println("[MQTT] ring command ignored: ESP owns local HP bar; set reset_hit_state or debug_override for maintenance");
+    BB_DEBUG_SERIAL.println("[MQTT] ring command ignored: ESP owns local HP bar; set reset_hit_state or debug_override for maintenance");
     return;
   }
   if (barHandler_ != nullptr) barHandler_(update);
 
-  Serial.printf("[MQTT] ring command mode=%s fill=%.3f down=%s ttl=%lu reset_hit_state=%s debug_override=%s\n",
+  BB_DEBUG_SERIAL.printf("[MQTT] ring command mode=%s fill=%.3f down=%s ttl=%lu reset_hit_state=%s debug_override=%s\n",
                 update.mode.c_str(),
                 constrain(update.fillRatio, 0.0f, 1.0f),
                 update.down ? "true" : "false",
@@ -411,7 +412,7 @@ void HitMqttClient::ensureWiFiConnected(uint32_t now) {
   if (now - lastWiFiRetryMs_ < WIFI_RETRY_INTERVAL_MS) return;
   lastWiFiRetryMs_ = now;
 
-  Serial.printf("[WIFI] connecting ssid=%s\n", wifiSsid_);
+  BB_DEBUG_SERIAL.printf("[WIFI] connecting ssid=%s\n", wifiSsid_);
   WiFi.disconnect(false);
   WiFi.mode(WIFI_STA);
   WiFi.begin(wifiSsid_, wifiPassword_);
@@ -426,7 +427,7 @@ void HitMqttClient::ensureMqttConnected(uint32_t now) {
 
   mqttClient_.setServer(mqttHost_, mqttPort_);
   const bool useAuth = mqttUsername_[0] != '\0' || mqttPassword_[0] != '\0';
-  Serial.printf("[MQTT] connecting host=%s port=%u client_id=%s auth=%s\n",
+  BB_DEBUG_SERIAL.printf("[MQTT] connecting host=%s port=%u client_id=%s auth=%s\n",
                 mqttHost_,
                 mqttPort_,
                 clientId_,
@@ -435,16 +436,16 @@ void HitMqttClient::ensureMqttConnected(uint32_t now) {
                              ? mqttClient_.connect(clientId_, mqttUsername_, mqttPassword_)
                              : mqttClient_.connect(clientId_);
   if (!connected) {
-    Serial.printf("[MQTT] connect failed state=%d\n", mqttClient_.state());
+    BB_DEBUG_SERIAL.printf("[MQTT] connect failed state=%d\n", mqttClient_.state());
     return;
   }
 
   bool ok = mqttClient_.subscribe(ringCommandTopic_, 1);
-  Serial.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", ringCommandTopic_);
+  BB_DEBUG_SERIAL.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", ringCommandTopic_);
   ok = mqttClient_.subscribe(deviceConfigTopic_, 1);
-  Serial.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", deviceConfigTopic_);
+  BB_DEBUG_SERIAL.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", deviceConfigTopic_);
   ok = mqttClient_.subscribe(deviceOtaTopic_, 1);
-  Serial.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", deviceOtaTopic_);
+  BB_DEBUG_SERIAL.printf("[MQTT] %s %s\n", ok ? "subscribed" : "subscribe failed", deviceOtaTopic_);
 }
 
 void HitMqttClient::flushOfflineQueue(uint32_t now) {
@@ -472,7 +473,7 @@ void HitMqttClient::flushOfflineQueue(uint32_t now) {
 
   popOfflineQueueHead();
   lastOfflineQueueFlushMs_ = now;
-  Serial.printf("[HIT] flushed offline hit_event seq=%lu remaining=%u\n",
+  BB_DEBUG_SERIAL.printf("[HIT] flushed offline hit_event seq=%lu remaining=%u\n",
                 (unsigned long)candidate.sequence,
                 offlineQueueCount_);
 }

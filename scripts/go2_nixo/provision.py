@@ -48,6 +48,7 @@ RELAY_VARIANT_TO_OTA = {
     ),
 }
 SUPPORTED_FIRMWARES = ("single_char_newline", "framed_packet_uart")
+SUPPORTED_JETSON_TRANSPORTS = ("uart2", "usb_serial")
 
 
 def prefixed_tuning_keys(suffix: str) -> tuple[str, ...]:
@@ -92,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--firmware",
         choices=SUPPORTED_FIRMWARES,
         help="flashed UART firmware family; controls the default OTA channel/manifest URL",
+    )
+    parser.add_argument(
+        "--jetson-transport",
+        choices=SUPPORTED_JETSON_TRANSPORTS,
+        help="Jetson serial port used by framed_packet_uart; default uart2",
     )
     parser.add_argument(
         "--relay-variant",
@@ -194,6 +200,19 @@ def detect_firmware(env: dict[str, str], cli_firmware: str | None) -> str:
     return firmware
 
 
+def detect_jetson_transport(env: dict[str, str], cli_transport: str | None) -> str:
+    transport = cli_transport or env_first(
+        env,
+        "GO2_NIXO_JETSON_TRANSPORT",
+        "BATTLEBANG_GO2_NIXO_JETSON_TRANSPORT",
+        default="uart2",
+    )
+    if transport not in SUPPORTED_JETSON_TRANSPORTS:
+        supported = ", ".join(SUPPORTED_JETSON_TRANSPORTS)
+        raise ProvisioningError(f"unsupported Jetson transport {transport!r}; expected one of: {supported}")
+    return transport
+
+
 def build_payload(
     env: dict[str, str],
     action: str,
@@ -201,11 +220,13 @@ def build_payload(
     nixo_id: str,
     relay_variant: str,
     firmware: str = "single_char_newline",
+    jetson_transport: str = "uart2",
 ) -> dict[str, Any]:
     ota_channel_default, ota_manifest_default = RELAY_VARIANT_TO_OTA[relay_variant]
     if firmware == "framed_packet_uart":
         slug = "1ch" if relay_variant == "relay_1ch" else "2ch"
-        ota_channel_default = f"go2-nixo-framed-packet-uart-{slug}"
+        transport = "usb" if jetson_transport == "usb_serial" else "uart"
+        ota_channel_default = f"go2-nixo-framed-packet-{transport}-{slug}"
         ota_manifest_default = (
             "https://github.com/KongPedia/battlebang-esp/releases/download/"
             f"{ota_channel_default}-latest/{ota_channel_default}-manifest.json"
@@ -295,7 +316,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             nixo_id = detect_nixo_id(env, args.nixo_id, robot_id)
             relay_variant = detect_relay_variant(env, args.relay_variant)
             firmware = detect_firmware(env, args.firmware)
-            payload = build_payload(env, args.command, robot_id, nixo_id, relay_variant, firmware)
+            jetson_transport = detect_jetson_transport(env, args.jetson_transport)
+            payload = build_payload(
+                env,
+                args.command,
+                robot_id,
+                nixo_id,
+                relay_variant,
+                firmware,
+                jetson_transport,
+            )
             if args.print_json or args.print_json_secrets:
                 print_payload(payload, args.print_json_secrets)
 

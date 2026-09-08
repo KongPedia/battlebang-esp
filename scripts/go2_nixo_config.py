@@ -69,15 +69,25 @@ def firmware_name() -> str:
     return value
 
 
+def jetson_transport_name() -> str:
+    value = clean_string_value(project_option("custom_go2_nixo_jetson_transport")) or "uart2"
+    if value not in {"uart2", "usb_serial"}:
+        raise ValueError(f"invalid Go2 Nixo Jetson transport: {value!r}")
+    return value
+
+
 def append_variant_identity_defines(
-    defines: list[tuple[str, str]], variant_name: str, selected_firmware: str
+    defines: list[tuple[str, str]],
+    variant_name: str,
+    selected_firmware: str,
+    selected_transport: str,
 ) -> None:
     slug = relay_variant_slug(variant_name)
-    channel = (
-        f"go2-nixo-{slug}"
-        if selected_firmware == "single_char_newline"
-        else f"go2-nixo-framed-packet-uart-{slug}"
-    )
+    if selected_firmware == "single_char_newline":
+        channel = f"go2-nixo-{slug}"
+    else:
+        transport_slug = "usb" if selected_transport == "usb_serial" else "uart"
+        channel = f"go2-nixo-framed-packet-{transport_slug}-{slug}"
     defines.extend(
         [
             ("BB_GO2_NIXO_RELAY_VARIANT", c_string(variant_name)),
@@ -88,7 +98,13 @@ def append_variant_identity_defines(
         ]
     )
     if selected_firmware == "framed_packet_uart":
-        defines.append(("BB_GO2_NIXO_APP_NAME", c_string("battlebang-go2-nixo-framed-packet-uart")))
+        transport_slug = "usb" if selected_transport == "usb_serial" else "uart"
+        defines.append(
+            ("BB_GO2_NIXO_APP_NAME", c_string(f"battlebang-go2-nixo-framed-packet-{transport_slug}"))
+        )
+        defines.append(
+            ("BB_GO2_NIXO_JETSON_USB_SERIAL", "1" if selected_transport == "usb_serial" else "0")
+        )
 
 
 def load_relay_variant(name: str) -> dict:
@@ -233,10 +249,11 @@ with CONFIG_PATH.open("r", encoding="utf-8") as f:
 
 variant_name = relay_variant_name()
 selected_firmware = firmware_name()
+selected_transport = jetson_transport_name()
 relay_variant = load_relay_variant(variant_name)
 profile = deep_merge(config.get("defaults", {}), relay_variant)
 defines: list[tuple[str, str]] = []
-append_variant_identity_defines(defines, variant_name, selected_firmware)
+append_variant_identity_defines(defines, variant_name, selected_firmware, selected_transport)
 append_profile_defines(defines, profile)
 append_env_defines(defines)
 
@@ -244,6 +261,7 @@ env.Append(CPPDEFINES=defines)
 print(
     f"{LOG_PREFIX} "
     f"{PIO_ENV}: generic_runtime_identity=NVS/MAC "
+    f"jetson_transport={selected_transport} "
     f"hardware_profile={CONFIG_PATH.relative_to(PROJECT_DIR)} "
     f"hit_cooldown_ms={profile.get('hit_cooldown_ms', 'default')} "
     f"piezo_left={profile.get('piezo_left_pin', profile.get('piezo_ao_pin', 'default'))} "

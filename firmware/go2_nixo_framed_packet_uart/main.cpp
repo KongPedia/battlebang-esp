@@ -13,6 +13,7 @@
 #include "go2_nixo/nixo/nixo_fire_client.h"
 #include "go2_nixo/display/bar_display.h"
 #include "go2_nixo/display/ring_display.h"
+#include "go2_nixo/debug_serial.h"
 #include "go2_nixo_framed_packet_uart/uart/protocol.h"
 #include "go2_nixo_framed_packet_uart/uart/runtime.h"
 
@@ -28,7 +29,11 @@ using namespace go2;
 // - Piezo D0 is not used for hit judgment; it is read only for debug logs.
 
 BluetoothSerial SerialBT;
+#if BB_GO2_NIXO_JETSON_USB_SERIAL
+HardwareSerial& JetsonSerial = Serial;
+#else
 HardwareSerial& JetsonSerial = Serial2;
+#endif
 
 BarDisplay barDisplay;
 RingDisplay ringDisplay;
@@ -134,7 +139,8 @@ constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
 constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
 constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
 constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
-constexpr const char* NIXO_TRANSPORT = "jetson_uart+mqtt";
+constexpr const char* NIXO_TRANSPORT =
+    BB_GO2_NIXO_JETSON_USB_SERIAL ? "jetson_usb_serial+mqtt" : "jetson_uart+mqtt";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
 
@@ -298,7 +304,7 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
 
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
-    Serial.println("[PIEZO AO] disabled: left/right/front piezo AO pins must be >= 0");
+    BB_DEBUG_SERIAL.println("[PIEZO AO] disabled: left/right/front piezo AO pins must be >= 0");
     return;
   }
 
@@ -317,7 +323,7 @@ static void beginAnalogPiezo() {
   }
 
   resetAnalogPiezoState();
-  Serial.printf("[PIEZO AO] 3ch ADC threshold mode left=%d right=%d front=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] 3ch ADC threshold mode left=%d right=%d front=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
                 PIEZO_LEFT_AO_PIN,
                 PIEZO_RIGHT_AO_PIN,
                 PIEZO_FRONT_AO_PIN,
@@ -336,7 +342,7 @@ static void beginAnalogPiezo() {
 
 static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
   if (!barDisplay.startupReady(eventTsMs)) {
-    Serial.printf("[PIEZO AO] ignored during startup loading target=%d peak=%d threshold=%d ts_ms=%lu\n",
+    BB_DEBUG_SERIAL.printf("[PIEZO AO] ignored during startup loading target=%d peak=%d threshold=%d ts_ms=%lu\n",
                   targetId,
                   peakRaw,
                   thresholdRaw,
@@ -344,7 +350,7 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
     return;
   }
   if (localHitState.down || localHitState.hpRemaining == 0) {
-    Serial.printf("[PIEZO AO] ignored after down target=%d peak=%d threshold=%d hp=%u/%u ts_ms=%lu mqtt_connected=%s queue=%u\n",
+    BB_DEBUG_SERIAL.printf("[PIEZO AO] ignored after down target=%d peak=%d threshold=%d hp=%u/%u ts_ms=%lu mqtt_connected=%s queue=%u\n",
                   targetId,
                   peakRaw,
                   thresholdRaw,
@@ -370,7 +376,7 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
   lastAcceptedHitTimestampMs = eventTsMs;
   const bool downNow = applyLocalHit(sequence, millis());
 
-  Serial.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
                 (unsigned long)sequence,
                 targetId,
                 peakRaw,
@@ -447,7 +453,7 @@ static void printAnalogDebugTick(uint32_t now) {
   analogPiezo.lastDebugMs = now;
 
   uint32_t avg = analogPiezo.sampleCount > 0 ? analogPiezo.sumRaw / analogPiezo.sampleCount : (uint32_t)analogPiezo.lastRaw;
-  Serial.printf("[PIEZO AO] ms=%lu raw=%d left=%d right=%d front=%d min=%d max=%d avg=%lu threshold=%d rearm=%d armed=%s capturing=%s do_pin=%d do=%d mqtt=%s queue=%u\n",
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] ms=%lu raw=%d left=%d right=%d front=%d min=%d max=%d avg=%lu threshold=%d rearm=%d armed=%s capturing=%s do_pin=%d do=%d mqtt=%s queue=%u\n",
                 (unsigned long)now,
                 analogPiezo.lastRaw,
                 analogPiezo.lastLeftRaw,
@@ -491,7 +497,7 @@ static void rearmAnalogPiezoWhenQuiet(uint32_t now, int raw) {
   if (now - analogPiezo.quietStartedMs >= runtimeConfig.hit.piezoAoRearmStableMs) {
     analogPiezo.armed = true;
     analogPiezo.quietStartedMs = 0;
-    Serial.printf("[PIEZO AO] rearmed raw=%d quiet_ms=%lu\n",
+    BB_DEBUG_SERIAL.printf("[PIEZO AO] rearmed raw=%d quiet_ms=%lu\n",
                   raw,
                   (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
   }
@@ -532,7 +538,7 @@ static void pollAnalogPiezo(uint32_t now) {
     analogPiezo.capturePeakRaw = raw;
     analogPiezo.captureTargetId = sample.targetId;
     analogPiezo.quietStartedMs = 0;
-    Serial.printf("[PIEZO AO] threshold crossed source=%s raw=%d left=%d right=%d front=%d threshold=%d ms=%lu do=%d\n",
+    BB_DEBUG_SERIAL.printf("[PIEZO AO] threshold crossed source=%s raw=%d left=%d right=%d front=%d threshold=%d ms=%lu do=%d\n",
                   sample.source,
                   raw,
                   sample.left,
@@ -607,7 +613,7 @@ String copyPayloadToString(const byte* payload, unsigned int length) {
 
 void onMqttConfigMessage(const char*, const byte* payload, unsigned int length) {
   if (length > COMMAND_LINE_MAX) {
-    Serial.println("[MQTT] config payload too large; dropped");
+    BB_DEBUG_SERIAL.println("[MQTT] config payload too large; dropped");
     return;
   }
   pendingMqttConfigJson = copyPayloadToString(payload, length);
@@ -616,7 +622,7 @@ void onMqttConfigMessage(const char*, const byte* payload, unsigned int length) 
 
 void onMqttOtaMessage(const char*, const byte* payload, unsigned int length) {
   if (length > COMMAND_LINE_MAX) {
-    Serial.println("[MQTT] OTA manifest payload too large; dropped");
+    BB_DEBUG_SERIAL.println("[MQTT] OTA manifest payload too large; dropped");
     return;
   }
   pendingMqttOtaJson = copyPayloadToString(payload, length);
@@ -633,7 +639,7 @@ static void resetAll(const char* source = "serial") {
   barDisplay.markDirty();
   ringDisplay.clearCooldown();
   ringDisplay.markDirty();
-  Serial.printf("[RESET] source=%s ADC/local HP/display state cleared\n", source);
+  BB_DEBUG_SERIAL.printf("[RESET] source=%s ADC/local HP/display state cleared\n", source);
   if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC/local HP/display state cleared");
   publishHpResetEventIfConnected(source);
   publishDeviceStatusIfConnected("reset");
@@ -664,7 +670,7 @@ static void stopNixoFireCommand(const char* source) {
   jetsonFireHoldActive = false;
   jetsonFireReleaseRequired = false;
   nixoFire.stopFire(source);
-  Serial.printf("[CMD] fire stopped source=%s\n", source);
+  BB_DEBUG_SERIAL.printf("[CMD] fire stopped source=%s\n", source);
   if (SerialBT.hasClient()) {
     SerialBT.printf("[CMD] fire stopped source=%s\n", source);
   }
@@ -697,7 +703,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
   }
   if (c == '1' || c == 'f') {
     if (!sourceCanFire(source)) {
-      Serial.printf("[FIRE] ignored source=%s reason=jetson_uart_required\n", source);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s reason=jetson_uart_required\n", source);
       if (SerialBT.hasClient() && strcmp(source, "bt") == 0) {
         SerialBT.println("[FIRE] ignored reason=jetson_uart_required");
       }
@@ -708,7 +714,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
                                  : defaultFireSourceForTransport(source);
     if (strcmp(source, "usb") == 0) {
       const bool accepted = nixoFire.startFire(runtimeConfig.nixo.fireDefaultDurationMs, fireSource, false);
-      Serial.printf("[CMD] USB fire %s source=%s duration_ms=%lu\n",
+      BB_DEBUG_SERIAL.printf("[CMD] USB fire %s source=%s duration_ms=%lu\n",
                     accepted ? "started" : "ignored",
                     fireSource,
                     (unsigned long)runtimeConfig.nixo.fireDefaultDurationMs);
@@ -720,21 +726,21 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
     if (jetsonFireReleaseRequired) {
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
       markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required\n", source, fireSource);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required\n", source, fireSource);
       return;
     }
     if (wasFiring && !jetsonFireHoldActive) {
       jetsonFireReleaseRequired = true;
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
       markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=non_jetson_fire_active\n", source, fireSource);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s fire_source=%s reason=non_jetson_fire_active\n", source, fireSource);
       return;
     }
     if (jetsonFireHoldActive && !wasFiring) {
       jetsonFireReleaseRequired = true;
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
       markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
-      Serial.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required_after_duration\n", source, fireSource);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required_after_duration\n", source, fireSource);
       return;
     }
     if (wasFiring) {
@@ -749,7 +755,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
       jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
       markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
     }
-    Serial.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
+    BB_DEBUG_SERIAL.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
                   accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
                   source,
                   fireSource,
@@ -763,7 +769,7 @@ static void handleCommandChar(char c, const char* source, const char* fireSource
 }
 
 static void replyToSource(const char* source, const String& line) {
-  Serial.println(line);
+  BB_DEBUG_SERIAL.println(line);
   if (String(source) == "bt" && SerialBT.hasClient()) SerialBT.println(line);
 }
 
@@ -1425,7 +1431,7 @@ static void publishDeviceStatusIfConnected(const char* reason) {
   String out;
   serializeJson(doc, out);
   if (!hitMqtt.publishDeviceStatus(out.c_str())) {
-    Serial.printf("[MQTT] device status publish failed len=%u topic=%s\n",
+    BB_DEBUG_SERIAL.printf("[MQTT] device status publish failed len=%u topic=%s\n",
                   static_cast<unsigned int>(out.length()),
                   hitMqtt.deviceStatusTopic());
   }
@@ -1442,7 +1448,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
   syncLocalHitStateWithRuntimeConfig();
   resetAnalogPiezoState();
-  Serial.printf("[CONFIG] runtime config reapplied reason=%s configured=%s robot_id=%s nixo_id=%s broker=%s:%u event_topic=%s nixo_topic=%s\n",
+  BB_DEBUG_SERIAL.printf("[CONFIG] runtime config reapplied reason=%s configured=%s robot_id=%s nixo_id=%s broker=%s:%u event_topic=%s nixo_topic=%s\n",
                 reason,
                 runtimeConfig.common.configured ? "true" : "false",
                 runtimeConfig.hit.robotId.c_str(),
@@ -1458,45 +1464,45 @@ static void checkOtaManifestJson(const String& json, bool requireCommandCenterAp
   battlebang::esp::ota::OtaManifest manifest;
   String error;
   if (!battlebang::esp::ota::parseManifestJson(json.c_str(), manifest, error)) {
-    Serial.print("[OTA] manifest rejected: ");
-    Serial.println(error);
+    BB_DEBUG_SERIAL.print("[OTA] manifest rejected: ");
+    BB_DEBUG_SERIAL.println(error);
     publishDeviceStatusIfConnected("ota_manifest_rejected");
     return;
   }
   if (requireCommandCenterApproval) {
     String approvalReason;
     if (!commandCenterApprovesPolledOta(manifest, approvalReason)) {
-      Serial.print("[OTA] auto poll not approved: ");
-      Serial.println(approvalReason);
+      BB_DEBUG_SERIAL.print("[OTA] auto poll not approved: ");
+      BB_DEBUG_SERIAL.println(approvalReason);
       publishDeviceStatusIfConnected("ota_not_approved");
       return;
     }
-    Serial.print("[OTA] auto poll approved: ");
-    Serial.println(approvalReason);
+    BB_DEBUG_SERIAL.print("[OTA] auto poll approved: ");
+    BB_DEBUG_SERIAL.println(approvalReason);
   }
   String reason;
   if (!battlebang::esp::ota::shouldApplyManifest(manifest, firmwareIdentity(), reason)) {
-    Serial.print("[OTA] skipped: ");
-    Serial.println(reason);
+    BB_DEBUG_SERIAL.print("[OTA] skipped: ");
+    BB_DEBUG_SERIAL.println(reason);
     publishDeviceStatusIfConnected("ota_skipped");
     return;
   }
   if (runtimeConfig.common.otaApplyOnlyInSafeState && nixoFire.isFiring()) {
-    Serial.println("[OTA] deferred: Nixo relay is firing");
+    BB_DEBUG_SERIAL.println("[OTA] deferred: Nixo relay is firing");
     publishDeviceStatusIfConnected("ota_deferred");
     return;
   }
-  Serial.print("[OTA] accepted from ");
-  Serial.print(source);
-  Serial.print(' ');
-  Serial.println(battlebang::esp::ota::manifestSummary(manifest));
+  BB_DEBUG_SERIAL.print("[OTA] accepted from ");
+  BB_DEBUG_SERIAL.print(source);
+  BB_DEBUG_SERIAL.print(' ');
+  BB_DEBUG_SERIAL.println(battlebang::esp::ota::manifestSummary(manifest));
   publishDeviceStatusIfConnected("ota_downloading");
   resetAll("ota");
   battlebang::esp::ota::OtaResult result = battlebang::esp::ota::runHttpOta(manifest);
-  Serial.print("[OTA] result ok=");
-  Serial.print(result.ok ? "yes" : "no");
-  Serial.print(" message=");
-  Serial.println(result.message);
+  BB_DEBUG_SERIAL.print("[OTA] result ok=");
+  BB_DEBUG_SERIAL.print(result.ok ? "yes" : "no");
+  BB_DEBUG_SERIAL.print(" message=");
+  BB_DEBUG_SERIAL.println(result.message);
   publishDeviceStatusIfConnected(result.ok ? "ota_rebooting" : "ota_failed");
   if (result.ok) {
     battlebang::esp::ota::writeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY, true);
@@ -1507,15 +1513,15 @@ static void checkOtaManifestJson(const String& json, bool requireCommandCenterAp
 
 static void checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterApproval, const char* source) {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[OTA] Wi-Fi is not connected; cannot fetch manifest");
+    BB_DEBUG_SERIAL.println("[OTA] Wi-Fi is not connected; cannot fetch manifest");
     publishDeviceStatusIfConnected("ota_no_wifi");
     return;
   }
   String body;
   String error;
   if (!battlebang::esp::ota::fetchHttpText(url, 4096, body, error)) {
-    Serial.print("[OTA] manifest fetch failed: ");
-    Serial.println(error);
+    BB_DEBUG_SERIAL.print("[OTA] manifest fetch failed: ");
+    BB_DEBUG_SERIAL.println(error);
     publishDeviceStatusIfConnected("ota_manifest_fetch_failed");
     return;
   }
@@ -1657,7 +1663,9 @@ static void publishPeriodicJetsonPacketStatus(uint32_t now) {
 
 static void pollCommands() {
   pollJetsonUart();
+#if !BB_GO2_NIXO_JETSON_USB_SERIAL
   pollCommandStream(Serial, usbCommandLine, "usb");
+#endif
   pollCommandStream(SerialBT, btCommandLine, "bt");
 }
 
@@ -1732,12 +1740,12 @@ static void pollConfiguredOta(uint32_t now) {
   lastAutoOtaCheckMs = now;
   const String url = configuredOtaPollUrl();
   if (url.length() == 0) {
-    Serial.println("[OTA] auto poll skipped: no manifest URL configured");
+    BB_DEBUG_SERIAL.println("[OTA] auto poll skipped: no manifest URL configured");
     publishDeviceStatusIfConnected("ota_poll_no_url");
     return;
   }
-  Serial.print("[OTA] auto polling ");
-  Serial.println(url);
+  BB_DEBUG_SERIAL.print("[OTA] auto polling ");
+  BB_DEBUG_SERIAL.println(url);
   checkOtaManifestUrlWithPolicy(url, true, "auto_poll");
 }
 
@@ -1748,7 +1756,7 @@ static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
     hitMqtt.clearOfflineQueue();
     resetLocalHitState();
     barDisplay.clearRemoteDisplay();
-    Serial.println("[RESET] MQTT ADC/local HP state reset");
+    BB_DEBUG_SERIAL.println("[RESET] MQTT ADC/local HP state reset");
     if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC/local HP state reset");
     publishHpResetEventIfConnected("mqtt_reset");
     publishDeviceStatusIfConnected("mqtt_reset");
@@ -1762,7 +1770,9 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
+#if !BB_GO2_NIXO_JETSON_USB_SERIAL
   JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
+#endif
   jetsonPacketSenderEpoch = esp_random();
   if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = static_cast<uint32_t>(ESP.getEfuseMac() ^ (ESP.getEfuseMac() >> 32));
   if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = 1;
@@ -1785,7 +1795,7 @@ void setup() {
   barDisplay.tick(millis());
   ringDisplay.tick(millis());
 
-  Serial.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO left=%d right=%d front=%d | PIEZO_DO_DEBUG=%d\n",
+  BB_DEBUG_SERIAL.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO left=%d right=%d front=%d | PIEZO_DO_DEBUG=%d\n",
                 UART_RX_PIN,
                 UART_TX_PIN,
                 HP_BAR_LED_PIN,
@@ -1798,24 +1808,24 @@ void setup() {
                 PIEZO_RIGHT_AO_PIN,
                 PIEZO_FRONT_AO_PIN,
                 PIEZO_DO_PIN);
-  Serial.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu\n",
+  BB_DEBUG_SERIAL.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu\n",
                 runtimeConfig.hit.piezoAoThresholdRaw,
                 runtimeConfig.hit.piezoAoRearmRaw,
                 (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
                 (unsigned long)runtimeConfig.hit.hitCooldownMs,
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
-  Serial.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
+  BB_DEBUG_SERIAL.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
                 CMD_RESET_HIT_DISPLAY);
-  Serial.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
-  Serial.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
-  Serial.print("release_repo=");
-  Serial.println(BB_GO2_NIXO_RELEASE_REPO);
-  Serial.print("latest_manifest=");
-  Serial.println(BB_GO2_NIXO_LATEST_MANIFEST_URL);
-  if (postOtaReboot) Serial.println("[OTA] post-OTA reboot marker consumed");
-  Serial.print("Bluetooth name: ");
-  Serial.println(BT_NAME);
-  Serial.printf("[CC] robot_id=%s mqtt=%s broker=%s:%u event_topic=%s ring_topic=%s\n",
+  BB_DEBUG_SERIAL.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  BB_DEBUG_SERIAL.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
+  BB_DEBUG_SERIAL.print("release_repo=");
+  BB_DEBUG_SERIAL.println(BB_GO2_NIXO_RELEASE_REPO);
+  BB_DEBUG_SERIAL.print("latest_manifest=");
+  BB_DEBUG_SERIAL.println(BB_GO2_NIXO_LATEST_MANIFEST_URL);
+  if (postOtaReboot) BB_DEBUG_SERIAL.println("[OTA] post-OTA reboot marker consumed");
+  BB_DEBUG_SERIAL.print("Bluetooth name: ");
+  BB_DEBUG_SERIAL.println(BT_NAME);
+  BB_DEBUG_SERIAL.printf("[CC] robot_id=%s mqtt=%s broker=%s:%u event_topic=%s ring_topic=%s\n",
                 runtimeConfig.common.deviceId.c_str(),
                 hitMqtt.configured() ? "enabled" : "disabled",
                 runtimeConfig.common.mqttHost.c_str(),
@@ -1823,7 +1833,7 @@ void setup() {
                 hitMqtt.eventTopic(),
                 hitMqtt.ringCommandTopic());
   printStatusJson("usb", "boot");
-  Serial.printf("[NIXO] transport=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
+  BB_DEBUG_SERIAL.printf("[NIXO] transport=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
                 NIXO_TRANSPORT,
                 runtimeConfig.nixo.nixoId.c_str(),
                 nixoFire.commandTopic(),

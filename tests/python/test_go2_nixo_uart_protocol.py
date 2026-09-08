@@ -73,7 +73,30 @@ def test_go2_nixo_line_and_framed_packet_firmware_are_separate() -> None:
     config_script = read("scripts/go2_nixo_config.py")
     assert 'project_option("custom_go2_nixo_firmware")' in config_script
     assert '{"single_char_newline", "framed_packet_uart"}' in config_script
-    assert 'f"go2-nixo-framed-packet-uart-{slug}"' in config_script
+    assert 'project_option("custom_go2_nixo_jetson_transport")' in config_script
+    assert '{"uart2", "usb_serial"}' in config_script
+
+
+def test_go2_nixo_usb_run_mode_reserves_usb_for_framed_packets() -> None:
+    platformio = read("platformio.ini")
+    for name in (
+        "esp32dev_go2_nixo_framed_packet_usb_1ch",
+        "esp32dev_go2_nixo_framed_packet_usb_2ch",
+    ):
+        block = _env_block(platformio, name)
+        assert "custom_go2_nixo_jetson_transport = usb_serial" in block
+
+    framed_main = read("firmware/go2_nixo_framed_packet_uart/main.cpp")
+    assert "#if BB_GO2_NIXO_JETSON_USB_SERIAL\nHardwareSerial& JetsonSerial = Serial;" in framed_main
+    assert "#if !BB_GO2_NIXO_JETSON_USB_SERIAL\n  pollCommandStream(Serial" in framed_main
+
+    debug_serial = read("firmware/go2_nixo/debug_serial.h")
+    assert "class NullDebugSerial" in debug_serial
+    assert "#if BB_GO2_NIXO_JETSON_USB_SERIAL" in debug_serial
+
+    provision = read("scripts/go2_nixo/provision.py")
+    assert 'SUPPORTED_JETSON_TRANSPORTS = ("uart2", "usb_serial")' in provision
+    assert 'transport = "usb" if jetson_transport == "usb_serial" else "uart"' in provision
 
 def test_firmware_versions_are_release_generated_not_branch_hardcoded() -> None:
     assert not (ROOT / "firmware/go2_nixo/app/version.h").exists()
