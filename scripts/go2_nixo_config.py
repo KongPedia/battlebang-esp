@@ -105,6 +105,9 @@ def append_variant_identity_defines(
         defines.append(
             ("BB_GO2_NIXO_JETSON_USB_SERIAL", "1" if selected_transport == "usb_serial" else "0")
         )
+        defines.append(
+            ("BB_ESP_OTA_LOG_ENABLED", "0" if selected_transport == "usb_serial" else "1")
+        )
 
 
 def load_relay_variant(name: str) -> dict:

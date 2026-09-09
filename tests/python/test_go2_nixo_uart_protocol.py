@@ -75,6 +75,11 @@ def test_go2_nixo_line_and_framed_packet_firmware_are_separate() -> None:
     assert '{"single_char_newline", "framed_packet_uart"}' in config_script
     assert 'project_option("custom_go2_nixo_jetson_transport")' in config_script
     assert '{"uart2", "usb_serial"}' in config_script
+    assert '"BB_ESP_OTA_LOG_ENABLED"' in config_script
+
+    ota_http = read("lib/bb_esp_ota/src/bb_esp_ota/http_ota.cpp")
+    assert "#ifndef BB_ESP_OTA_LOG_ENABLED" in ota_http
+    assert ota_http.count("#if BB_ESP_OTA_LOG_ENABLED") >= 5
 
 
 def test_go2_nixo_usb_run_mode_reserves_usb_for_framed_packets() -> None:
@@ -97,6 +102,17 @@ def test_go2_nixo_usb_run_mode_reserves_usb_for_framed_packets() -> None:
     provision = read("scripts/go2_nixo/provision.py")
     assert 'SUPPORTED_JETSON_TRANSPORTS = ("uart2", "usb_serial")' in provision
     assert 'transport = "usb" if jetson_transport == "usb_serial" else "uart"' in provision
+
+    workflow = read(".github/workflows/firmware-ota.yml")
+    for channel in (
+        "go2-nixo-framed-packet-usb-1ch",
+        "go2-nixo-framed-packet-usb-2ch",
+    ):
+        assert f'"id": "{channel}"' in workflow
+        assert f'"channel": "{channel}"' in workflow
+        assert f'"stable_tag": "{channel}-latest"' in workflow
+        assert f'"manifest_name": "{channel}-manifest.json"' in workflow
+
 
 def test_firmware_versions_are_release_generated_not_branch_hardcoded() -> None:
     assert not (ROOT / "firmware/go2_nixo/app/version.h").exists()
