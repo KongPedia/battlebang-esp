@@ -7,6 +7,10 @@
 #include <mbedtls/sha256.h>
 #include <time.h>
 
+#ifndef BB_ESP_OTA_LOG_ENABLED
+#define BB_ESP_OTA_LOG_ENABLED 1
+#endif
+
 namespace battlebang::esp::ota {
 namespace {
 
@@ -47,14 +51,18 @@ bool tlsClockLooksValid() {
 
 bool ensureTlsClock() {
   if (tlsClockLooksValid()) return true;
+#if BB_ESP_OTA_LOG_ENABLED
   Serial.println("[bb_esp_ota] syncing clock for HTTPS certificate validation");
+#endif
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   const unsigned long startedMs = millis();
   while (millis() - startedMs < kTlsClockSyncTimeoutMs) {
     if (tlsClockLooksValid()) return true;
     delay(100);
   }
+#if BB_ESP_OTA_LOG_ENABLED
   Serial.println("[bb_esp_ota] TLS clock sync timed out");
+#endif
   return false;
 }
 
@@ -92,8 +100,10 @@ bool fetchHttpText(const String& url, size_t maxBytes, String& body, String& err
   WiFiClientSecure secureClient;
   HTTPClient http;
 
+#if BB_ESP_OTA_LOG_ENABLED
   Serial.print("[bb_esp_ota][http] GET ");
   Serial.println(url);
+#endif
 
   if (!beginHttp(http, plainClient, secureClient, url)) {
     error = "http.begin failed";
@@ -131,8 +141,10 @@ OtaResult runHttpOta(const OtaManifest& manifest) {
   WiFiClientSecure secureClient;
   HTTPClient http;
 
+#if BB_ESP_OTA_LOG_ENABLED
   Serial.print("[bb_esp_ota] downloading ");
   Serial.println(manifest.url);
+#endif
 
   if (!beginHttp(http, plainClient, secureClient, manifest.url)) {
     result.message = "http.begin failed";
@@ -168,7 +180,9 @@ OtaResult runHttpOta(const OtaManifest& manifest) {
   WiFiClient* stream = http.getStreamPtr();
   size_t written = 0;
   unsigned long lastByteMs = millis();
+#if BB_ESP_OTA_LOG_ENABLED
   unsigned long lastProgressLogMs = lastByteMs;
+#endif
 
   while (http.connected() && (contentLength < 0 || written < static_cast<size_t>(contentLength))) {
     const size_t available = stream->available();
@@ -201,11 +215,13 @@ OtaResult runHttpOta(const OtaManifest& manifest) {
     written += bytesWritten;
     const unsigned long now = millis();
     lastByteMs = now;
+#if BB_ESP_OTA_LOG_ENABLED
     if (now - lastProgressLogMs > 2000) {
       lastProgressLogMs = now;
       Serial.print("[bb_esp_ota] bytes=");
       Serial.println(written);
     }
+#endif
   }
 
   uint8_t digest[32];
