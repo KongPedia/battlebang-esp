@@ -155,7 +155,7 @@ AckResult HpDamageGuardLease::apply(bool enabled, uint16_t lease_ms, uint32_t no
     return was_active ? AckResult::Applied : AckResult::NoopAlreadySafe;
   }
   active_ = true;
-  deadline_ms_ = now_ms + lease_ms;
+  deadline_ms_ = now_ms + (lease_ms > kMaxHpDamageGuardLeaseMs ? kMaxHpDamageGuardLeaseMs : lease_ms);
   return AckResult::Applied;
 }
 

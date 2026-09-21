@@ -164,7 +164,7 @@ bool isPayloadValid(const Frame& frame) {
       const bool enabled = frame.payload[0] != 0;
       const bool reset_hp = frame.payload[1] != 0;
       const uint16_t lease_ms = readBe16(frame.payload + 2);
-      return enabled ? lease_ms > 0 : !reset_hp && lease_ms == 0;
+      return enabled ? lease_ms > 0 && lease_ms <= kMaxHpDamageGuardLeaseMs : !reset_hp && lease_ms == 0;
     }
     case MessageType::Ack:
       return frame.payload_length == 4 && inRange(frame.payload[3], 2);

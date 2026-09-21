@@ -21,6 +21,7 @@ constexpr uint32_t kReliableRetryMs = 100;
 constexpr size_t kDedupeEntryCount = 16;
 constexpr size_t kReliableEntryCount = 8;
 constexpr uint8_t kMaxTransmitAttempts = 3;
+constexpr uint16_t kMaxHpDamageGuardLeaseMs = 1500;
 
 // Framed UART header (wire format version 2): AA 55, version, type, flags, sequence, sender_epoch, payload_length, payload, crc16.
 enum class MessageType : uint8_t {

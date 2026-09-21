@@ -351,7 +351,7 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
                   (unsigned long)eventTsMs);
     return;
   }
-  if (hpDamageGuard.active(eventTsMs)) {
+  if (hpDamageGuard.active(millis())) {
     BB_DEBUG_SERIAL.printf(
         "[PIEZO AO] ignored by HP damage guard target=%d peak=%d threshold=%d ts_ms=%lu\n",
         targetId,

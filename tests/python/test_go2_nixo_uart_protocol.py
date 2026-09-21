@@ -71,7 +71,7 @@ def test_go2_nixo_line_and_framed_packet_firmware_are_separate() -> None:
     assert "queueJetsonFireStatusPacket(nextJetsonPacketSequence())" in framed_main
     assert "jetsonLastFireReason = FireReason::HoldTimeout" in framed_main
     assert "jetsonReliableAdmissionErrors" in framed_main
-    assert "hpDamageGuard.active(eventTsMs)" in framed_main
+    assert "hpDamageGuard.active(millis())" in framed_main
     assert "hpDamageGuard.active(millis())" in framed_main
     assert 'resetAll("jetson_uart_guard")' in framed_main
 
