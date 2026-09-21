@@ -26,7 +26,9 @@ def test_uart_fixture_and_cpp_contract_are_present() -> None:
     assert "HpDamage = 0x21" in header
     assert "HpSnapshot = 0x22" in header
     assert "HitEvent = 0x23" in header
+    assert "HpDamageGuard = 0x24" in header
     assert "CapabilityHpDamage = 0x00000040" in header
+    assert "CapabilityHpDamageGuard = 0x00000080" in header
     assert "sender_epoch" in header
     assert "session_id" not in header
 
@@ -69,6 +71,9 @@ def test_go2_nixo_line_and_framed_packet_firmware_are_separate() -> None:
     assert "queueJetsonFireStatusPacket(nextJetsonPacketSequence())" in framed_main
     assert "jetsonLastFireReason = FireReason::HoldTimeout" in framed_main
     assert "jetsonReliableAdmissionErrors" in framed_main
+    assert "hpDamageGuard.active(eventTsMs)" in framed_main
+    assert "hpDamageGuard.active(millis())" in framed_main
+    assert 'resetAll("jetson_uart_guard")' in framed_main
 
     config_script = read("scripts/go2_nixo_config.py")
     assert 'project_option("custom_go2_nixo_firmware")' in config_script
@@ -145,6 +150,7 @@ def test_uart_flags_match_python_registry() -> None:
     assert "case MessageType::FireStop:" in protocol
     assert "case MessageType::HpReset:" in protocol
     assert "case MessageType::HpDamage:" in protocol
+    assert "case MessageType::HpDamageGuard:" in protocol
     assert "case MessageType::HitEvent:" in protocol
     assert "case MessageType::DiagEcho:" in protocol
     assert "return frame.flags == FrameFlags::AckRequired;" in protocol
