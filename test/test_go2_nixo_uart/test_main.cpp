@@ -200,8 +200,29 @@ TEST(Go2NixoUartProtocol, ExactFlagsMatchPythonRegistry) {
   EXPECT_FALSE(hasValidFlagsForType(makeFrame(MessageType::FireHold, FrameFlags::AckRequired, 1, {1, 0x01, 0x2C})));
   EXPECT_TRUE(hasValidFlagsForType(makeFrame(MessageType::HpDamage, FrameFlags::AckRequired, 2, {0, 1, 1})));
   EXPECT_FALSE(hasValidFlagsForType(makeFrame(MessageType::HpDamage, FrameFlags::None, 2, {0, 1, 1})));
+  EXPECT_TRUE(
+      hasValidFlagsForType(makeFrame(MessageType::HpDamageGuard, FrameFlags::AckRequired, 3, {1, 1, 5, 220})));
+  EXPECT_TRUE(isPayloadValid(makeFrame(MessageType::HpDamageGuard, FrameFlags::AckRequired, 3, {1, 1, 5, 220})));
+  EXPECT_FALSE(isPayloadValid(makeFrame(MessageType::HpDamageGuard, FrameFlags::AckRequired, 3, {1, 0, 5, 221})));
+  EXPECT_FALSE(isPayloadValid(makeFrame(MessageType::HpDamageGuard, FrameFlags::AckRequired, 3, {1, 0, 0, 0})));
+  EXPECT_TRUE(isPayloadValid(makeFrame(MessageType::HpDamageGuard, FrameFlags::AckRequired, 3, {0, 0, 0, 0})));
   EXPECT_TRUE(hasValidFlagsForType(makeFrame(MessageType::Ack, FrameFlags::Response, 3, {0x11, 0, 3, 0})));
   EXPECT_FALSE(hasValidFlagsForType(makeFrame(MessageType::Ack, FrameFlags::AckRequired, 3, {0x11, 0, 3, 0})));
+}
+
+TEST(Go2NixoUartProtocol, HpDamageGuardLeaseExpiresAndCanBeReleased) {
+  HpDamageGuardLease guard;
+  EXPECT_EQ(guard.apply(true, 1500, 100), AckResult::Applied);
+  EXPECT_TRUE(guard.active(1599));
+  EXPECT_FALSE(guard.active(1600));
+  EXPECT_EQ(guard.apply(true, 5000, 100), AckResult::Applied);
+  EXPECT_TRUE(guard.active(1599));
+  EXPECT_FALSE(guard.active(1600));
+  EXPECT_EQ(guard.apply(false, 0, 1601), AckResult::NoopAlreadySafe);
+  EXPECT_EQ(guard.apply(true, 1500, 0xFFFFFF00), AckResult::Applied);
+  EXPECT_TRUE(guard.active(0x00000010));
+  EXPECT_EQ(guard.apply(false, 0, 0x00000011), AckResult::Applied);
+  EXPECT_FALSE(guard.active(0x00000011));
 }
 
 TEST(Go2NixoUartProtocol, IncrementalParserRecoversAfterNoiseAndSplitFrame) {

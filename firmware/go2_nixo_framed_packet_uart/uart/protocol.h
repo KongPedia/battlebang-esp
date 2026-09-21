@@ -21,6 +21,7 @@ constexpr uint32_t kReliableRetryMs = 100;
 constexpr size_t kDedupeEntryCount = 16;
 constexpr size_t kReliableEntryCount = 8;
 constexpr uint8_t kMaxTransmitAttempts = 3;
+constexpr uint16_t kMaxHpDamageGuardLeaseMs = 1500;
 
 // Framed UART header (wire format version 2): AA 55, version, type, flags, sequence, sender_epoch, payload_length, payload, crc16.
 enum class MessageType : uint8_t {
@@ -34,6 +35,7 @@ enum class MessageType : uint8_t {
   HpDamage = 0x21,
   HpSnapshot = 0x22,
   HitEvent = 0x23,
+  HpDamageGuard = 0x24,
   Ack = 0x7E,
   Nack = 0x7F,
   DiagEcho = 0xF0,
@@ -64,6 +66,7 @@ enum CapabilityBits : uint32_t {
   CapabilityDiagEcho = 0x00000010,
   CapabilityRelay2Ch = 0x00000020,
   CapabilityHpDamage = 0x00000040,
+  CapabilityHpDamageGuard = 0x00000080,
 };
 
 enum class LinkState : uint8_t {

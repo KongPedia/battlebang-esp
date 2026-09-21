@@ -87,6 +87,17 @@ class ReliableFrameTracker {
   uint32_t retry_count_ = 0;
 };
 
+class HpDamageGuardLease {
+ public:
+  AckResult apply(bool enabled, uint16_t lease_ms, uint32_t now_ms);
+  bool active(uint32_t now_ms);
+  void clear();
+
+ private:
+  bool active_ = false;
+  uint32_t deadline_ms_ = 0;
+};
+
 AckResult applyFireStop(const Frame& frame, uint32_t now_ms, const PacketCallbacks& callbacks);
 void composeAck(const Frame& request, AckResult result, Frame& response, uint32_t sender_epoch);
 void composeNack(const Frame& request, NackError error, Frame& response, uint32_t sender_epoch);

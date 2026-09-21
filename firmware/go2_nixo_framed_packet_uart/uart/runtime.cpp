@@ -148,6 +148,27 @@ size_t ReliableFrameTracker::activeCount() const {
   return count;
 }
 
+AckResult HpDamageGuardLease::apply(bool enabled, uint16_t lease_ms, uint32_t now_ms) {
+  if (!enabled) {
+    const bool was_active = active_;
+    clear();
+    return was_active ? AckResult::Applied : AckResult::NoopAlreadySafe;
+  }
+  active_ = true;
+  deadline_ms_ = now_ms + (lease_ms > kMaxHpDamageGuardLeaseMs ? kMaxHpDamageGuardLeaseMs : lease_ms);
+  return AckResult::Applied;
+}
+
+bool HpDamageGuardLease::active(uint32_t now_ms) {
+  if (active_ && static_cast<int32_t>(deadline_ms_ - now_ms) <= 0) clear();
+  return active_;
+}
+
+void HpDamageGuardLease::clear() {
+  active_ = false;
+  deadline_ms_ = 0;
+}
+
 AckResult applyFireStop(const Frame& frame, uint32_t now_ms, const PacketCallbacks& callbacks) {
   if (frame.type != MessageType::FireStop) return AckResult::NoopAlreadySafe;
   if (callbacks.fire_stop == nullptr) return AckResult::NoopAlreadySafe;

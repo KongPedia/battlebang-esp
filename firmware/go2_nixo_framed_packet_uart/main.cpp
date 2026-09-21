@@ -108,6 +108,7 @@ using battlebang::go2_nixo::uart::FireState;
 using battlebang::go2_nixo::uart::DedupeResult;
 using battlebang::go2_nixo::uart::FrameTxQueue;
 using battlebang::go2_nixo::uart::HpSnapshot;
+using battlebang::go2_nixo::uart::HpDamageGuardLease;
 using battlebang::go2_nixo::uart::InboundDedupe;
 using battlebang::go2_nixo::uart::IncrementalParser;
 using battlebang::go2_nixo::uart::isNewerSequence;
@@ -121,6 +122,7 @@ IncrementalParser jetsonPacketParser;
 FrameTxQueue jetsonPacketTx;
 InboundDedupe jetsonInboundDedupe;
 ReliableFrameTracker jetsonReliableTx;
+HpDamageGuardLease hpDamageGuard;
 uint8_t jetsonLastRxBytes[16] = {};
 size_t jetsonLastRxLength = 0;
 size_t jetsonLastRxChunkLength = 0;
@@ -347,6 +349,15 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
                   peakRaw,
                   thresholdRaw,
                   (unsigned long)eventTsMs);
+    return;
+  }
+  if (hpDamageGuard.active(millis())) {
+    BB_DEBUG_SERIAL.printf(
+        "[PIEZO AO] ignored by HP damage guard target=%d peak=%d threshold=%d ts_ms=%lu\n",
+        targetId,
+        peakRaw,
+        thresholdRaw,
+        (unsigned long)eventTsMs);
     return;
   }
   if (localHitState.down || localHitState.hpRemaining == 0) {
@@ -1006,6 +1017,7 @@ static uint32_t jetsonPacketCapabilities() {
                   battlebang::go2_nixo::uart::CapabilityHpSnapshot |
                   battlebang::go2_nixo::uart::CapabilityHitEvent |
                   battlebang::go2_nixo::uart::CapabilityHpDamage |
+                  battlebang::go2_nixo::uart::CapabilityHpDamageGuard |
                   battlebang::go2_nixo::uart::CapabilityLinkMetrics |
                   battlebang::go2_nixo::uart::CapabilityDiagEcho;
   if (NIXO_RELAY2_ENABLED_VALUE) caps |= battlebang::go2_nixo::uart::CapabilityRelay2Ch;
@@ -1178,7 +1190,7 @@ static uint16_t readHpDamageAmount(const Frame& frame) {
 }
 
 static AckResult applyPacketHpDamage(uint16_t amount) {
-  if (amount == 0 || localHitStateDead()) return AckResult::NoopAlreadySafe;
+  if (amount == 0 || localHitStateDead() || hpDamageGuard.active(millis())) return AckResult::NoopAlreadySafe;
   uint16_t applied = 0;
   while (applied < amount && localHitState.hpRemaining > 0 && !localHitState.down) {
     lastAcceptedHitTargetId = 3;
@@ -1199,7 +1211,8 @@ static bool packetRobotIdentityMatches(const Frame& frame) {
 }
 
 static bool packetCommandNeedsAuthority(MessageType type) {
-  return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage;
+  return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage ||
+         type == MessageType::HpDamageGuard;
 }
 
 static void resetJetsonHostCommandSequence() {
@@ -1249,7 +1262,10 @@ static void handleJetsonFrame(const Frame& frame) {
         nackJetsonPacket(frame, NackError::IdentityMismatch);
         return;
       }
-      if (jetsonAuthorizedHostEpoch != frame.sender_epoch) resetJetsonHostCommandSequence();
+      if (jetsonAuthorizedHostEpoch != frame.sender_epoch) {
+        resetJetsonHostCommandSequence();
+        hpDamageGuard.clear();
+      }
       jetsonAuthorizedHostEpoch = frame.sender_epoch;
       queueJetsonDeviceStatusPacket();
       queueJetsonHpSnapshotPacket();
@@ -1298,6 +1314,20 @@ static void handleJetsonFrame(const Frame& frame) {
       queueJetsonPacket(response);
       rememberReliableRequest(frame, response);
       queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::HpDamageGuard: {
+      rememberJetsonHostCommandSequence(frame);
+      const bool enabled = frame.payload[0] != 0;
+      const bool resetHp = frame.payload[1] != 0;
+      const uint16_t leaseMs = readPacketBe16(frame.payload + 2);
+      const AckResult result = hpDamageGuard.apply(enabled, leaseMs, millis());
+      if (enabled && resetHp) resetAll("jetson_uart_guard");
+      Frame response;
+      composeAck(frame, result, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      if (resetHp) queueJetsonHpSnapshotPacket();
       return;
     }
     case MessageType::DiagEcho: {
