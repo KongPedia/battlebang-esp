@@ -44,6 +44,12 @@ void BarDisplay::tick(uint32_t now) {
       renderLocal(now);
     }
   }
+  // Temporary Go2-06 wiring check: cycle the configured 84 pixels for 90 s after boot.
+  if (now - startupStartedMs_ < 90000) {
+    const CRGB colors[] = {CRGB::Red, CRGB::Green, CRGB::Blue};
+    fill_solid(leds_, HP_BAR_NUM_LEDS, colors[((now - startupStartedMs_) / 5000) % 3]);
+    dirty_ = true;
+  }
   showTick(now);
 }
 
