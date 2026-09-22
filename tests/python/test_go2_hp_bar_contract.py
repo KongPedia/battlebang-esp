@@ -582,16 +582,20 @@ def test_go2_nixo_bar_renders_remaining_hp_and_recent_damage() -> None:
     assert "barDisplay.resetLocalHpState(localHitState.maxHits);" in main
 
 
-def test_go2_nixo_ignores_hits_during_three_second_startup_loading() -> None:
+def test_go2_nixo_shows_one_short_red_blue_startup_then_local_hp() -> None:
     bar_header = (ROOT / "firmware/go2_nixo/display/bar_display.h").read_text()
     bar_source = (ROOT / "firmware/go2_nixo/display/bar_display.cpp").read_text()
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
 
-    assert "STARTUP_LOADING_MS = 3000" in bar_source
+    assert "STARTUP_COLOR_MS = 2000" in bar_source
+    assert "STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS" in bar_source
     assert "bool startupReady(uint32_t now) const;" in bar_header
-    assert "const int interiorGroups = HP_BAR_GROUP_COUNT - 2;" in bar_source
-    assert "setHpBarPixel(group, 0, CRGB::White);" in bar_source
-    assert "setHpBarPixel(group, 1, CRGB::Blue);" in bar_source
+    startup = bar_source.split("void BarDisplay::renderStartupLoading", 1)[1].split(
+        "void BarDisplay::renderLocal", 1
+    )[0]
+    assert "CRGB::Red : CRGB::Blue" in startup
+    assert "fill_solid(leds_, HP_BAR_NUM_LEDS, color);" in startup
+    assert "CRGB::Green" in bar_source.split("void BarDisplay::renderLocal", 1)[1]
     publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
         "static void updateAnalogDebugStats", 1
     )[0]
