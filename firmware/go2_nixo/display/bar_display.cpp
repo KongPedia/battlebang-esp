@@ -4,7 +4,7 @@ namespace go2 {
 
 namespace {
 
-constexpr uint32_t STARTUP_COLOR_MS = 400;
+constexpr uint32_t STARTUP_COLOR_MS = 2000;
 constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
 
 int groupsForFill(float fillRatio) {

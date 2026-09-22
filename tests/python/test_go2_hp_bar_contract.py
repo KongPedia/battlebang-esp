@@ -587,7 +587,7 @@ def test_go2_nixo_shows_one_short_red_blue_startup_then_local_hp() -> None:
     bar_source = (ROOT / "firmware/go2_nixo/display/bar_display.cpp").read_text()
     main = (ROOT / "firmware/go2_nixo/main.cpp").read_text()
 
-    assert "STARTUP_COLOR_MS = 400" in bar_source
+    assert "STARTUP_COLOR_MS = 2000" in bar_source
     assert "STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS" in bar_source
     assert "bool startupReady(uint32_t now) const;" in bar_header
     startup = bar_source.split("void BarDisplay::renderStartupLoading", 1)[1].split(
