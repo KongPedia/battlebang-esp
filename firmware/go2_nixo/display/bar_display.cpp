@@ -4,7 +4,8 @@ namespace go2 {
 
 namespace {
 
-constexpr uint32_t STARTUP_LOADING_MS = 3000;
+constexpr uint32_t STARTUP_COLOR_MS = 400;
+constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
 
 int groupsForFill(float fillRatio) {
   return constrain((int)(fillRatio * HP_BAR_GROUP_COUNT + 0.5f), 0, HP_BAR_GROUP_COUNT);
@@ -146,21 +147,8 @@ void BarDisplay::handleRemoteExpiry(uint32_t now) {
 }
 
 void BarDisplay::renderStartupLoading(uint32_t now) {
-  renderBlank();
-  for (int group = 0; group < HP_BAR_GROUP_COUNT; group++) {
-    setHpBarPixel(group, 0, CRGB::White);
-    setHpBarPixel(group, HP_BAR_LEDS_PER_GROUP - 1, CRGB::White);
-  }
-  for (int strip = 0; strip < HP_BAR_LEDS_PER_GROUP; strip++) {
-    setHpBarPixel(0, strip, CRGB::White);
-    setHpBarPixel(HP_BAR_GROUP_COUNT - 1, strip, CRGB::White);
-  }
-
-  const uint32_t elapsedMs = now - startupStartedMs_;
-  const int interiorGroups = HP_BAR_GROUP_COUNT - 2;
-  const int filledGroups = constrain(
-      (int)((elapsedMs * interiorGroups + STARTUP_LOADING_MS - 1) / STARTUP_LOADING_MS), 0, interiorGroups);
-  for (int group = 1; group <= filledGroups; group++) setHpBarPixel(group, 1, CRGB::Blue);
+  const CRGB color = now - startupStartedMs_ < STARTUP_COLOR_MS ? CRGB::Red : CRGB::Blue;
+  fill_solid(leds_, HP_BAR_NUM_LEDS, color);
   dirty_ = true;
 }
 
