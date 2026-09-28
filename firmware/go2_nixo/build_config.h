@@ -265,6 +265,12 @@
   BATTLEBANG_BUILD_PIEZO_AO_DEBUG_PERIOD_MS
 #endif
 
+#ifdef BATTLEBANG_BUILD_PIEZO_CHANNEL_ENABLE_MASK
+#undef BATTLEBANG_PIEZO_CHANNEL_ENABLE_MASK
+#define BATTLEBANG_PIEZO_CHANNEL_ENABLE_MASK                                  \
+  BATTLEBANG_BUILD_PIEZO_CHANNEL_ENABLE_MASK
+#endif
+
 #ifndef BATTLEBANG_ROBOT_ID
 #define BATTLEBANG_ROBOT_ID ""
 #endif
@@ -429,6 +435,12 @@
 #define BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS 1000
 #endif
 
+// bit 0=left, bit 1=right, bit 2=front.  Front remains wired in the firmware
+// contract but is disabled until the physical sensor is restored.
+#ifndef BATTLEBANG_PIEZO_CHANNEL_ENABLE_MASK
+#define BATTLEBANG_PIEZO_CHANNEL_ENABLE_MASK 0x03
+#endif
+
 namespace go2 {
 
 static constexpr const char *FIRMWARE_NAME = "go2_nixo";
@@ -473,6 +485,8 @@ static constexpr uint32_t PIEZO_AO_CAPTURE_WINDOW_MS =
     BATTLEBANG_PIEZO_AO_CAPTURE_WINDOW_MS;
 static constexpr uint32_t PIEZO_AO_DEBUG_PERIOD_MS =
     BATTLEBANG_PIEZO_AO_DEBUG_PERIOD_MS;
+static constexpr uint8_t PIEZO_CHANNEL_ENABLE_MASK =
+    BATTLEBANG_PIEZO_CHANNEL_ENABLE_MASK;
 static constexpr uint32_t ISR_DEBOUNCE_US = 20000;
 static constexpr uint32_t HIT_COOLDOWN_MS = BATTLEBANG_HIT_COOLDOWN_MS;
 static constexpr uint16_t MAX_HITS = BATTLEBANG_MAX_HITS;
@@ -515,6 +529,8 @@ static_assert(PIEZO_AO_CAPTURE_WINDOW_MS > 0,
               "piezo AO capture window must be positive");
 static_assert(PIEZO_AO_DEBUG_PERIOD_MS > 0,
               "piezo AO debug period must be positive");
+static_assert((PIEZO_CHANNEL_ENABLE_MASK & ~0x07U) == 0,
+              "piezo channel enable mask uses only left/right/front bits");
 static_assert(MAX_HITS >= 1 && MAX_HITS <= 1000,
               "max hits must be 1..1000");
 static_assert(HIT_FLASH_MS <= 60000UL,

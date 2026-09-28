@@ -152,11 +152,23 @@ struct PiezoSample {
   int right = -1;
   int front = -1;
   int targetId = 1;
-  const char* source = "piezo:left";
+  const char* source = "piezo:none";
+};
+
+enum PiezoChannelMask : uint8_t {
+  PIEZO_CHANNEL_LEFT = 0x01,
+  PIEZO_CHANNEL_RIGHT = 0x02,
+  PIEZO_CHANNEL_FRONT = 0x04,
+};
+
+struct PiezoChannelState {
+  bool qualified = false;
+  bool lowDwellActive = false;
+  uint32_t lowDwellStartedMs = 0;
 };
 
 struct AnalogPiezoState {
-  bool armed = true;
+  bool armed = false;
   bool captureActive = false;
   uint32_t captureStartedMs = 0;
   int capturePeakRaw = 0;
@@ -173,6 +185,9 @@ struct AnalogPiezoState {
   int maxRaw = 0;
   uint32_t sumRaw = 0;
   uint32_t sampleCount = 0;
+  PiezoChannelState left;
+  PiezoChannelState right;
+  PiezoChannelState front;
 };
 
 AnalogPiezoState analogPiezo;
@@ -181,8 +196,14 @@ static void onBarDisplayUpdate(const BarDisplayUpdate& update);
 static void publishDeviceStatusIfConnected(const char* reason);
 static bool publishHpResetEventIfConnected(const char* reason);
 
+static bool piezoChannelEnabled(uint8_t channel) {
+  return (runtimeConfig.hit.piezoChannelEnableMask & channel) != 0;
+}
+
 static bool piezoAoEnabled() {
-  return PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0 && PIEZO_FRONT_AO_PIN >= 0;
+  return (piezoChannelEnabled(PIEZO_CHANNEL_LEFT) && PIEZO_LEFT_AO_PIN >= 0) ||
+         (piezoChannelEnabled(PIEZO_CHANNEL_RIGHT) && PIEZO_RIGHT_AO_PIN >= 0) ||
+         (piezoChannelEnabled(PIEZO_CHANNEL_FRONT) && PIEZO_FRONT_AO_PIN >= 0);
 }
 
 static bool piezoDoDebugEnabled() {
@@ -192,21 +213,84 @@ static bool piezoDoDebugEnabled() {
 static PiezoSample readPiezoSample() {
   PiezoSample sample;
   if (!piezoAoEnabled()) return sample;
-  sample.left = analogRead(PIEZO_LEFT_AO_PIN);
-  sample.right = analogRead(PIEZO_RIGHT_AO_PIN);
-  sample.front = analogRead(PIEZO_FRONT_AO_PIN);
-  sample.raw = sample.left;
-  if (sample.right > sample.raw) {
+  if (piezoChannelEnabled(PIEZO_CHANNEL_LEFT) && PIEZO_LEFT_AO_PIN >= 0) {
+    sample.left = analogRead(PIEZO_LEFT_AO_PIN);
+  }
+  if (piezoChannelEnabled(PIEZO_CHANNEL_RIGHT) && PIEZO_RIGHT_AO_PIN >= 0) {
+    sample.right = analogRead(PIEZO_RIGHT_AO_PIN);
+  }
+  if (piezoChannelEnabled(PIEZO_CHANNEL_FRONT) && PIEZO_FRONT_AO_PIN >= 0) {
+    sample.front = analogRead(PIEZO_FRONT_AO_PIN);
+  }
+  return sample;
+}
+
+static void selectQualifiedPiezoPeak(PiezoSample& sample) {
+  sample.raw = -1;
+  sample.source = "piezo:none";
+  if (analogPiezo.left.qualified && sample.left >= 0) {
+    sample.raw = sample.left;
+    sample.targetId = 1;
+    sample.source = "piezo:left";
+  }
+  if (analogPiezo.right.qualified && sample.right > sample.raw) {
     sample.raw = sample.right;
     sample.targetId = 2;
     sample.source = "piezo:right";
   }
-  if (sample.front > sample.raw) {
+  if (analogPiezo.front.qualified && sample.front > sample.raw) {
     sample.raw = sample.front;
     sample.targetId = 3;
     sample.source = "piezo:front";
   }
-  return sample;
+}
+
+static void qualifyPiezoChannel(PiezoChannelState& state,
+                                bool enabled,
+                                int raw,
+                                uint32_t now,
+                                const char* name) {
+  if (!enabled || raw < 0) {
+    state = PiezoChannelState{};
+    return;
+  }
+  if (state.qualified) return;
+  if (raw > runtimeConfig.hit.piezoAoRearmRaw) {
+    state.lowDwellActive = false;
+    state.lowDwellStartedMs = 0;
+    return;
+  }
+  if (!state.lowDwellActive) {
+    state.lowDwellActive = true;
+    state.lowDwellStartedMs = now;
+    return;
+  }
+  if (now - state.lowDwellStartedMs < runtimeConfig.hit.piezoAoRearmStableMs) return;
+  state.qualified = true;
+  state.lowDwellActive = false;
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] channel qualified name=%s raw=%d quiet_ms=%lu\n",
+                         name,
+                         raw,
+                         (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
+}
+
+static void qualifyPiezoChannels(PiezoSample& sample, uint32_t now) {
+  qualifyPiezoChannel(analogPiezo.left,
+                      piezoChannelEnabled(PIEZO_CHANNEL_LEFT),
+                      sample.left,
+                      now,
+                      "left");
+  qualifyPiezoChannel(analogPiezo.right,
+                      piezoChannelEnabled(PIEZO_CHANNEL_RIGHT),
+                      sample.right,
+                      now,
+                      "right");
+  qualifyPiezoChannel(analogPiezo.front,
+                      piezoChannelEnabled(PIEZO_CHANNEL_FRONT),
+                      sample.front,
+                      now,
+                      "front");
+  selectQualifiedPiezoPeak(sample);
 }
 
 static int readPiezoDoLevel() {
@@ -216,10 +300,10 @@ static int readPiezoDoLevel() {
 
 static void resetAnalogStats(const PiezoSample& sample) {
   int raw = sample.raw < 0 ? 0 : sample.raw;
-  analogPiezo.lastRaw = raw;
-  analogPiezo.lastLeftRaw = sample.left < 0 ? 0 : sample.left;
-  analogPiezo.lastRightRaw = sample.right < 0 ? 0 : sample.right;
-  analogPiezo.lastFrontRaw = sample.front < 0 ? 0 : sample.front;
+  analogPiezo.lastRaw = sample.raw;
+  analogPiezo.lastLeftRaw = sample.left;
+  analogPiezo.lastRightRaw = sample.right;
+  analogPiezo.lastFrontRaw = sample.front;
   analogPiezo.minRaw = raw;
   analogPiezo.maxRaw = raw;
   analogPiezo.sumRaw = 0;
@@ -227,14 +311,19 @@ static void resetAnalogStats(const PiezoSample& sample) {
 }
 
 static void resetAnalogPiezoState() {
-  analogPiezo.armed = true;
+  analogPiezo.armed = false;
   analogPiezo.captureActive = false;
   analogPiezo.captureStartedMs = 0;
   analogPiezo.capturePeakRaw = 0;
   analogPiezo.captureTargetId = 1;
   analogPiezo.lastCandidateMs = 0;
   analogPiezo.quietStartedMs = 0;
-  resetAnalogStats(readPiezoSample());
+  analogPiezo.left = PiezoChannelState{};
+  analogPiezo.right = PiezoChannelState{};
+  analogPiezo.front = PiezoChannelState{};
+  PiezoSample sample = readPiezoSample();
+  selectQualifiedPiezoPeak(sample);
+  resetAnalogStats(sample);
 }
 
 static void resetLocalHitState() {
@@ -306,18 +395,30 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
 
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
-    BB_DEBUG_SERIAL.println("[PIEZO AO] disabled: left/right/front piezo AO pins must be >= 0");
+    BB_DEBUG_SERIAL.println("[PIEZO AO] disabled: no enabled channel has a valid pin");
     return;
   }
 
-  pinMode(PIEZO_LEFT_AO_PIN, INPUT);
-  pinMode(PIEZO_RIGHT_AO_PIN, INPUT);
-  pinMode(PIEZO_FRONT_AO_PIN, INPUT);
+  if (piezoChannelEnabled(PIEZO_CHANNEL_LEFT) && PIEZO_LEFT_AO_PIN >= 0) {
+    pinMode(PIEZO_LEFT_AO_PIN, INPUT);
+  }
+  if (piezoChannelEnabled(PIEZO_CHANNEL_RIGHT) && PIEZO_RIGHT_AO_PIN >= 0) {
+    pinMode(PIEZO_RIGHT_AO_PIN, INPUT);
+  }
+  if (piezoChannelEnabled(PIEZO_CHANNEL_FRONT) && PIEZO_FRONT_AO_PIN >= 0) {
+    pinMode(PIEZO_FRONT_AO_PIN, INPUT);
+  }
   analogReadResolution(12);
 #if defined(ADC_11db)
-  analogSetPinAttenuation(PIEZO_LEFT_AO_PIN, ADC_11db);
-  analogSetPinAttenuation(PIEZO_RIGHT_AO_PIN, ADC_11db);
-  analogSetPinAttenuation(PIEZO_FRONT_AO_PIN, ADC_11db);
+  if (piezoChannelEnabled(PIEZO_CHANNEL_LEFT) && PIEZO_LEFT_AO_PIN >= 0) {
+    analogSetPinAttenuation(PIEZO_LEFT_AO_PIN, ADC_11db);
+  }
+  if (piezoChannelEnabled(PIEZO_CHANNEL_RIGHT) && PIEZO_RIGHT_AO_PIN >= 0) {
+    analogSetPinAttenuation(PIEZO_RIGHT_AO_PIN, ADC_11db);
+  }
+  if (piezoChannelEnabled(PIEZO_CHANNEL_FRONT) && PIEZO_FRONT_AO_PIN >= 0) {
+    analogSetPinAttenuation(PIEZO_FRONT_AO_PIN, ADC_11db);
+  }
 #endif
 
   if (piezoDoDebugEnabled()) {
@@ -325,7 +426,8 @@ static void beginAnalogPiezo() {
   }
 
   resetAnalogPiezoState();
-  BB_DEBUG_SERIAL.printf("[PIEZO AO] 3ch ADC threshold mode left=%d right=%d front=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] ADC threshold mode mask=%u left=%d right=%d front=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
+                runtimeConfig.hit.piezoChannelEnableMask,
                 PIEZO_LEFT_AO_PIN,
                 PIEZO_RIGHT_AO_PIN,
                 PIEZO_FRONT_AO_PIN,
@@ -449,10 +551,10 @@ static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint
 
 static void updateAnalogDebugStats(const PiezoSample& sample) {
   const int raw = sample.raw < 0 ? 0 : sample.raw;
-  analogPiezo.lastRaw = raw;
-  analogPiezo.lastLeftRaw = sample.left < 0 ? 0 : sample.left;
-  analogPiezo.lastRightRaw = sample.right < 0 ? 0 : sample.right;
-  analogPiezo.lastFrontRaw = sample.front < 0 ? 0 : sample.front;
+  analogPiezo.lastRaw = sample.raw;
+  analogPiezo.lastLeftRaw = sample.left;
+  analogPiezo.lastRightRaw = sample.right;
+  analogPiezo.lastFrontRaw = sample.front;
   analogPiezo.minRaw = min(analogPiezo.minRaw, raw);
   analogPiezo.maxRaw = max(analogPiezo.maxRaw, raw);
   analogPiezo.sumRaw += (uint32_t)raw;
@@ -464,12 +566,16 @@ static void printAnalogDebugTick(uint32_t now) {
   analogPiezo.lastDebugMs = now;
 
   uint32_t avg = analogPiezo.sampleCount > 0 ? analogPiezo.sumRaw / analogPiezo.sampleCount : (uint32_t)analogPiezo.lastRaw;
-  BB_DEBUG_SERIAL.printf("[PIEZO AO] ms=%lu raw=%d left=%d right=%d front=%d min=%d max=%d avg=%lu threshold=%d rearm=%d armed=%s capturing=%s do_pin=%d do=%d mqtt=%s queue=%u\n",
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] ms=%lu raw=%d left=%d right=%d front=%d enabled=%u qualified=%u/%u/%u min=%d max=%d avg=%lu threshold=%d rearm=%d armed=%s capturing=%s do_pin=%d do=%d mqtt=%s queue=%u\n",
                 (unsigned long)now,
                 analogPiezo.lastRaw,
                 analogPiezo.lastLeftRaw,
                 analogPiezo.lastRightRaw,
                 analogPiezo.lastFrontRaw,
+                runtimeConfig.hit.piezoChannelEnableMask,
+                analogPiezo.left.qualified ? 1U : 0U,
+                analogPiezo.right.qualified ? 1U : 0U,
+                analogPiezo.front.qualified ? 1U : 0U,
                 analogPiezo.minRaw,
                 analogPiezo.maxRaw,
                 (unsigned long)avg,
@@ -494,6 +600,7 @@ static void rearmAnalogPiezoWhenQuiet(uint32_t now, int raw) {
   if (analogPiezo.armed) return;
   if (analogPiezo.captureActive) return;
   if (now - analogPiezo.lastCandidateMs < runtimeConfig.hit.hitCooldownMs) return;
+  if (raw < 0) return;
 
   if (raw > runtimeConfig.hit.piezoAoRearmRaw) {
     analogPiezo.quietStartedMs = 0;
@@ -517,7 +624,8 @@ static void rearmAnalogPiezoWhenQuiet(uint32_t now, int raw) {
 static void pollAnalogPiezo(uint32_t now) {
   if (!piezoAoEnabled()) return;
 
-  const PiezoSample sample = readPiezoSample();
+  PiezoSample sample = readPiezoSample();
+  qualifyPiezoChannels(sample, now);
   const int raw = sample.raw;
   updateAnalogDebugStats(sample);
 
@@ -784,6 +892,17 @@ static void replyToSource(const char* source, const String& line) {
   if (String(source) == "bt" && SerialBT.hasClient()) SerialBT.println(line);
 }
 
+static bool parsePositiveInt(const String& text, int& value) {
+  if (text.length() == 0) return false;
+  for (size_t i = 0; i < text.length(); ++i) {
+    if (!isDigit(text[i])) return false;
+  }
+  const long parsed = text.toInt();
+  if (parsed <= 0 || parsed > 32767) return false;
+  value = static_cast<int>(parsed);
+  return true;
+}
+
 static void addHitTuningStatus(JsonObject doc) {
   doc["hit_cooldown_ms"] = runtimeConfig.hit.hitCooldownMs;
   doc["offline_queue_capacity"] = runtimeConfig.hit.offlineQueueCapacity;
@@ -799,6 +918,23 @@ static void addHitTuningStatus(JsonObject doc) {
   doc["piezo_ao_capture_window_ms"] = runtimeConfig.hit.piezoAoCaptureWindowMs;
   doc["piezo_ao_debug_period_ms"] = runtimeConfig.hit.piezoAoDebugPeriodMs;
   doc["piezo_ao_rearm_stable_ms"] = runtimeConfig.hit.piezoAoRearmStableMs;
+  doc["piezo_channel_enable_mask"] = runtimeConfig.hit.piezoChannelEnableMask;
+  JsonObject channels = doc.createNestedObject("piezo_channels");
+  JsonObject left = channels.createNestedObject("left");
+  left["pin"] = PIEZO_LEFT_AO_PIN;
+  left["enabled"] = piezoChannelEnabled(PIEZO_CHANNEL_LEFT);
+  left["qualified"] = analogPiezo.left.qualified;
+  left["raw"] = analogPiezo.lastLeftRaw;
+  JsonObject right = channels.createNestedObject("right");
+  right["pin"] = PIEZO_RIGHT_AO_PIN;
+  right["enabled"] = piezoChannelEnabled(PIEZO_CHANNEL_RIGHT);
+  right["qualified"] = analogPiezo.right.qualified;
+  right["raw"] = analogPiezo.lastRightRaw;
+  JsonObject front = channels.createNestedObject("front");
+  front["pin"] = PIEZO_FRONT_AO_PIN;
+  front["enabled"] = piezoChannelEnabled(PIEZO_CHANNEL_FRONT);
+  front["qualified"] = analogPiezo.front.qualified;
+  front["raw"] = analogPiezo.lastFrontRaw;
   doc["max_hits"] = runtimeConfig.hit.maxHits;
   doc["hit_flash_ms"] = runtimeConfig.hit.hitFlashMs;
 }
@@ -874,7 +1010,7 @@ static void addNixoTuningStatus(JsonObject doc) {
 }
 
 static void printStatusJson(const char* source, const char* reason) {
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(5120);
   doc["event"] = "status";
   doc["reason"] = reason;
   doc["firmware"] = FIRMWARE_NAME;
@@ -1419,7 +1555,7 @@ static bool publishHpResetEventIfConnected(const char* reason) {
 
 static void publishDeviceStatusIfConnected(const char* reason) {
   if (!hitMqtt.connected()) return;
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(5120);
   doc["type"] = "status";
   doc["reason"] = reason;
   doc["firmware_app"] = BB_GO2_NIXO_APP_NAME;
@@ -1477,7 +1613,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   barDisplay.setBrightness(runtimeConfig.hit.ledBrightness);
   ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
   syncLocalHitStateWithRuntimeConfig();
-  resetAnalogPiezoState();
+  beginAnalogPiezo();
   BB_DEBUG_SERIAL.printf("[CONFIG] runtime config reapplied reason=%s configured=%s robot_id=%s nixo_id=%s broker=%s:%u event_topic=%s nixo_topic=%s\n",
                 reason,
                 runtimeConfig.common.configured ? "true" : "false",
@@ -1615,6 +1751,33 @@ static void handleCommandLine(String line, const char* source) {
   }
   if (lower == "show-config") {
     replyToSource(source, runtimeConfigToJson(runtimeConfig, false));
+    return;
+  }
+  if (lower == "led-test off" || lower.startsWith("led-test pixel ") ||
+      lower.startsWith("led-test ")) {
+    if (lower == "led-test off") {
+      barDisplay.clearDiagnostic();
+      replyToSource(source, "{\"event\":\"led_test\",\"active\":false}");
+      return;
+    }
+    const bool pixelMode = lower.startsWith("led-test pixel ");
+    String valueText = lower.substring(pixelMode ? 15 : 9);
+    valueText.trim();
+    int value = 0;
+    const bool parsed = parsePositiveInt(valueText, value);
+    const bool accepted = parsed &&
+        (pixelMode ? barDisplay.setDiagnosticPixel(value, millis())
+                   : barDisplay.setDiagnosticGroup(value, millis()));
+    if (!accepted) {
+      replyToSource(source,
+                    pixelMode
+                        ? "{\"event\":\"led_test_rejected\",\"error\":\"pixel must be 1..84\"}"
+                        : "{\"event\":\"led_test_rejected\",\"error\":\"group must be 1..28\"}");
+      return;
+    }
+    replyToSource(source,
+                  String("{\"event\":\"led_test\",\"active\":true,\"mode\":\"") +
+                      (pixelMode ? "pixel" : "group") + "\",\"index\":" + String(value) + "}");
     return;
   }
   if (lower == "check-ota") {
@@ -1846,7 +2009,7 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
   BB_DEBUG_SERIAL.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
                 CMD_RESET_HIT_DISPLAY);
-  BB_DEBUG_SERIAL.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  BB_DEBUG_SERIAL.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, led-test <1..28>, led-test pixel <1..84>, led-test off, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   BB_DEBUG_SERIAL.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
   BB_DEBUG_SERIAL.print("release_repo=");
   BB_DEBUG_SERIAL.println(BB_GO2_NIXO_RELEASE_REPO);

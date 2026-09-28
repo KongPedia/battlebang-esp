@@ -19,6 +19,11 @@ class BarDisplay {
   void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
   void clearRemoteDisplay();
   bool remoteDisplayActive() const;
+  // Bench-only wiring check: one logical 3-LED HP column or one raw LED.
+  // Automatically returns to the HP display after 10 seconds.
+  bool setDiagnosticGroup(int group1Based, uint32_t now);
+  bool setDiagnosticPixel(int pixel1Based, uint32_t now);
+  void clearDiagnostic();
 
  private:
   CRGB leds_[HP_BAR_NUM_LEDS] = {};
@@ -40,6 +45,9 @@ class BarDisplay {
   float remoteFillRatio_ = 1.0f;
   String remoteMode_ = "idle";
   uint32_t remoteExpiresMs_ = 0;
+  int diagnosticGroup_ = 0;
+  int diagnosticPixel_ = 0;
+  uint32_t diagnosticExpiresMs_ = 0;
 
   float localFillRatio() const;
   bool remoteExpired(uint32_t now) const;

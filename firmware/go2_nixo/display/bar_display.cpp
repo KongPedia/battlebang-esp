@@ -6,6 +6,7 @@ namespace {
 
 constexpr uint32_t STARTUP_COLOR_MS = 2000;
 constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
+constexpr uint32_t DIAGNOSTIC_TTL_MS = 10000;
 
 int groupsForFill(float fillRatio) {
   return constrain((int)(fillRatio * HP_BAR_GROUP_COUNT + 0.5f), 0, HP_BAR_GROUP_COUNT);
@@ -32,14 +33,30 @@ void BarDisplay::tick(uint32_t now) {
   handleLocalFlashExpiry(now);
   handleRemoteExpiry(now);
 
-  if (startupLoading_ && !startupReady(now)) {
+  // A bench wiring check must never hide a dead/zero-HP indication.
+  if ((diagnosticGroup_ > 0 || diagnosticPixel_ > 0) &&
+      (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down")))) {
+    clearDiagnostic();
+  }
+
+  if ((diagnosticGroup_ > 0 || diagnosticPixel_ > 0) && (int32_t)(now - diagnosticExpiresMs_) >= 0) {
+    clearDiagnostic();
+  }
+
+  if (diagnosticGroup_ > 0 || diagnosticPixel_ > 0) {
+    renderBlank();
+    if (diagnosticGroup_ > 0) setHpBarGroup(diagnosticGroup_, CRGB::White);
+    else leds_[diagnosticPixel_ - 1] = CRGB::White;
+  } else if (startupLoading_ && !startupReady(now)) {
     renderStartupLoading(now);
   } else {
     if (startupLoading_) {
       startupLoading_ = false;
       dirty_ = true;
     }
-    if (remoteActive_) {
+    if (localDown_) {
+      renderLocal(now);
+    } else if (remoteActive_) {
       renderRemote(now);
     } else {
       renderLocal(now);
@@ -68,12 +85,14 @@ void BarDisplay::setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool do
   localMaxHits_ = maxHits;
   localHpRemaining_ = hpRemaining > maxHits ? maxHits : hpRemaining;
   localDown_ = down || localHpRemaining_ == 0;
+  if (localDown_ && (diagnosticGroup_ > 0 || diagnosticPixel_ > 0)) clearDiagnostic();
   localMode_ = hitFlashMs > 0 && !localDown_ ? String("hit_flash") : String("active");
   localFlashExpiresMs_ = hitFlashMs > 0 && !localDown_ ? now + hitFlashMs : 0;
   dirty_ = true;
 }
 
 void BarDisplay::resetLocalHpState(uint16_t maxHits) {
+  clearDiagnostic();
   if (maxHits < 1) maxHits = 1;
   localMaxHits_ = maxHits;
   localHpRemaining_ = maxHits;
@@ -87,6 +106,7 @@ void BarDisplay::resetLocalHpState(uint16_t maxHits) {
 void BarDisplay::setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now) {
   remoteActive_ = true;
   remoteDown_ = down;
+  if ((remoteDown_ || mode == "down") && (diagnosticGroup_ > 0 || diagnosticPixel_ > 0)) clearDiagnostic();
   remoteFillRatio_ = constrain(fillRatio, 0.0f, 1.0f);
   remoteMode_ = mode.length() > 0 ? mode : String("idle");
   if (ttlMs < 1) ttlMs = 1;
@@ -106,6 +126,33 @@ void BarDisplay::clearRemoteDisplay() {
 
 bool BarDisplay::remoteDisplayActive() const {
   return remoteActive_;
+}
+
+bool BarDisplay::setDiagnosticGroup(int group1Based, uint32_t now) {
+  if (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down"))) return false;
+  if (group1Based < 1 || group1Based > HP_BAR_GROUP_COUNT) return false;
+  diagnosticGroup_ = group1Based;
+  diagnosticPixel_ = 0;
+  diagnosticExpiresMs_ = now + DIAGNOSTIC_TTL_MS;
+  dirty_ = true;
+  return true;
+}
+
+bool BarDisplay::setDiagnosticPixel(int pixel1Based, uint32_t now) {
+  if (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down"))) return false;
+  if (pixel1Based < 1 || pixel1Based > HP_BAR_NUM_LEDS) return false;
+  diagnosticPixel_ = pixel1Based;
+  diagnosticGroup_ = 0;
+  diagnosticExpiresMs_ = now + DIAGNOSTIC_TTL_MS;
+  dirty_ = true;
+  return true;
+}
+
+void BarDisplay::clearDiagnostic() {
+  diagnosticGroup_ = 0;
+  diagnosticPixel_ = 0;
+  diagnosticExpiresMs_ = 0;
+  dirty_ = true;
 }
 
 float BarDisplay::localFillRatio() const {
