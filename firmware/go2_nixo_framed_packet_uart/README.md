@@ -35,7 +35,11 @@ apply to this **framed** firmware, not the legacy single-character firmware.
 `piezo_channel_enable_mask` is NVS-backed: left=1, right=2, front=4. The
 default is `3` (left and right; front remains implemented but is not required).
 When only the right sensor is physically connected, set the mask to `2` via a
-`config {"hit":{"piezo_channel_enable_mask":2}}` Bluetooth SPP line command.
+Bluetooth SPP line command such as
+`config {"config_version":<current version + 1>,"hit":{"piezo_channel_enable_mask":2}}`.
+Read the current version with `show-config` first; the config command rejects
+missing or decreasing versions. The same line commands work over USB debug
+serial on UART2 builds.
 Set it back to `3` only after both sensors are connected; use `7` if the front
 sensor is restored. `status` reports each channel's enabled/qualified/raw
 state. A channel must see a quiet interval before it can produce hits.
