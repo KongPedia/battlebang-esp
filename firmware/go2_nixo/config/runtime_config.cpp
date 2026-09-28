@@ -66,6 +66,9 @@ void readHitTuningJson(JsonObjectConst object, HitRuntimeConfig& hit) {
   readUInt16ConfigField(object, "piezo_channel_enable_mask", channelEnableMask);
   hit.piezoChannelEnableMask = static_cast<uint8_t>(
       channelEnableMask > 0xffU ? 0xffU : channelEnableMask);
+  uint16_t barGroupCount = hit.hpBarGroupCount;
+  readUInt16ConfigField(object, "hp_bar_group_count", barGroupCount);
+  hit.hpBarGroupCount = static_cast<uint8_t>(barGroupCount > 0xffU ? 0xffU : barGroupCount);
   readUInt16ConfigField(object, "max_hits", hit.maxHits);
   readUInt16ConfigField(object, "hits_to_down", hit.maxHits);
   battlebang::esp::config::readUInt32Field(object, "hit_flash_ms", hit.hitFlashMs);
@@ -170,6 +173,10 @@ bool validateHitRuntimeConfig(const HitRuntimeConfig& hit, String& error) {
   }
   if ((hit.piezoChannelEnableMask & ~0x07U) != 0) {
     error = "piezo_channel_enable_mask must use only bits 0..2";
+    return false;
+  }
+  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+    error = "hp_bar_group_count must be 1..28";
     return false;
   }
   if (hit.maxHits == 0 || hit.maxHits > 1000) {
@@ -291,6 +298,10 @@ void loadHitRuntimeConfigFromNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   if ((hit.piezoChannelEnableMask & ~0x07U) != 0) {
     hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
   }
+  hit.hpBarGroupCount = prefs.preferences().getUChar("bar_groups", hit.hpBarGroupCount);
+  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+    hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
+  }
   hit.maxHits = prefs.preferences().getUInt("max_hits", hit.maxHits);
   hit.hitFlashMs = prefs.preferences().getUInt("hit_flash", hit.hitFlashMs);
 }
@@ -324,6 +335,7 @@ bool saveHitRuntimeConfigToNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   ok &= prefs.preferences().putUInt("piezo_dbg_ms", hit.piezoAoDebugPeriodMs) > 0;
   ok &= prefs.preferences().putUInt("piezo_arm_ms", hit.piezoAoRearmStableMs) > 0;
   ok &= prefs.preferences().putUChar("piezo_mask", hit.piezoChannelEnableMask) > 0;
+  ok &= prefs.preferences().putUChar("bar_groups", hit.hpBarGroupCount) > 0;
   ok &= prefs.preferences().putUInt("max_hits", hit.maxHits) > 0;
   ok &= prefs.preferences().putUInt("hit_flash", hit.hitFlashMs) > 0;
   return ok;
@@ -357,6 +369,7 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   root["piezo_ao_debug_period_ms"] = hit.piezoAoDebugPeriodMs;
   root["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
   root["piezo_channel_enable_mask"] = hit.piezoChannelEnableMask;
+  root["hp_bar_group_count"] = hit.hpBarGroupCount;
   root["max_hits"] = hit.maxHits;
   root["hit_flash_ms"] = hit.hitFlashMs;
 
@@ -374,6 +387,7 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   hitObject["piezo_ao_debug_period_ms"] = hit.piezoAoDebugPeriodMs;
   hitObject["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
   hitObject["piezo_channel_enable_mask"] = hit.piezoChannelEnableMask;
+  hitObject["hp_bar_group_count"] = hit.hpBarGroupCount;
   hitObject["max_hits"] = hit.maxHits;
   hitObject["hits_to_down"] = hit.maxHits;
   hitObject["hit_flash_ms"] = hit.hitFlashMs;
@@ -433,6 +447,7 @@ RuntimeConfig runtimeConfigFromBuild() {
   config.hit.piezoAoDebugPeriodMs = PIEZO_AO_DEBUG_PERIOD_MS;
   config.hit.piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
   config.hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
+  config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
   config.hit.maxHits = MAX_HITS;
   config.hit.hitFlashMs = HIT_FLASH_MS;
   config.nixo.nixoId = NIXO_ID_VALUE;

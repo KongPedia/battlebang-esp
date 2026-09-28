@@ -919,6 +919,7 @@ static void addHitTuningStatus(JsonObject doc) {
   doc["piezo_ao_debug_period_ms"] = runtimeConfig.hit.piezoAoDebugPeriodMs;
   doc["piezo_ao_rearm_stable_ms"] = runtimeConfig.hit.piezoAoRearmStableMs;
   doc["piezo_channel_enable_mask"] = runtimeConfig.hit.piezoChannelEnableMask;
+  doc["hp_bar_group_count"] = runtimeConfig.hit.hpBarGroupCount;
   JsonObject channels = doc.createNestedObject("piezo_channels");
   JsonObject left = channels.createNestedObject("left");
   left["pin"] = PIEZO_LEFT_AO_PIN;
@@ -1611,6 +1612,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
   nixoFire.begin(runtimeConfig);
   barDisplay.setBrightness(runtimeConfig.hit.ledBrightness);
+  barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
   ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
   syncLocalHitStateWithRuntimeConfig();
   beginAnalogPiezo();
@@ -1772,7 +1774,8 @@ static void handleCommandLine(String line, const char* source) {
       replyToSource(source,
                     pixelMode
                         ? "{\"event\":\"led_test_rejected\",\"error\":\"pixel must be 1..84\"}"
-                        : "{\"event\":\"led_test_rejected\",\"error\":\"group must be 1..28\"}");
+                        : String("{\"event\":\"led_test_rejected\",\"error\":\"group must be 1..") +
+                              String(runtimeConfig.hit.hpBarGroupCount) + "\"}");
       return;
     }
     replyToSource(source,
@@ -1975,6 +1978,7 @@ void setup() {
   postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
   runtimeConfig = runtimeConfigFromNvsOrBuild();
 
+  barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
   barDisplay.begin(runtimeConfig.hit.ledBrightness);
   ringDisplay.begin(runtimeConfig.hit.ringBrightness);
   beginAnalogPiezo();
@@ -2009,7 +2013,7 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
   BB_DEBUG_SERIAL.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
                 CMD_RESET_HIT_DISPLAY);
-  BB_DEBUG_SERIAL.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, led-test <1..28>, led-test pixel <1..84>, led-test off, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  BB_DEBUG_SERIAL.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, led-test <1..hp_bar_group_count>, led-test pixel <1..84>, led-test off, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
   BB_DEBUG_SERIAL.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
   BB_DEBUG_SERIAL.print("release_repo=");
   BB_DEBUG_SERIAL.println(BB_GO2_NIXO_RELEASE_REPO);

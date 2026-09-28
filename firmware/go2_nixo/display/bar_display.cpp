@@ -8,8 +8,8 @@ constexpr uint32_t STARTUP_COLOR_MS = 2000;
 constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
 constexpr uint32_t DIAGNOSTIC_TTL_MS = 10000;
 
-int groupsForFill(float fillRatio) {
-  return constrain((int)(fillRatio * HP_BAR_GROUP_COUNT + 0.5f), 0, HP_BAR_GROUP_COUNT);
+int groupsForFill(float fillRatio, int groupCount) {
+  return constrain((int)(fillRatio * groupCount + 0.5f), 0, groupCount);
 }
 
 }  // namespace
@@ -79,6 +79,13 @@ void BarDisplay::setBrightness(uint16_t brightness) {
   dirty_ = true;
 }
 
+void BarDisplay::setGroupCount(uint8_t count) {
+  if (count < 1 || count > HP_BAR_GROUP_COUNT) return;
+  groupCount_ = count;
+  clearDiagnostic();
+  dirty_ = true;
+}
+
 void BarDisplay::setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now) {
   if (maxHits < 1) maxHits = 1;
   if (hitFlashMs > 0x7ffffffful) hitFlashMs = 0x7ffffffful;
@@ -130,7 +137,7 @@ bool BarDisplay::remoteDisplayActive() const {
 
 bool BarDisplay::setDiagnosticGroup(int group1Based, uint32_t now) {
   if (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down"))) return false;
-  if (group1Based < 1 || group1Based > HP_BAR_GROUP_COUNT) return false;
+  if (group1Based < 1 || group1Based > groupCount_) return false;
   diagnosticGroup_ = group1Based;
   diagnosticPixel_ = 0;
   diagnosticExpiresMs_ = now + DIAGNOSTIC_TTL_MS;
@@ -213,10 +220,10 @@ void BarDisplay::renderLocal(uint32_t now) {
   const float fillRatio = localFillRatio();
   renderHpBar(fillRatio, fillRatio <= 0.30f ? CRGB::Yellow : CRGB::Green, CRGB::Black);
   if (localMode_ == "hit_flash") {
-    const int healthyGroups = groupsForFill(fillRatio);
+    const int healthyGroups = groupsForFill(fillRatio, groupCount_);
     const float previousFillRatio = constrain(
         static_cast<float>(localHpRemaining_ + 1) / static_cast<float>(localMaxHits_), 0.0f, 1.0f);
-    const int previousHealthyGroups = groupsForFill(previousFillRatio);
+    const int previousHealthyGroups = groupsForFill(previousFillRatio, groupCount_);
     for (int group = healthyGroups + 1; group <= previousHealthyGroups; group++) {
       setHpBarGroup(group, CRGB::Red);
     }
@@ -255,23 +262,21 @@ void BarDisplay::renderBlank() {
 }
 
 void BarDisplay::renderHpBar(float fillRatio, const CRGB& healthyColor, const CRGB& damagedColor) {
-  int healthyGroups = groupsForFill(fillRatio);
-  for (int group = 1; group <= HP_BAR_GROUP_COUNT; group++) {
+  for (int i = 3 * groupCount_; i < HP_BAR_NUM_LEDS; ++i) leds_[i] = CRGB::Black;
+  int healthyGroups = groupsForFill(fillRatio, groupCount_);
+  for (int group = 1; group <= groupCount_; group++) {
     setHpBarGroup(group, group <= healthyGroups ? healthyColor : damagedColor);
   }
 }
 
 void BarDisplay::setHpBarGroup(int group1Based, const CRGB& color) {
-  if (group1Based < 1 || group1Based > HP_BAR_GROUP_COUNT) return;
+  if (group1Based < 1 || group1Based > groupCount_) return;
 
-  // 84-LED bar layout from the Go2 HP harness reference sketch:
-  // group 1  -> LEDs 1, 56, 57
-  // group 2  -> LEDs 2, 55, 58
-  // ...
-  // group 28 -> LEDs 28, 29, 84
+  // Serpentine rows: 28-column default -> 1/56/57, 28/29/84.
+  // go2_06 observed 27-column wiring -> 1/54/55, 27/28/81.
   int row1Index = group1Based - 1;
-  int row2Index = 2 * HP_BAR_GROUP_COUNT - group1Based;
-  int row3Index = 2 * HP_BAR_GROUP_COUNT - 1 + group1Based;
+  int row2Index = 2 * groupCount_ - group1Based;
+  int row3Index = 2 * groupCount_ - 1 + group1Based;
 
   leds_[row1Index] = color;
   leds_[row2Index] = color;
@@ -279,15 +284,15 @@ void BarDisplay::setHpBarGroup(int group1Based, const CRGB& color) {
 }
 
 void BarDisplay::setHpBarPixel(int group, int strip, const CRGB& color) {
-  if (group < 0 || group >= HP_BAR_GROUP_COUNT || strip < 0 || strip >= HP_BAR_LEDS_PER_GROUP) return;
-  group = HP_BAR_GROUP_COUNT - 1 - group;
+  if (group < 0 || group >= groupCount_ || strip < 0 || strip >= HP_BAR_LEDS_PER_GROUP) return;
+  group = groupCount_ - 1 - group;
   strip = HP_BAR_LEDS_PER_GROUP - 1 - strip;
   if (strip == 0) {
     leds_[group] = color;
   } else if (strip == 1) {
-    leds_[2 * HP_BAR_GROUP_COUNT - 1 - group] = color;
+    leds_[2 * groupCount_ - 1 - group] = color;
   } else {
-    leds_[2 * HP_BAR_GROUP_COUNT + group] = color;
+    leds_[2 * groupCount_ + group] = color;
   }
 }
 

@@ -134,10 +134,15 @@ def test_hp_bar_renderer_uses_bar_led_layout() -> None:
         assert "i < HP_BAR_NUM_LEDS" in source, firmware
         assert "i < NUM_LEDS" not in source, firmware
         assert "setHpBarGroup" in source, firmware
-        assert "group 1  -> LEDs 1, 56, 57" in source, firmware
-        assert "group 28 -> LEDs 28, 29, 84" in source, firmware
-        assert "row2Index = 2 * HP_BAR_GROUP_COUNT - group1Based" in source, firmware
-        assert "row3Index = 2 * HP_BAR_GROUP_COUNT - 1 + group1Based" in source, firmware
+        if firmware == "go2_nixo":
+            assert "go2_06 observed 27-column wiring -> 1/54/55, 27/28/81" in source
+            assert "row2Index = 2 * groupCount_ - group1Based" in source
+            assert "row3Index = 2 * groupCount_ - 1 + group1Based" in source
+        else:
+            assert "group 1  -> LEDs 1, 56, 57" in source
+            assert "group 28 -> LEDs 28, 29, 84" in source
+            assert "row2Index = 2 * HP_BAR_GROUP_COUNT - group1Based" in source
+            assert "row3Index = 2 * HP_BAR_GROUP_COUNT - 1 + group1Based" in source
 
 
 def test_fire_ring_renderer_uses_original_ring_pin_only_in_go2_nixo() -> None:
@@ -575,7 +580,7 @@ def test_go2_nixo_bar_renders_remaining_hp_and_recent_damage() -> None:
     assert "setFiring" not in bar_header
     assert "barDisplay.setFiring" not in main
     assert "setHpBarPixel" in bar_header
-    assert "group = HP_BAR_GROUP_COUNT - 1 - group;" in bar_source
+    assert "group = groupCount_ - 1 - group;" in bar_source
     assert "strip = HP_BAR_LEDS_PER_GROUP - 1 - strip;" in bar_source
     assert "localHpRemaining_) / static_cast<float>(localMaxHits_)" in bar_source
     assert "localHitState.hpRemaining--;" in main

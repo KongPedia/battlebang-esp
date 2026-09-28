@@ -22,6 +22,7 @@ struct HitRuntimeConfig {
   uint32_t piezoAoDebugPeriodMs = PIEZO_AO_DEBUG_PERIOD_MS;
   uint32_t piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
   uint8_t piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
+  uint8_t hpBarGroupCount = HP_BAR_GROUP_COUNT;
   uint16_t maxHits = MAX_HITS;
   uint32_t hitFlashMs = HIT_FLASH_MS;
 };

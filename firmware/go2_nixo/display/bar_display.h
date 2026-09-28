@@ -14,6 +14,7 @@ class BarDisplay {
   bool startupReady(uint32_t now) const;
   void markDirty();
   void setBrightness(uint16_t brightness);
+  void setGroupCount(uint8_t count);
   void setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now);
   void resetLocalHpState(uint16_t maxHits);
   void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
@@ -48,6 +49,7 @@ class BarDisplay {
   int diagnosticGroup_ = 0;
   int diagnosticPixel_ = 0;
   uint32_t diagnosticExpiresMs_ = 0;
+  uint8_t groupCount_ = HP_BAR_GROUP_COUNT;
 
   float localFillRatio() const;
   bool remoteExpired(uint32_t now) const;
