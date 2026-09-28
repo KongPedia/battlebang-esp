@@ -395,6 +395,7 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
 
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
+    resetAnalogPiezoState();
     BB_DEBUG_SERIAL.println("[PIEZO AO] disabled: no enabled channel has a valid pin");
     return;
   }
@@ -1795,8 +1796,10 @@ static void handleCommandLine(String line, const char* source) {
   }
   if (lower == "clear-config") {
     const bool cleared = clearRuntimeConfigNvs();
-    runtimeConfig = runtimeConfigFromBuild();
-    reapplyRuntimeConfig("clear-config");
+    if (cleared) {
+      runtimeConfig = runtimeConfigFromNvsOrBuild();
+      reapplyRuntimeConfig("clear-config");
+    }
     replyToSource(source, String("{\"event\":\"config_cleared\",\"cleared\":") +
                               (cleared ? "true" : "false") + "}");
     return;
@@ -1997,7 +2000,7 @@ void setup() {
                 UART_TX_PIN,
                 HP_BAR_LED_PIN,
                 HP_BAR_NUM_LEDS,
-                HP_BAR_GROUP_COUNT,
+                runtimeConfig.hit.hpBarGroupCount,
                 HP_BAR_LEDS_PER_GROUP,
                 RING_LED_PIN,
                 RING_NUM_LEDS,

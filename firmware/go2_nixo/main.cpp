@@ -128,6 +128,10 @@ static void publishDeviceStatusIfConnected(const char* reason);
 static bool publishHpResetEventIfConnected(const char* reason);
 
 static bool piezoAoEnabled() {
+  // Legacy single-character firmware does not implement per-channel filtering.
+  // Fail closed if NVS was provisioned for a framed-only hardware profile.
+  if (runtimeConfig.hit.piezoChannelEnableMask != PIEZO_CHANNEL_ENABLE_MASK ||
+      runtimeConfig.hit.hpBarGroupCount != HP_BAR_GROUP_COUNT) return false;
   return PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0 && PIEZO_FRONT_AO_PIN >= 0;
 }
 
@@ -249,7 +253,7 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
 
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
-    Serial.println("[PIEZO AO] disabled: left/right/front piezo AO pins must be >= 0");
+    Serial.println("[PIEZO AO] disabled: unsupported hardware profile or missing pin; use framed firmware for nondefault mask/bar groups");
     return;
   }
 
@@ -1170,6 +1174,11 @@ static void applyAndPersistConfig(const String& json, const char* source) {
     replyToSource(source, String("{\"event\":\"config_rejected\",\"error\":\"") + error + "\"}");
     return;
   }
+  if (next.hit.piezoChannelEnableMask != PIEZO_CHANNEL_ENABLE_MASK ||
+      next.hit.hpBarGroupCount != HP_BAR_GROUP_COUNT) {
+    replyToSource(source, "{\"event\":\"config_rejected\",\"error\":\"legacy firmware requires default piezo mask and HP bar groups\"}");
+    return;
+  }
 
   const bool saved = saveRuntimeConfigToNvs(next);
   if (saved) {
@@ -1230,8 +1239,10 @@ static void handleCommandLine(String line, const char* source) {
   }
   if (lower == "clear-config") {
     const bool cleared = clearRuntimeConfigNvs();
-    runtimeConfig = runtimeConfigFromBuild();
-    reapplyRuntimeConfig("clear-config");
+    if (cleared) {
+      runtimeConfig = runtimeConfigFromNvsOrBuild();
+      reapplyRuntimeConfig("clear-config");
+    }
     replyToSource(source, String("{\"event\":\"config_cleared\",\"cleared\":") +
                               (cleared ? "true" : "false") + "}");
     return;

@@ -16,6 +16,7 @@ namespace go2 {
 namespace {
 
 const char* kConfigNamespace = "go2_nixo";
+const char* kHardwareNamespace = "go2_nixo_hw";
 const char* kHitTopicPrefixKey = "hit_topic";
 const char* kNixoCommandTopicPrefixKey = "nixo_cmd_topic";
 
@@ -463,13 +464,29 @@ RuntimeConfig runtimeConfigFromBuild() {
 }
 
 bool loadRuntimeConfigFromNvs(RuntimeConfig& config) {
-  battlebang::esp::nvs::ScopedPreferences prefs;
-  if (!prefs.begin(kConfigNamespace, true)) return false;
-
-  const bool hasStoredConfig = prefs.preferences().getBool("configured", false);
-  battlebang::esp::nvs::loadCommonRuntimeConfig(prefs.preferences(), config.common, commonNvsKeys());
-  loadHitRuntimeConfigFromNvs(prefs, config.hit);
-  loadNixoRuntimeConfigFromNvs(prefs, config.nixo);
+  bool hasStoredConfig = false;
+  {
+    battlebang::esp::nvs::ScopedPreferences prefs;
+    if (!prefs.begin(kConfigNamespace, true)) return false;
+    hasStoredConfig = prefs.preferences().getBool("configured", false);
+    battlebang::esp::nvs::loadCommonRuntimeConfig(prefs.preferences(), config.common, commonNvsKeys());
+    loadHitRuntimeConfigFromNvs(prefs, config.hit);
+    loadNixoRuntimeConfigFromNvs(prefs, config.nixo);
+  }
+  // Older NVS images have no factory namespace; keep the shared-config values.
+  battlebang::esp::nvs::ScopedPreferences hardware;
+  if (hardware.begin(kHardwareNamespace, true)) {
+    if (hardware.preferences().isKey("piezo_mask")) {
+      config.hit.piezoChannelEnableMask = hardware.preferences().getUChar("piezo_mask", config.hit.piezoChannelEnableMask);
+    }
+    if (hardware.preferences().isKey("bar_groups")) {
+      config.hit.hpBarGroupCount = hardware.preferences().getUChar("bar_groups", config.hit.hpBarGroupCount);
+    }
+  }
+  if ((config.hit.piezoChannelEnableMask & ~0x07U) != 0) config.hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
+  if (config.hit.hpBarGroupCount == 0 || config.hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+    config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
+  }
   config.common.configured = hasStoredConfig || config.common.configured;
   normalizeRuntimeConfig(config);
   return hasStoredConfig;
@@ -479,17 +496,30 @@ bool saveRuntimeConfigToNvs(const RuntimeConfig& config) {
   RuntimeConfig normalized = config;
   normalizeRuntimeConfig(normalized);
 
-  battlebang::esp::nvs::ScopedPreferences prefs;
-  if (!prefs.begin(kConfigNamespace, false)) return false;
-
-  bool ok = battlebang::esp::nvs::saveCommonRuntimeConfig(
-      prefs.preferences(), normalized.common, commonNvsKeys());
-  ok &= saveHitRuntimeConfigToNvs(prefs, normalized.hit);
-  ok &= saveNixoRuntimeConfigToNvs(prefs, normalized.nixo);
+  bool ok = false;
+  {
+    battlebang::esp::nvs::ScopedPreferences prefs;
+    if (!prefs.begin(kConfigNamespace, false)) return false;
+    ok = battlebang::esp::nvs::saveCommonRuntimeConfig(
+        prefs.preferences(), normalized.common, commonNvsKeys());
+    ok &= saveHitRuntimeConfigToNvs(prefs, normalized.hit);
+    ok &= saveNixoRuntimeConfigToNvs(prefs, normalized.nixo);
+  }
+  if (!ok) return false;
+  battlebang::esp::nvs::ScopedPreferences hardware;
+  if (!hardware.begin(kHardwareNamespace, false)) return false;
+  ok &= hardware.preferences().putUChar("piezo_mask", normalized.hit.piezoChannelEnableMask) > 0;
+  ok &= hardware.preferences().putUChar("bar_groups", normalized.hit.hpBarGroupCount) > 0;
   return ok;
 }
 
 bool clearRuntimeConfigNvs() {
+  const RuntimeConfig current = runtimeConfigFromNvsOrBuild();
+  battlebang::esp::nvs::ScopedPreferences hardware;
+  if (!hardware.begin(kHardwareNamespace, false)) return false;
+  if (hardware.preferences().putUChar("piezo_mask", current.hit.piezoChannelEnableMask) == 0 ||
+      hardware.preferences().putUChar("bar_groups", current.hit.hpBarGroupCount) == 0) return false;
+  hardware.end();
   return battlebang::esp::nvs::clearNamespace(kConfigNamespace);
 }
 

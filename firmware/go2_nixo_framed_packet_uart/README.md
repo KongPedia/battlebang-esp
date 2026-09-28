@@ -71,6 +71,10 @@ change the shared default for other robots without testing their hardware.
 For go2_06 set `GO2_NIXO_HP_BAR_GROUP_COUNT=27` and, when only its right piezo
 is connected, `GO2_NIXO_PIEZO_CHANNEL_ENABLE_MASK=2`. Reprovisioning then
 persists both fields to ESP NVS; `status` reports the active column count.
+They are also mirrored in a hardware NVS namespace so `clear-config` keeps
+the sensor mask and bar length while clearing ordinary provisioning. The
+legacy single-character firmware rejects nondefault values and disables
+piezo detection if booted with a framed-only hardware profile.
 With 27 columns and 14 HP, one HP step necessarily removes one column rather
 than two; all other steps remove two columns, aligned across all three rows.
 

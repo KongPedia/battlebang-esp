@@ -736,7 +736,10 @@ def test_go2_runtime_nvs_bridge_has_serial_management_commands() -> None:
         assert "reapplyRuntimeConfig(\"serial_config\");" in main, firmware
         assert "runtimeConfigToJson(runtimeConfig, false)" in main, firmware
         assert "clearRuntimeConfigNvs()" in main, firmware
-        assert "runtimeConfig = runtimeConfigFromBuild();" in main, firmware
+        if firmware == "go2_nixo":
+            assert "runtimeConfig = runtimeConfigFromNvsOrBuild();" in main
+        else:
+            assert "runtimeConfig = runtimeConfigFromBuild();" in main
         assert "status/show-status" in main, firmware
         assert "provision {json}" in main, firmware
         assert "config {json}" in main, firmware
