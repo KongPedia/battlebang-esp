@@ -16,6 +16,7 @@ namespace go2 {
 namespace {
 
 const char* kConfigNamespace = "go2_nixo";
+const char* kHardwareNamespace = "go2_nixo_hw";
 const char* kHitTopicPrefixKey = "hit_topic";
 const char* kNixoCommandTopicPrefixKey = "nixo_cmd_topic";
 
@@ -62,6 +63,13 @@ void readHitTuningJson(JsonObjectConst object, HitRuntimeConfig& hit) {
       object, "piezo_ao_debug_period_ms", hit.piezoAoDebugPeriodMs);
   battlebang::esp::config::readUInt32Field(
       object, "piezo_ao_rearm_stable_ms", hit.piezoAoRearmStableMs);
+  uint16_t channelEnableMask = hit.piezoChannelEnableMask;
+  readUInt16ConfigField(object, "piezo_channel_enable_mask", channelEnableMask);
+  hit.piezoChannelEnableMask = static_cast<uint8_t>(
+      channelEnableMask > 0xffU ? 0xffU : channelEnableMask);
+  uint16_t barGroupCount = hit.hpBarGroupCount;
+  readUInt16ConfigField(object, "hp_bar_group_count", barGroupCount);
+  hit.hpBarGroupCount = static_cast<uint8_t>(barGroupCount > 0xffU ? 0xffU : barGroupCount);
   readUInt16ConfigField(object, "max_hits", hit.maxHits);
   readUInt16ConfigField(object, "hits_to_down", hit.maxHits);
   battlebang::esp::config::readUInt32Field(object, "hit_flash_ms", hit.hitFlashMs);
@@ -162,6 +170,14 @@ bool validateHitRuntimeConfig(const HitRuntimeConfig& hit, String& error) {
   }
   if (hit.piezoAoRearmStableMs == 0) {
     error = "piezo_ao_rearm_stable_ms must be positive";
+    return false;
+  }
+  if ((hit.piezoChannelEnableMask & ~0x07U) != 0) {
+    error = "piezo_channel_enable_mask must use only bits 0..2";
+    return false;
+  }
+  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+    error = "hp_bar_group_count must be 1..28";
     return false;
   }
   if (hit.maxHits == 0 || hit.maxHits > 1000) {
@@ -276,6 +292,17 @@ void loadHitRuntimeConfigFromNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   hit.piezoAoCaptureWindowMs = prefs.preferences().getUInt("piezo_cap_ms", hit.piezoAoCaptureWindowMs);
   hit.piezoAoDebugPeriodMs = prefs.preferences().getUInt("piezo_dbg_ms", hit.piezoAoDebugPeriodMs);
   hit.piezoAoRearmStableMs = prefs.preferences().getUInt("piezo_arm_ms", hit.piezoAoRearmStableMs);
+  // Missing key preserves the build default, so NVS written by older firmware
+  // remains compatible (left/right enabled, front disabled by default).
+  hit.piezoChannelEnableMask = static_cast<uint8_t>(
+      prefs.preferences().getUChar("piezo_mask", hit.piezoChannelEnableMask));
+  if ((hit.piezoChannelEnableMask & ~0x07U) != 0) {
+    hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
+  }
+  hit.hpBarGroupCount = prefs.preferences().getUChar("bar_groups", hit.hpBarGroupCount);
+  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+    hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
+  }
   hit.maxHits = prefs.preferences().getUInt("max_hits", hit.maxHits);
   hit.hitFlashMs = prefs.preferences().getUInt("hit_flash", hit.hitFlashMs);
 }
@@ -308,6 +335,8 @@ bool saveHitRuntimeConfigToNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   ok &= prefs.preferences().putUInt("piezo_cap_ms", hit.piezoAoCaptureWindowMs) > 0;
   ok &= prefs.preferences().putUInt("piezo_dbg_ms", hit.piezoAoDebugPeriodMs) > 0;
   ok &= prefs.preferences().putUInt("piezo_arm_ms", hit.piezoAoRearmStableMs) > 0;
+  ok &= prefs.preferences().putUChar("piezo_mask", hit.piezoChannelEnableMask) > 0;
+  ok &= prefs.preferences().putUChar("bar_groups", hit.hpBarGroupCount) > 0;
   ok &= prefs.preferences().putUInt("max_hits", hit.maxHits) > 0;
   ok &= prefs.preferences().putUInt("hit_flash", hit.hitFlashMs) > 0;
   return ok;
@@ -340,6 +369,8 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   root["piezo_ao_capture_window_ms"] = hit.piezoAoCaptureWindowMs;
   root["piezo_ao_debug_period_ms"] = hit.piezoAoDebugPeriodMs;
   root["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
+  root["piezo_channel_enable_mask"] = hit.piezoChannelEnableMask;
+  root["hp_bar_group_count"] = hit.hpBarGroupCount;
   root["max_hits"] = hit.maxHits;
   root["hit_flash_ms"] = hit.hitFlashMs;
 
@@ -356,6 +387,8 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   hitObject["piezo_ao_capture_window_ms"] = hit.piezoAoCaptureWindowMs;
   hitObject["piezo_ao_debug_period_ms"] = hit.piezoAoDebugPeriodMs;
   hitObject["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
+  hitObject["piezo_channel_enable_mask"] = hit.piezoChannelEnableMask;
+  hitObject["hp_bar_group_count"] = hit.hpBarGroupCount;
   hitObject["max_hits"] = hit.maxHits;
   hitObject["hits_to_down"] = hit.maxHits;
   hitObject["hit_flash_ms"] = hit.hitFlashMs;
@@ -414,6 +447,8 @@ RuntimeConfig runtimeConfigFromBuild() {
   config.hit.piezoAoCaptureWindowMs = PIEZO_AO_CAPTURE_WINDOW_MS;
   config.hit.piezoAoDebugPeriodMs = PIEZO_AO_DEBUG_PERIOD_MS;
   config.hit.piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
+  config.hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
+  config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
   config.hit.maxHits = MAX_HITS;
   config.hit.hitFlashMs = HIT_FLASH_MS;
   config.nixo.nixoId = NIXO_ID_VALUE;
@@ -429,13 +464,29 @@ RuntimeConfig runtimeConfigFromBuild() {
 }
 
 bool loadRuntimeConfigFromNvs(RuntimeConfig& config) {
-  battlebang::esp::nvs::ScopedPreferences prefs;
-  if (!prefs.begin(kConfigNamespace, true)) return false;
-
-  const bool hasStoredConfig = prefs.preferences().getBool("configured", false);
-  battlebang::esp::nvs::loadCommonRuntimeConfig(prefs.preferences(), config.common, commonNvsKeys());
-  loadHitRuntimeConfigFromNvs(prefs, config.hit);
-  loadNixoRuntimeConfigFromNvs(prefs, config.nixo);
+  bool hasStoredConfig = false;
+  {
+    battlebang::esp::nvs::ScopedPreferences prefs;
+    if (!prefs.begin(kConfigNamespace, true)) return false;
+    hasStoredConfig = prefs.preferences().getBool("configured", false);
+    battlebang::esp::nvs::loadCommonRuntimeConfig(prefs.preferences(), config.common, commonNvsKeys());
+    loadHitRuntimeConfigFromNvs(prefs, config.hit);
+    loadNixoRuntimeConfigFromNvs(prefs, config.nixo);
+  }
+  // Older NVS images have no factory namespace; keep the shared-config values.
+  battlebang::esp::nvs::ScopedPreferences hardware;
+  if (hardware.begin(kHardwareNamespace, true)) {
+    if (hardware.preferences().isKey("piezo_mask")) {
+      config.hit.piezoChannelEnableMask = hardware.preferences().getUChar("piezo_mask", config.hit.piezoChannelEnableMask);
+    }
+    if (hardware.preferences().isKey("bar_groups")) {
+      config.hit.hpBarGroupCount = hardware.preferences().getUChar("bar_groups", config.hit.hpBarGroupCount);
+    }
+  }
+  if ((config.hit.piezoChannelEnableMask & ~0x07U) != 0) config.hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
+  if (config.hit.hpBarGroupCount == 0 || config.hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+    config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
+  }
   config.common.configured = hasStoredConfig || config.common.configured;
   normalizeRuntimeConfig(config);
   return hasStoredConfig;
@@ -445,17 +496,30 @@ bool saveRuntimeConfigToNvs(const RuntimeConfig& config) {
   RuntimeConfig normalized = config;
   normalizeRuntimeConfig(normalized);
 
-  battlebang::esp::nvs::ScopedPreferences prefs;
-  if (!prefs.begin(kConfigNamespace, false)) return false;
-
-  bool ok = battlebang::esp::nvs::saveCommonRuntimeConfig(
-      prefs.preferences(), normalized.common, commonNvsKeys());
-  ok &= saveHitRuntimeConfigToNvs(prefs, normalized.hit);
-  ok &= saveNixoRuntimeConfigToNvs(prefs, normalized.nixo);
+  bool ok = false;
+  {
+    battlebang::esp::nvs::ScopedPreferences prefs;
+    if (!prefs.begin(kConfigNamespace, false)) return false;
+    ok = battlebang::esp::nvs::saveCommonRuntimeConfig(
+        prefs.preferences(), normalized.common, commonNvsKeys());
+    ok &= saveHitRuntimeConfigToNvs(prefs, normalized.hit);
+    ok &= saveNixoRuntimeConfigToNvs(prefs, normalized.nixo);
+  }
+  if (!ok) return false;
+  battlebang::esp::nvs::ScopedPreferences hardware;
+  if (!hardware.begin(kHardwareNamespace, false)) return false;
+  ok &= hardware.preferences().putUChar("piezo_mask", normalized.hit.piezoChannelEnableMask) > 0;
+  ok &= hardware.preferences().putUChar("bar_groups", normalized.hit.hpBarGroupCount) > 0;
   return ok;
 }
 
 bool clearRuntimeConfigNvs() {
+  const RuntimeConfig current = runtimeConfigFromNvsOrBuild();
+  battlebang::esp::nvs::ScopedPreferences hardware;
+  if (!hardware.begin(kHardwareNamespace, false)) return false;
+  if (hardware.preferences().putUChar("piezo_mask", current.hit.piezoChannelEnableMask) == 0 ||
+      hardware.preferences().putUChar("bar_groups", current.hit.hpBarGroupCount) == 0) return false;
+  hardware.end();
   return battlebang::esp::nvs::clearNamespace(kConfigNamespace);
 }
 

@@ -53,7 +53,8 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 
 | Part | Default | Runtime? |
 | --- | --- | --- |
-| HP bar LED data | GPIO18 / 84 LEDs | No, build hardware profile |
+| HP bar LED data | GPIO18 / 84 address capacity | No, build hardware profile |
+| HP bar logical columns per row | 28 default; go2_06 has 27 | Yes, `GO2_NIXO_HP_BAR_GROUP_COUNT` in per-robot env/NVS (framed firmware) |
 | Ring LED data | GPIO4 / 40 LEDs | No, build hardware profile |
 | Piezo AO / D0 debug | left GPIO34, right GPIO35, front GPIO32 / D0 GPIO27 | No, build hardware profile |
 | Piezo threshold/rearm | 2400 / 1800 raw | Yes, NVS tuning |

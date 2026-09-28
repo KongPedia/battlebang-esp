@@ -15,6 +15,7 @@
     "piezo_left_pin": 34,
     "piezo_right_pin": 35,
     "piezo_front_pin": 32,
+    "piezo_channel_enable_mask": 3,
     "piezo_ao_threshold_raw": 2400,
     "piezo_ao_rearm_raw": 1800,
     "piezo_ao_capture_window_ms": 30,

@@ -100,6 +100,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Jetson serial port used by framed_packet_uart; default uart2",
     )
     parser.add_argument(
+        "--management-transport",
+        choices=("auto", "bluetooth_spp", "uart2_usb_debug"),
+        default="auto",
+        help="ASCII management path; USB-framed builds require Bluetooth SPP, or explicit UART2 maintenance firmware",
+    )
+    parser.add_argument(
         "--relay-variant",
         choices=tuple(sorted(RELAY_VARIANT_TO_OTA)),
         help="flashed relay hardware variant; controls default OTA channel/manifest URL",
@@ -279,6 +285,8 @@ def build_payload(
         "piezo_ao_capture_window_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_CAPTURE_WINDOW_MS"), 30),
         "piezo_ao_debug_period_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_DEBUG_PERIOD_MS"), 1000),
         "piezo_ao_rearm_stable_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_REARM_STABLE_MS"), 30),
+        "piezo_channel_enable_mask": env_int(env, prefixed_tuning_keys("PIEZO_CHANNEL_ENABLE_MASK"), 3),
+        "hp_bar_group_count": env_int(env, prefixed_tuning_keys("HP_BAR_GROUP_COUNT"), 28),
         "max_hits": env_int(env, (*prefixed_tuning_keys("MAX_HITS"), *prefixed_tuning_keys("HITS_TO_DOWN")), 14),
         "hit_flash_ms": env_int(env, prefixed_tuning_keys("HIT_FLASH_MS"), 900),
     }
@@ -311,12 +319,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         env = merged_env(args.env_file, PREFIXES)
         payload: dict[str, Any] | None = None
+        firmware = detect_firmware(env, args.firmware)
+        jetson_transport = detect_jetson_transport(env, args.jetson_transport)
         if should_build_payload(args.command):
             robot_id = detect_robot_id(env, args.robot_id)
             nixo_id = detect_nixo_id(env, args.nixo_id, robot_id)
             relay_variant = detect_relay_variant(env, args.relay_variant)
-            firmware = detect_firmware(env, args.firmware)
-            jetson_transport = detect_jetson_transport(env, args.jetson_transport)
             payload = build_payload(
                 env,
                 args.command,
@@ -346,6 +354,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ProvisioningError(
                 "missing serial port: pass --serial-port or set GO2_NIXO_SERIAL_PORT/GO2_SERIAL_PORT/ESP_SERIAL_PORT/BATTLEBANG_SERIAL_PORT; use --no-serial to only print JSON"
             )
+        if firmware == "framed_packet_uart" and jetson_transport == "usb_serial":
+            if args.management_transport == "auto":
+                raise ProvisioningError(
+                    "USB-framed Jetson port accepts binary packets, not ASCII config; "
+                    "use --management-transport bluetooth_spp on a Bluetooth SPP port, "
+                    "or --management-transport uart2_usb_debug only while the UART2 maintenance image is flashed"
+                )
+            if args.management_transport == "bluetooth_spp" and (
+                "ttyUSB" in port or "ttyACM" in port or
+                "usbserial" in port.lower() or "usbmodem" in port.lower()
+            ):
+                raise ProvisioningError("Bluetooth SPP management requires a Bluetooth serial port, not USB Jetson data")
         write_serial(port, serial_baud(env, args.baud), command, args.wait_s)
         return 0
     except ProvisioningError as exc:

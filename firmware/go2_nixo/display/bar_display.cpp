@@ -6,9 +6,10 @@ namespace {
 
 constexpr uint32_t STARTUP_COLOR_MS = 2000;
 constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
+constexpr uint32_t DIAGNOSTIC_TTL_MS = 10000;
 
-int groupsForFill(float fillRatio) {
-  return constrain((int)(fillRatio * HP_BAR_GROUP_COUNT + 0.5f), 0, HP_BAR_GROUP_COUNT);
+int groupsForFill(float fillRatio, int groupCount) {
+  return constrain((int)(fillRatio * groupCount + 0.5f), 0, groupCount);
 }
 
 }  // namespace
@@ -32,14 +33,30 @@ void BarDisplay::tick(uint32_t now) {
   handleLocalFlashExpiry(now);
   handleRemoteExpiry(now);
 
-  if (startupLoading_ && !startupReady(now)) {
+  // A bench wiring check must never hide a dead/zero-HP indication.
+  if ((diagnosticGroup_ > 0 || diagnosticPixel_ > 0) &&
+      (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down")))) {
+    clearDiagnostic();
+  }
+
+  if ((diagnosticGroup_ > 0 || diagnosticPixel_ > 0) && (int32_t)(now - diagnosticExpiresMs_) >= 0) {
+    clearDiagnostic();
+  }
+
+  if (diagnosticGroup_ > 0 || diagnosticPixel_ > 0) {
+    renderBlank();
+    if (diagnosticGroup_ > 0) setHpBarGroup(diagnosticGroup_, CRGB::White);
+    else leds_[diagnosticPixel_ - 1] = CRGB::White;
+  } else if (startupLoading_ && !startupReady(now)) {
     renderStartupLoading(now);
   } else {
     if (startupLoading_) {
       startupLoading_ = false;
       dirty_ = true;
     }
-    if (remoteActive_) {
+    if (localDown_) {
+      renderLocal(now);
+    } else if (remoteActive_) {
       renderRemote(now);
     } else {
       renderLocal(now);
@@ -62,18 +79,27 @@ void BarDisplay::setBrightness(uint16_t brightness) {
   dirty_ = true;
 }
 
+void BarDisplay::setGroupCount(uint8_t count) {
+  if (count < 1 || count > HP_BAR_GROUP_COUNT) return;
+  groupCount_ = count;
+  clearDiagnostic();
+  dirty_ = true;
+}
+
 void BarDisplay::setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now) {
   if (maxHits < 1) maxHits = 1;
   if (hitFlashMs > 0x7ffffffful) hitFlashMs = 0x7ffffffful;
   localMaxHits_ = maxHits;
   localHpRemaining_ = hpRemaining > maxHits ? maxHits : hpRemaining;
   localDown_ = down || localHpRemaining_ == 0;
+  if (localDown_ && (diagnosticGroup_ > 0 || diagnosticPixel_ > 0)) clearDiagnostic();
   localMode_ = hitFlashMs > 0 && !localDown_ ? String("hit_flash") : String("active");
   localFlashExpiresMs_ = hitFlashMs > 0 && !localDown_ ? now + hitFlashMs : 0;
   dirty_ = true;
 }
 
 void BarDisplay::resetLocalHpState(uint16_t maxHits) {
+  clearDiagnostic();
   if (maxHits < 1) maxHits = 1;
   localMaxHits_ = maxHits;
   localHpRemaining_ = maxHits;
@@ -87,6 +113,7 @@ void BarDisplay::resetLocalHpState(uint16_t maxHits) {
 void BarDisplay::setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now) {
   remoteActive_ = true;
   remoteDown_ = down;
+  if ((remoteDown_ || mode == "down") && (diagnosticGroup_ > 0 || diagnosticPixel_ > 0)) clearDiagnostic();
   remoteFillRatio_ = constrain(fillRatio, 0.0f, 1.0f);
   remoteMode_ = mode.length() > 0 ? mode : String("idle");
   if (ttlMs < 1) ttlMs = 1;
@@ -106,6 +133,33 @@ void BarDisplay::clearRemoteDisplay() {
 
 bool BarDisplay::remoteDisplayActive() const {
   return remoteActive_;
+}
+
+bool BarDisplay::setDiagnosticGroup(int group1Based, uint32_t now) {
+  if (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down"))) return false;
+  if (group1Based < 1 || group1Based > groupCount_) return false;
+  diagnosticGroup_ = group1Based;
+  diagnosticPixel_ = 0;
+  diagnosticExpiresMs_ = now + DIAGNOSTIC_TTL_MS;
+  dirty_ = true;
+  return true;
+}
+
+bool BarDisplay::setDiagnosticPixel(int pixel1Based, uint32_t now) {
+  if (localDown_ || (remoteActive_ && (remoteDown_ || remoteMode_ == "down"))) return false;
+  if (pixel1Based < 1 || pixel1Based > HP_BAR_NUM_LEDS) return false;
+  diagnosticPixel_ = pixel1Based;
+  diagnosticGroup_ = 0;
+  diagnosticExpiresMs_ = now + DIAGNOSTIC_TTL_MS;
+  dirty_ = true;
+  return true;
+}
+
+void BarDisplay::clearDiagnostic() {
+  diagnosticGroup_ = 0;
+  diagnosticPixel_ = 0;
+  diagnosticExpiresMs_ = 0;
+  dirty_ = true;
 }
 
 float BarDisplay::localFillRatio() const {
@@ -166,10 +220,10 @@ void BarDisplay::renderLocal(uint32_t now) {
   const float fillRatio = localFillRatio();
   renderHpBar(fillRatio, fillRatio <= 0.30f ? CRGB::Yellow : CRGB::Green, CRGB::Black);
   if (localMode_ == "hit_flash") {
-    const int healthyGroups = groupsForFill(fillRatio);
+    const int healthyGroups = groupsForFill(fillRatio, groupCount_);
     const float previousFillRatio = constrain(
         static_cast<float>(localHpRemaining_ + 1) / static_cast<float>(localMaxHits_), 0.0f, 1.0f);
-    const int previousHealthyGroups = groupsForFill(previousFillRatio);
+    const int previousHealthyGroups = groupsForFill(previousFillRatio, groupCount_);
     for (int group = healthyGroups + 1; group <= previousHealthyGroups; group++) {
       setHpBarGroup(group, CRGB::Red);
     }
@@ -208,23 +262,21 @@ void BarDisplay::renderBlank() {
 }
 
 void BarDisplay::renderHpBar(float fillRatio, const CRGB& healthyColor, const CRGB& damagedColor) {
-  int healthyGroups = groupsForFill(fillRatio);
-  for (int group = 1; group <= HP_BAR_GROUP_COUNT; group++) {
+  for (int i = 3 * groupCount_; i < HP_BAR_NUM_LEDS; ++i) leds_[i] = CRGB::Black;
+  int healthyGroups = groupsForFill(fillRatio, groupCount_);
+  for (int group = 1; group <= groupCount_; group++) {
     setHpBarGroup(group, group <= healthyGroups ? healthyColor : damagedColor);
   }
 }
 
 void BarDisplay::setHpBarGroup(int group1Based, const CRGB& color) {
-  if (group1Based < 1 || group1Based > HP_BAR_GROUP_COUNT) return;
+  if (group1Based < 1 || group1Based > groupCount_) return;
 
-  // 84-LED bar layout from the Go2 HP harness reference sketch:
-  // group 1  -> LEDs 1, 56, 57
-  // group 2  -> LEDs 2, 55, 58
-  // ...
-  // group 28 -> LEDs 28, 29, 84
+  // Serpentine rows: 28-column default -> 1/56/57, 28/29/84.
+  // go2_06 observed 27-column wiring -> 1/54/55, 27/28/81.
   int row1Index = group1Based - 1;
-  int row2Index = 2 * HP_BAR_GROUP_COUNT - group1Based;
-  int row3Index = 2 * HP_BAR_GROUP_COUNT - 1 + group1Based;
+  int row2Index = 2 * groupCount_ - group1Based;
+  int row3Index = 2 * groupCount_ - 1 + group1Based;
 
   leds_[row1Index] = color;
   leds_[row2Index] = color;
@@ -232,15 +284,15 @@ void BarDisplay::setHpBarGroup(int group1Based, const CRGB& color) {
 }
 
 void BarDisplay::setHpBarPixel(int group, int strip, const CRGB& color) {
-  if (group < 0 || group >= HP_BAR_GROUP_COUNT || strip < 0 || strip >= HP_BAR_LEDS_PER_GROUP) return;
-  group = HP_BAR_GROUP_COUNT - 1 - group;
+  if (group < 0 || group >= groupCount_ || strip < 0 || strip >= HP_BAR_LEDS_PER_GROUP) return;
+  group = groupCount_ - 1 - group;
   strip = HP_BAR_LEDS_PER_GROUP - 1 - strip;
   if (strip == 0) {
     leds_[group] = color;
   } else if (strip == 1) {
-    leds_[2 * HP_BAR_GROUP_COUNT - 1 - group] = color;
+    leds_[2 * groupCount_ - 1 - group] = color;
   } else {
-    leds_[2 * HP_BAR_GROUP_COUNT + group] = color;
+    leds_[2 * groupCount_ + group] = color;
   }
 }
 
