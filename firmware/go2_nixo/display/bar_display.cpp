@@ -17,7 +17,7 @@ int groupsForFill(float fillRatio, int groupCount) {
 void BarDisplay::begin(uint16_t brightness) {
   startupStartedMs_ = millis();
   startupLoading_ = true;
-  FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>(leds_, HP_BAR_NUM_LEDS);
+  FastLED.addLeds<WS2812B, HP_BAR_LED_PIN, RGB>(leds_, HP_BAR_NUM_LEDS);
   setBrightness(brightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(LED_MAX_VOLTS, LED_MAX_MA);
   dirty_ = true;
@@ -87,7 +87,7 @@ void BarDisplay::setGroupCount(uint8_t count) {
 }
 
 void BarDisplay::setColorOrder(uint8_t order) {
-  if (order > 1) return;
+  if (order > 5) return;
   colorOrder_ = order;
   dirty_ = true;
 }
@@ -305,7 +305,14 @@ void BarDisplay::setHpBarPixel(int group, int strip, const CRGB& color) {
 }
 
 CRGB BarDisplay::wireColor(const CRGB& color) const {
-  return colorOrder_ == 1 ? CRGB(color.g, color.r, color.b) : color;
+  switch (colorOrder_) {
+    case 1: return CRGB(color.g, color.r, color.b);  // GRB
+    case 2: return CRGB(color.r, color.b, color.g);  // RBG
+    case 3: return CRGB(color.g, color.b, color.r);  // GBR
+    case 4: return CRGB(color.b, color.r, color.g);  // BRG
+    case 5: return CRGB(color.b, color.g, color.r);  // BGR
+    default: return color;  // RGB; preserves legacy value 0
+  }
 }
 
 void BarDisplay::showTick(uint32_t now) {

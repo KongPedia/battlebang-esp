@@ -80,10 +80,12 @@ piezo detection if booted with a framed-only hardware profile.
 With 27 columns and 14 HP, one HP step necessarily removes one column rather
 than two; all other steps remove two columns, aligned across all three rows.
 
-The new 12 V HP bar model swaps red and green relative to the existing RGB
-model. Provision `GO2_NIXO_HP_BAR_COLOR_ORDER=1` **only for that bar**; the
-default `0` preserves existing robots. This setting affects only the HP bar,
-not the separate Nixo fire ring. Check startup red then blue, full-HP green,
+The integrated HP bar driver uses WS2812B with the existing RGB baseline.
+Go2-05's installed bar and supply are 5 V with GRB wire order; use
+`GO2_NIXO_HP_BAR_COLOR_ORDER=1` there.
+Provision `GO2_NIXO_HP_BAR_COLOR_ORDER=1` only when a physical color test shows
+red and green reversed. Voltage alone does not determine this setting. It
+affects only the HP bar, not the separate Nixo fire ring. Check startup red then blue, full-HP green,
 hit flash red, and down red on the physical bar before deployment. Firmware
 changes alone do not update a robot's saved NVS settings.
 

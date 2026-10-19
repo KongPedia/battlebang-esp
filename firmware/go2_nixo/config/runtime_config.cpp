@@ -183,8 +183,8 @@ bool validateHitRuntimeConfig(const HitRuntimeConfig& hit, String& error) {
     error = "hp_bar_group_count must be 1..29";
     return false;
   }
-  if (hit.hpBarColorOrder > 1) {
-    error = "hp_bar_color_order must be 0 (RGB) or 1 (GRB)";
+  if (hit.hpBarColorOrder > 5) {
+    error = "hp_bar_color_order must be 0..5 (RGB, GRB, RBG, GBR, BRG, BGR)";
     return false;
   }
   if (hit.maxHits == 0 || hit.maxHits > 1000) {
@@ -311,7 +311,7 @@ void loadHitRuntimeConfigFromNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
     hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
   }
   hit.hpBarColorOrder = prefs.preferences().getUChar("bar_color", hit.hpBarColorOrder);
-  if (hit.hpBarColorOrder > 1) hit.hpBarColorOrder = 0;
+  if (hit.hpBarColorOrder > 5) hit.hpBarColorOrder = 0;
   hit.maxHits = prefs.preferences().getUInt("max_hits", hit.maxHits);
   hit.hitFlashMs = prefs.preferences().getUInt("hit_flash", hit.hitFlashMs);
 }
@@ -503,7 +503,7 @@ bool loadRuntimeConfigFromNvs(RuntimeConfig& config) {
   if (config.hit.hpBarGroupCount == 0 || config.hit.hpBarGroupCount > HP_BAR_MAX_GROUP_COUNT) {
     config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
   }
-  if (config.hit.hpBarColorOrder > 1) config.hit.hpBarColorOrder = 0;
+  if (config.hit.hpBarColorOrder > 5) config.hit.hpBarColorOrder = 0;
   config.common.configured = hasStoredConfig || config.common.configured;
   normalizeRuntimeConfig(config);
   return hasStoredConfig;
