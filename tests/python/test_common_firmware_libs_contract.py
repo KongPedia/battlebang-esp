@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -200,3 +202,59 @@ def test_ota_transport_lives_in_bb_esp_ota_not_per_firmware_copy_paste() -> None
         assert "#include <HTTPClient.h>" not in wrapper
         assert "#include <Update.h>" not in wrapper
         assert "setInsecure" not in wrapper
+
+
+def test_ota_sha256_compat_compiles_against_mbedtls_2_and_3(tmp_path: Path) -> None:
+    include_dir = ROOT / "lib/bb_esp_ota/src"
+    source = textwrap.dedent(
+        """
+        #include <bb_esp_ota/sha256_compat.h>
+
+        int main() {
+          mbedtls_sha256_context context{};
+          unsigned char input[] = {1, 2, 3};
+          unsigned char output[32]{};
+          return battlebang::esp::ota::detail::sha256Starts(&context, 0) +
+                 battlebang::esp::ota::detail::sha256Update(&context, input, sizeof(input)) +
+                 battlebang::esp::ota::detail::sha256Finish(&context, output);
+        }
+        """
+    )
+
+    for major in (2, 3):
+        case_dir = tmp_path / f"mbedtls-{major}"
+        mbedtls_dir = case_dir / "mbedtls"
+        mbedtls_dir.mkdir(parents=True)
+        (mbedtls_dir / "version.h").write_text(
+            f"#pragma once\n#define MBEDTLS_VERSION_MAJOR {major}\n",
+            encoding="utf-8",
+        )
+        suffix = "_ret" if major == 2 else ""
+        (mbedtls_dir / "sha256.h").write_text(
+            textwrap.dedent(
+                f"""
+                #pragma once
+                #include <cstddef>
+                struct mbedtls_sha256_context {{}};
+                inline int mbedtls_sha256_starts{suffix}(mbedtls_sha256_context*, int) {{ return 0; }}
+                inline int mbedtls_sha256_update{suffix}(
+                    mbedtls_sha256_context*, const unsigned char*, size_t
+                ) {{ return 0; }}
+                inline int mbedtls_sha256_finish{suffix}(mbedtls_sha256_context*, unsigned char[32]) {{ return 0; }}
+                """
+            ),
+            encoding="utf-8",
+        )
+        source_path = case_dir / "compat.cpp"
+        source_path.write_text(source, encoding="utf-8")
+        subprocess.run(
+            [
+                "c++",
+                "-std=c++17",
+                f"-I{case_dir}",
+                f"-I{include_dir}",
+                "-fsyntax-only",
+                str(source_path),
+            ],
+            check=True,
+        )
