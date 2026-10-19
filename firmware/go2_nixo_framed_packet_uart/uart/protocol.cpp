@@ -182,6 +182,7 @@ bool isPayloadValid(const Frame& frame) {
     }
     case MessageType::HpMaxConfig:
       return frame.payload_length == 11 && readBe16(frame.payload) > 0 &&
+             readBe16(frame.payload) <= kMaxConfiguredHp &&
              (frame.payload[2] != 0 || frame.payload[3] != 0 || frame.payload[4] != 0 || frame.payload[5] != 0 ||
               frame.payload[6] != 0 || frame.payload[7] != 0 || frame.payload[8] != 0 || frame.payload[9] != 0) &&
              inRange(frame.payload[10], 1);
@@ -239,7 +240,8 @@ bool canApplyGenericMaxHits(uint64_t active_generation, uint16_t current_max_hit
 }
 
 bool encodePersistentHpMaxConfig(const PersistentHpMaxConfig& config, uint8_t* output, size_t capacity) {
-  if (output == nullptr || capacity < kPersistentHpMaxConfigBytes || config.max_hits == 0 || config.generation == 0) {
+  if (output == nullptr || capacity < kPersistentHpMaxConfigBytes || config.max_hits == 0 ||
+      config.max_hits > kMaxConfiguredHp || config.generation == 0) {
     return false;
   }
   output[0] = kPersistentHpMaxConfigVersion;
@@ -256,7 +258,7 @@ bool decodePersistentHpMaxConfig(const uint8_t* input, size_t length, Persistent
   }
   const uint16_t max_hits = readBe16(input + 1);
   const uint64_t generation = readBe64(input + 3);
-  if (max_hits == 0 || generation == 0) return false;
+  if (max_hits == 0 || max_hits > kMaxConfiguredHp || generation == 0) return false;
   config.max_hits = max_hits;
   config.generation = generation;
   config.locked = input[11] != 0;

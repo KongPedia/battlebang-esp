@@ -22,6 +22,7 @@ constexpr size_t kDedupeEntryCount = 16;
 constexpr size_t kReliableEntryCount = 8;
 constexpr uint8_t kMaxTransmitAttempts = 3;
 constexpr uint16_t kMaxHpDamageGuardLeaseMs = 1500;
+constexpr uint16_t kMaxConfiguredHp = 1000;
 constexpr uint8_t kPersistentHpMaxConfigVersion = 1;
 constexpr size_t kPersistentHpMaxConfigBytes = 12;
 

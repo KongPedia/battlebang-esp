@@ -204,6 +204,24 @@ def test_hp_max_config_is_match_local_locked_and_deduplicated() -> None:
     assert "max_hits cannot change during an active match session" in main
 
 
+def test_prepared_max_hp_clears_dead_fire_inhibit_without_actuating_fire() -> None:
+    main = read("firmware/go2_nixo_framed_packet_uart/main.cpp")
+    apply_prepared = main.split("static void applyPreparedMaxHp", 1)[1].split(
+        "static void resetJetsonHostCommandSequence", 1
+    )[0]
+
+    assert apply_prepared.index("applyPreparedMaxHpState(localHitState, maxHits);") < apply_prepared.index(
+        "nixoFire.setFireInhibited(localHitState.down);"
+    )
+    assert apply_prepared.index("nixoFire.setFireInhibited(localHitState.down);") < apply_prepared.index(
+        "barDisplay.resetLocalHpState(maxHits);"
+    )
+    assert "startFire(" not in apply_prepared
+    assert "stopFire(" not in apply_prepared
+    assert "setRelay" not in apply_prepared
+    assert "digitalWrite(" not in apply_prepared
+
+
 def _hex_bytes(value: str) -> bytes:
     return bytes(int(part, 16) for part in value.split())
 

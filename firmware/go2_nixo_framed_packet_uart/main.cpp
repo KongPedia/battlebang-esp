@@ -44,15 +44,7 @@ RuntimeConfig runtimeConfig;
 
 uint32_t hitSequence = 0;
 
-struct LocalHitState {
-  uint16_t maxHits = MAX_HITS;
-  uint16_t hpRemaining = MAX_HITS;
-  uint16_t acceptedHitCount = 0;
-  bool down = false;
-  uint32_t lastHitSequence = 0;
-};
-
-LocalHitState localHitState;
+battlebang::go2_nixo::uart::LocalHitState localHitState{MAX_HITS, MAX_HITS, 0, false, 0};
 int lastAcceptedHitTargetId = 3;
 bool lastAcceptedHitEnteredCritical = false;
 uint16_t lastAcceptedHitStrength = 0;
@@ -1414,14 +1406,11 @@ static bool packetCommandNeedsAuthority(MessageType type) {
 static void applyPreparedMaxHp(uint16_t maxHits, uint64_t generation) {
   hpMaxConfigGeneration = generation;
   hpMaxConfigLocked = false;
-  localHitState.maxHits = maxHits;
-  localHitState.hpRemaining = maxHits;
-  localHitState.acceptedHitCount = 0;
-  localHitState.down = false;
-  localHitState.lastHitSequence = 0;
+  battlebang::go2_nixo::uart::applyPreparedMaxHpState(localHitState, maxHits);
   lastAcceptedHitEnteredCritical = false;
   ++localHpRevision;
   hasSentJetsonHpStatus = false;
+  nixoFire.setFireInhibited(localHitState.down);
   barDisplay.resetLocalHpState(maxHits);
   barDisplay.markDirty();
 }

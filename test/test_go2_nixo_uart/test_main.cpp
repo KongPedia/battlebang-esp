@@ -162,6 +162,11 @@ TEST(Go2NixoUartProtocol, PersistentMaxHpConfigUsesFixedBigEndianBlob) {
 TEST(Go2NixoUartProtocol, PersistentMaxHpConfigRejectsInvalidRange) {
   std::array<uint8_t, kPersistentHpMaxConfigBytes> blob{};
   EXPECT_FALSE(encodePersistentHpMaxConfig(PersistentHpMaxConfig{0, 1, false}, blob.data(), blob.size()));
+  EXPECT_TRUE(encodePersistentHpMaxConfig(PersistentHpMaxConfig{1, 1, false}, blob.data(), blob.size()));
+  EXPECT_TRUE(
+      encodePersistentHpMaxConfig(PersistentHpMaxConfig{kMaxConfiguredHp, 1, false}, blob.data(), blob.size()));
+  EXPECT_FALSE(encodePersistentHpMaxConfig(
+      PersistentHpMaxConfig{static_cast<uint16_t>(kMaxConfiguredHp + 1), 1, false}, blob.data(), blob.size()));
   EXPECT_FALSE(encodePersistentHpMaxConfig(PersistentHpMaxConfig{14, 0, false}, blob.data(), blob.size()));
 }
 
@@ -175,6 +180,45 @@ TEST(Go2NixoUartProtocol, PersistentMaxHpConfigRejectsCorruptBlob) {
   blob[11] = 2;
   EXPECT_FALSE(decodePersistentHpMaxConfig(blob.data(), blob.size(), decoded));
   EXPECT_FALSE(decodePersistentHpMaxConfig(blob.data(), blob.size() - 1, decoded));
+
+  const std::array<uint8_t, kPersistentHpMaxConfigBytes> minimum = {1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+  EXPECT_TRUE(decodePersistentHpMaxConfig(minimum.data(), minimum.size(), decoded));
+  const std::array<uint8_t, kPersistentHpMaxConfigBytes> maximum = {1, 0x03, 0xE8, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+  EXPECT_TRUE(decodePersistentHpMaxConfig(maximum.data(), maximum.size(), decoded));
+  const std::array<uint8_t, kPersistentHpMaxConfigBytes> above_maximum = {
+      1, 0x03, 0xE9, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+  };
+  EXPECT_FALSE(decodePersistentHpMaxConfig(above_maximum.data(), above_maximum.size(), decoded));
+}
+
+TEST(Go2NixoUartProtocol, HpMaxConfigWireEnforcesSharedRange) {
+  const std::vector<uint8_t> generation_and_prepare = {0, 0, 0, 0, 0, 0, 0, 1, 0};
+  auto hpMaxFrame = [&](uint16_t max_hits) {
+    std::vector<uint8_t> payload = {
+        static_cast<uint8_t>(max_hits >> 8), static_cast<uint8_t>(max_hits),
+    };
+    payload.insert(payload.end(), generation_and_prepare.begin(), generation_and_prepare.end());
+    return makeFrame(MessageType::HpMaxConfig, FrameFlags::AckRequired, 1, payload);
+  };
+
+  EXPECT_FALSE(isPayloadValid(hpMaxFrame(0)));
+  EXPECT_TRUE(isPayloadValid(hpMaxFrame(1)));
+  EXPECT_TRUE(isPayloadValid(hpMaxFrame(kMaxConfiguredHp)));
+  EXPECT_FALSE(isPayloadValid(hpMaxFrame(static_cast<uint16_t>(kMaxConfiguredHp + 1))));
+}
+
+TEST(Go2NixoUartRuntime, PreparedMaxHpTransitionsDeadStateToFullAndUninhibited) {
+  LocalHitState state{7, 0, 7, true, 42};
+
+  applyPreparedMaxHpState(state, 14);
+
+  EXPECT_EQ(state.maxHits, 14u);
+  EXPECT_EQ(state.hpRemaining, 14u);
+  EXPECT_EQ(state.acceptedHitCount, 0u);
+  EXPECT_FALSE(state.down);
+  EXPECT_EQ(state.lastHitSequence, 0u);
+  const bool fire_inhibited = state.down;
+  EXPECT_FALSE(fire_inhibited);
 }
 
 TEST(Go2NixoUartProtocol, EncodesAndDecodesFireStopGoldenVector) {

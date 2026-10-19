@@ -31,6 +31,25 @@ struct HpSnapshot {
   uint32_t last_hit_sequence = 0;
 };
 
+struct LocalHitState {
+  LocalHitState(uint16_t max_hits = 0,
+                uint16_t hp_remaining = 0,
+                uint16_t accepted_hit_count = 0,
+                bool is_down = false,
+                uint32_t last_hit_sequence = 0)
+      : maxHits(max_hits),
+        hpRemaining(hp_remaining),
+        acceptedHitCount(accepted_hit_count),
+        down(is_down),
+        lastHitSequence(last_hit_sequence) {}
+
+  uint16_t maxHits = 0;
+  uint16_t hpRemaining = 0;
+  uint16_t acceptedHitCount = 0;
+  bool down = false;
+  uint32_t lastHitSequence = 0;
+};
+
 struct FireSnapshot {
   FireState state = FireState::Idle;
   bool inhibited = false;
@@ -99,6 +118,7 @@ class HpDamageGuardLease {
 };
 
 AckResult applyFireStop(const Frame& frame, uint32_t now_ms, const PacketCallbacks& callbacks);
+void applyPreparedMaxHpState(LocalHitState& state, uint16_t max_hits);
 void composeAck(const Frame& request, AckResult result, Frame& response, uint32_t sender_epoch);
 void composeNack(const Frame& request, NackError error, Frame& response, uint32_t sender_epoch);
 void composeDeviceStatus(const char* device_id, uint32_t capabilities, uint32_t sender_epoch, uint16_t sequence, Frame& frame);

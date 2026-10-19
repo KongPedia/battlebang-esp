@@ -176,6 +176,14 @@ AckResult applyFireStop(const Frame& frame, uint32_t now_ms, const PacketCallbac
   return callbacks.fire_stop(reason, now_ms, callbacks.context);
 }
 
+void applyPreparedMaxHpState(LocalHitState& state, uint16_t max_hits) {
+  state.maxHits = max_hits;
+  state.hpRemaining = max_hits;
+  state.acceptedHitCount = 0;
+  state.down = false;
+  state.lastHitSequence = 0;
+}
+
 void composeAck(const Frame& request, AckResult result, Frame& response, uint32_t sender_epoch) {
   response = Frame();
   response.type = MessageType::Ack;
