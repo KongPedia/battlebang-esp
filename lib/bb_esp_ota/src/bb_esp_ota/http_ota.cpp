@@ -1,4 +1,5 @@
 #include <bb_esp_ota/http_ota.h>
+#include <bb_esp_ota/sha256_compat.h>
 
 #include <HTTPClient.h>
 #include <Update.h>
@@ -174,7 +175,7 @@ OtaResult runHttpOta(const OtaManifest& manifest) {
 
   mbedtls_sha256_context sha;
   mbedtls_sha256_init(&sha);
-  mbedtls_sha256_starts_ret(&sha, 0);
+  detail::sha256Starts(&sha, 0);
 
   uint8_t buffer[1024];
   WiFiClient* stream = http.getStreamPtr();
@@ -202,7 +203,7 @@ OtaResult runHttpOta(const OtaManifest& manifest) {
     const int bytesRead = stream->readBytes(buffer, toRead);
     if (bytesRead <= 0) continue;
 
-    mbedtls_sha256_update_ret(&sha, buffer, bytesRead);
+    detail::sha256Update(&sha, buffer, bytesRead);
     const size_t bytesWritten = Update.write(buffer, bytesRead);
     if (bytesWritten != static_cast<size_t>(bytesRead)) {
       result.message = String("Update.write failed: ") + Update.errorString();
@@ -225,7 +226,7 @@ OtaResult runHttpOta(const OtaManifest& manifest) {
   }
 
   uint8_t digest[32];
-  mbedtls_sha256_finish_ret(&sha, digest);
+  detail::sha256Finish(&sha, digest);
   mbedtls_sha256_free(&sha);
   const String actualSha = toHex(digest, sizeof(digest));
 
