@@ -129,6 +129,54 @@ TEST(Go2NixoUartProtocol, SequenceOrderingHandlesWrapAndRejectsStaleValues) {
   EXPECT_FALSE(isNewerSequence(0x1234, 0x1234));
 }
 
+TEST(Go2NixoUartProtocol, GenericMaxHitsAllowsMaintenanceBeforeAnyMatchSession) {
+  EXPECT_TRUE(canApplyGenericMaxHits(0, 14, 29));
+}
+
+TEST(Go2NixoUartProtocol, GenericMaxHitsRejectsChangedValueDuringPreparedSession) {
+  EXPECT_FALSE(canApplyGenericMaxHits(1001, 14, 29));
+  EXPECT_TRUE(canApplyGenericMaxHits(1001, 14, 14));
+}
+
+TEST(Go2NixoUartProtocol, GenericMaxHitsRejectsChangedValueDuringLockedSession) {
+  EXPECT_FALSE(canApplyGenericMaxHits(1001, 14, 29));
+  EXPECT_TRUE(canApplyGenericMaxHits(1001, 14, 14));
+}
+
+TEST(Go2NixoUartProtocol, PersistentMaxHpConfigUsesFixedBigEndianBlob) {
+  PersistentHpMaxConfig config{29, 0x0102030405060708ULL, true};
+  std::array<uint8_t, kPersistentHpMaxConfigBytes> blob{};
+  ASSERT_TRUE(encodePersistentHpMaxConfig(config, blob.data(), blob.size()));
+  const std::array<uint8_t, kPersistentHpMaxConfigBytes> expected = {
+      0x01, 0x00, 0x1D, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01,
+  };
+  EXPECT_EQ(blob, expected);
+
+  PersistentHpMaxConfig decoded;
+  ASSERT_TRUE(decodePersistentHpMaxConfig(blob.data(), blob.size(), decoded));
+  EXPECT_EQ(decoded.max_hits, 29u);
+  EXPECT_EQ(decoded.generation, 0x0102030405060708ULL);
+  EXPECT_TRUE(decoded.locked);
+}
+
+TEST(Go2NixoUartProtocol, PersistentMaxHpConfigRejectsInvalidRange) {
+  std::array<uint8_t, kPersistentHpMaxConfigBytes> blob{};
+  EXPECT_FALSE(encodePersistentHpMaxConfig(PersistentHpMaxConfig{0, 1, false}, blob.data(), blob.size()));
+  EXPECT_FALSE(encodePersistentHpMaxConfig(PersistentHpMaxConfig{14, 0, false}, blob.data(), blob.size()));
+}
+
+TEST(Go2NixoUartProtocol, PersistentMaxHpConfigRejectsCorruptBlob) {
+  PersistentHpMaxConfig decoded;
+  std::array<uint8_t, kPersistentHpMaxConfigBytes> blob = {1, 0, 14, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+  EXPECT_TRUE(decodePersistentHpMaxConfig(blob.data(), blob.size(), decoded));
+  blob[0] = 2;
+  EXPECT_FALSE(decodePersistentHpMaxConfig(blob.data(), blob.size(), decoded));
+  blob[0] = 1;
+  blob[11] = 2;
+  EXPECT_FALSE(decodePersistentHpMaxConfig(blob.data(), blob.size(), decoded));
+  EXPECT_FALSE(decodePersistentHpMaxConfig(blob.data(), blob.size() - 1, decoded));
+}
+
 TEST(Go2NixoUartProtocol, EncodesAndDecodesFireStopGoldenVector) {
   const std::array<uint8_t, 16> expected = {
       0xAA, 0x55, 0x02, 0x11, 0x01, 0x00, 0x03, 0x01,

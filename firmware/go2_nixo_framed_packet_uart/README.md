@@ -59,6 +59,18 @@ cannot be reliably distinguished in firmware from a quiet connected sensor;
 disable absent channels explicitly. This is a configuration mitigation, not a
 substitute for electrical bias and a physical false-hit test.
 
+## Match maximum HP persistence
+
+Framed UART message `HP_MAX_CONFIG` (`0x25`) is the authoritative per-robot
+maximum-HP path. `PREPARE_SET` stores the maximum HP, positive match generation,
+and unlocked preparation phase as one versioned NVS blob before applying it;
+`LOCK` stores the locked phase before acknowledging it. The value and phase
+survive ESP restarts, and a missing or invalid blob falls back to the existing
+provisioned `max_hits` default. Generic text/MQTT `max_hits` changes are allowed
+before the first match generation only; during a prepared or locked match they
+may repeat the authoritative value but cannot change it. `clear-config` explicitly
+clears both the legacy runtime configuration and this dedicated HP blob.
+
 ## Per-robot HP bar length and color order
 
 The physical HP bar length is NVS-backed as `hp_bar_group_count` (columns per

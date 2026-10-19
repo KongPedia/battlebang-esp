@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Esp.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <bb_esp_ota/http_ota.h>
 #include <bb_esp_ota/ota_manifest.h>
@@ -91,9 +92,12 @@ String lastPublishedNixoActiveSource;
 String lastPublishedNixoLastFireSource;
 uint32_t fireNetworkQuietUntilMs = 0;
 uint32_t localHpRevision = 0;
+uint64_t hpMaxConfigGeneration = 0;
+bool hpMaxConfigLocked = true;
 using battlebang::go2_nixo::uart::AckResult;
 using battlebang::go2_nixo::uart::CommandSource;
 using battlebang::go2_nixo::uart::composeAck;
+using battlebang::go2_nixo::uart::canApplyGenericMaxHits;
 using battlebang::go2_nixo::uart::composeDeviceStatus;
 using battlebang::go2_nixo::uart::composeDiagEchoReply;
 using battlebang::go2_nixo::uart::composeFireStatus;
@@ -109,6 +113,8 @@ using battlebang::go2_nixo::uart::DedupeResult;
 using battlebang::go2_nixo::uart::FrameTxQueue;
 using battlebang::go2_nixo::uart::HpSnapshot;
 using battlebang::go2_nixo::uart::HpDamageGuardLease;
+using battlebang::go2_nixo::uart::HpMaxConfigOperation;
+using battlebang::go2_nixo::uart::PersistentHpMaxConfig;
 using battlebang::go2_nixo::uart::InboundDedupe;
 using battlebang::go2_nixo::uart::IncrementalParser;
 using battlebang::go2_nixo::uart::isNewerSequence;
@@ -145,6 +151,8 @@ constexpr const char* NIXO_TRANSPORT =
     BB_GO2_NIXO_JETSON_USB_SERIAL ? "jetson_usb_serial+mqtt" : "jetson_uart+mqtt";
 constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_nixo";
 constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
+constexpr const char* HP_MAX_CONFIG_NAMESPACE = "hp_max_cfg";
+constexpr const char* HP_MAX_CONFIG_KEY = "state";
 
 struct PiezoSample {
   int raw = -1;
@@ -327,7 +335,9 @@ static void resetAnalogPiezoState() {
 }
 
 static void resetLocalHitState() {
-  localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  if (hpMaxConfigGeneration == 0) {
+    localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  }
   localHitState.hpRemaining = localHitState.maxHits;
   localHitState.acceptedHitCount = 0;
   localHitState.down = false;
@@ -345,6 +355,11 @@ static float localHpFillRatio() {
 }
 
 static void syncLocalHitStateWithRuntimeConfig() {
+  if (hpMaxConfigGeneration != 0) {
+    barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+    nixoFire.setFireInhibited(localHitState.down);
+    return;
+  }
   uint16_t nextMaxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
   if (localHitState.maxHits == nextMaxHits) {
     barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
@@ -370,7 +385,9 @@ static void syncLocalHitStateWithRuntimeConfig() {
 }
 
 static bool applyLocalHit(uint32_t sequence, uint32_t now) {
-  localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  if (hpMaxConfigGeneration == 0) {
+    localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  }
   if (localHitState.hpRemaining > localHitState.maxHits) localHitState.hpRemaining = localHitState.maxHits;
   const uint16_t previousHpRemaining = localHitState.hpRemaining;
   lastAcceptedHitEnteredCritical = false;
@@ -1151,12 +1168,52 @@ static void writePacketBe32(uint8_t* data, uint32_t value) {
   data[3] = static_cast<uint8_t>(value);
 }
 
+static uint64_t readPacketBe64(const uint8_t* data) {
+  uint64_t value = 0;
+  for (uint8_t i = 0; i < 8; ++i) value = (value << 8) | data[i];
+  return value;
+}
+
+static bool savePersistentHpMaxConfig(uint16_t maxHits, uint64_t generation, bool locked) {
+  PersistentHpMaxConfig config;
+  config.max_hits = maxHits;
+  config.generation = generation;
+  config.locked = locked;
+  uint8_t blob[battlebang::go2_nixo::uart::kPersistentHpMaxConfigBytes] = {};
+  if (!battlebang::go2_nixo::uart::encodePersistentHpMaxConfig(config, blob, sizeof(blob))) return false;
+  Preferences prefs;
+  if (!prefs.begin(HP_MAX_CONFIG_NAMESPACE, false)) return false;
+  const bool saved = prefs.putBytes(HP_MAX_CONFIG_KEY, blob, sizeof(blob)) == sizeof(blob);
+  prefs.end();
+  return saved;
+}
+
+static bool loadPersistentHpMaxConfig(PersistentHpMaxConfig& config) {
+  Preferences prefs;
+  if (!prefs.begin(HP_MAX_CONFIG_NAMESPACE, true)) return false;
+  const size_t length = prefs.getBytesLength(HP_MAX_CONFIG_KEY);
+  uint8_t blob[battlebang::go2_nixo::uart::kPersistentHpMaxConfigBytes] = {};
+  const bool loaded = length == sizeof(blob) && prefs.getBytes(HP_MAX_CONFIG_KEY, blob, sizeof(blob)) == sizeof(blob) &&
+                      battlebang::go2_nixo::uart::decodePersistentHpMaxConfig(blob, sizeof(blob), config);
+  prefs.end();
+  return loaded;
+}
+
+static bool clearPersistentHpMaxConfig() {
+  Preferences prefs;
+  if (!prefs.begin(HP_MAX_CONFIG_NAMESPACE, false)) return false;
+  const bool cleared = prefs.clear();
+  prefs.end();
+  return cleared;
+}
+
 static uint32_t jetsonPacketCapabilities() {
   uint32_t caps = battlebang::go2_nixo::uart::CapabilityFireControl |
                   battlebang::go2_nixo::uart::CapabilityHpSnapshot |
                   battlebang::go2_nixo::uart::CapabilityHitEvent |
                   battlebang::go2_nixo::uart::CapabilityHpDamage |
                   battlebang::go2_nixo::uart::CapabilityHpDamageGuard |
+                  battlebang::go2_nixo::uart::CapabilityHpMaxConfig |
                   battlebang::go2_nixo::uart::CapabilityLinkMetrics |
                   battlebang::go2_nixo::uart::CapabilityDiagEcho;
   if (NIXO_RELAY2_ENABLED_VALUE) caps |= battlebang::go2_nixo::uart::CapabilityRelay2Ch;
@@ -1351,7 +1408,22 @@ static bool packetRobotIdentityMatches(const Frame& frame) {
 
 static bool packetCommandNeedsAuthority(MessageType type) {
   return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage ||
-         type == MessageType::HpDamageGuard;
+         type == MessageType::HpDamageGuard || type == MessageType::HpMaxConfig;
+}
+
+static void applyPreparedMaxHp(uint16_t maxHits, uint64_t generation) {
+  hpMaxConfigGeneration = generation;
+  hpMaxConfigLocked = false;
+  localHitState.maxHits = maxHits;
+  localHitState.hpRemaining = maxHits;
+  localHitState.acceptedHitCount = 0;
+  localHitState.down = false;
+  localHitState.lastHitSequence = 0;
+  lastAcceptedHitEnteredCritical = false;
+  ++localHpRevision;
+  hasSentJetsonHpStatus = false;
+  barDisplay.resetLocalHpState(maxHits);
+  barDisplay.markDirty();
 }
 
 static void resetJetsonHostCommandSequence() {
@@ -1467,6 +1539,58 @@ static void handleJetsonFrame(const Frame& frame) {
       queueJetsonPacket(response);
       rememberReliableRequest(frame, response);
       if (resetHp) queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::HpMaxConfig: {
+      const uint16_t maxHits = readPacketBe16(frame.payload);
+      const uint64_t generation = readPacketBe64(frame.payload + 2);
+      const HpMaxConfigOperation operation = static_cast<HpMaxConfigOperation>(frame.payload[10]);
+      if (operation == HpMaxConfigOperation::PrepareSet) {
+        if (generation < hpMaxConfigGeneration) {
+          nackJetsonPacket(frame, NackError::OutOfOrder);
+          return;
+        }
+        if (generation == hpMaxConfigGeneration && hpMaxConfigLocked) {
+          nackJetsonPacket(frame, NackError::Inhibited);
+          return;
+        }
+        if (!savePersistentHpMaxConfig(maxHits, generation, false)) {
+          nackJetsonPacket(frame, NackError::InternalError);
+          return;
+        }
+        rememberJetsonHostCommandSequence(frame);
+        applyPreparedMaxHp(maxHits, generation);
+        Frame response;
+        composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
+        queueJetsonPacket(response);
+        rememberReliableRequest(frame, response);
+        queueJetsonHpSnapshotPacket();
+        return;
+      }
+      if (generation != hpMaxConfigGeneration) {
+        nackJetsonPacket(frame, NackError::OutOfOrder);
+        return;
+      }
+      if (maxHits != localHitState.maxHits) {
+        nackJetsonPacket(frame, NackError::InvalidPayload);
+        return;
+      }
+      if (localHitState.down || localHitState.hpRemaining != localHitState.maxHits) {
+        nackJetsonPacket(frame, NackError::Busy);
+        return;
+      }
+      const AckResult result = hpMaxConfigLocked ? AckResult::NoopAlreadySafe : AckResult::Applied;
+      if (!savePersistentHpMaxConfig(maxHits, generation, true)) {
+        nackJetsonPacket(frame, NackError::InternalError);
+        return;
+      }
+      rememberJetsonHostCommandSequence(frame);
+      hpMaxConfigLocked = true;
+      Frame response;
+      composeAck(frame, result, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonHpSnapshotPacket();
       return;
     }
     case MessageType::DiagEcho: {
@@ -1703,11 +1827,26 @@ static void checkOtaManifestUrl(const String& url) {
   checkOtaManifestUrlWithPolicy(url, false, "serial");
 }
 
+static bool configJsonRequestsMaxHits(const String& json) {
+  DynamicJsonDocument doc(COMMAND_LINE_MAX + 256);
+  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
+  JsonObjectConst root = doc.as<JsonObjectConst>();
+  if (root.containsKey("max_hits") || root.containsKey("hits_to_down")) return true;
+  JsonObjectConst hit = root["hit"].as<JsonObjectConst>();
+  return !hit.isNull() && (hit.containsKey("max_hits") || hit.containsKey("hits_to_down"));
+}
+
 static void applyAndPersistConfig(const String& json, const char* source) {
   String error;
   RuntimeConfig next = runtimeConfig;
   if (!applyRuntimeConfigJson(json.c_str(), next, error)) {
     replyToSource(source, String("{\"event\":\"config_rejected\",\"error\":\"") + error + "\"}");
+    return;
+  }
+
+  if (configJsonRequestsMaxHits(json) &&
+      !canApplyGenericMaxHits(hpMaxConfigGeneration, localHitState.maxHits, next.hit.maxHits)) {
+    replyToSource(source, "{\"event\":\"config_rejected\",\"error\":\"max_hits cannot change during an active match session\"}");
     return;
   }
 
@@ -1798,8 +1937,12 @@ static void handleCommandLine(String line, const char* source) {
     return;
   }
   if (lower == "clear-config") {
-    const bool cleared = clearRuntimeConfigNvs();
+    const bool runtimeConfigCleared = clearRuntimeConfigNvs();
+    const bool hpMaxConfigCleared = clearPersistentHpMaxConfig();
+    const bool cleared = runtimeConfigCleared && hpMaxConfigCleared;
     if (cleared) {
+      hpMaxConfigGeneration = 0;
+      hpMaxConfigLocked = true;
       runtimeConfig = runtimeConfigFromNvsOrBuild();
       reapplyRuntimeConfig("clear-config");
     }
@@ -1983,6 +2126,13 @@ void setup() {
 
   postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
   runtimeConfig = runtimeConfigFromNvsOrBuild();
+  PersistentHpMaxConfig persistentHpMaxConfig;
+  if (loadPersistentHpMaxConfig(persistentHpMaxConfig)) {
+    runtimeConfig.hit.maxHits = persistentHpMaxConfig.max_hits;
+    localHitState.maxHits = persistentHpMaxConfig.max_hits;
+    hpMaxConfigGeneration = persistentHpMaxConfig.generation;
+    hpMaxConfigLocked = persistentHpMaxConfig.locked;
+  }
 
   barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
   barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);

@@ -27,8 +27,10 @@ def test_uart_fixture_and_cpp_contract_are_present() -> None:
     assert "HpSnapshot = 0x22" in header
     assert "HitEvent = 0x23" in header
     assert "HpDamageGuard = 0x24" in header
+    assert "HpMaxConfig = 0x25" in header
     assert "CapabilityHpDamage = 0x00000040" in header
     assert "CapabilityHpDamageGuard = 0x00000080" in header
+    assert "CapabilityHpMaxConfig = 0x00000100" in header
     assert "sender_epoch" in header
     assert "session_id" not in header
 
@@ -151,12 +153,55 @@ def test_uart_flags_match_python_registry() -> None:
     assert "case MessageType::HpReset:" in protocol
     assert "case MessageType::HpDamage:" in protocol
     assert "case MessageType::HpDamageGuard:" in protocol
+    assert "case MessageType::HpMaxConfig:" in protocol
     assert "case MessageType::HitEvent:" in protocol
     assert "case MessageType::DiagEcho:" in protocol
     assert "return frame.flags == FrameFlags::AckRequired;" in protocol
     assert "return frame.flags == FrameFlags::Response;" in protocol
     runtime = read("firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp")
     assert "void composeFireStatus(" in runtime
+
+
+def test_hp_max_config_is_match_local_locked_and_deduplicated() -> None:
+    protocol = read("firmware/go2_nixo_framed_packet_uart/uart/protocol.cpp")
+    main = read("firmware/go2_nixo_framed_packet_uart/main.cpp")
+    handler = main.split("case MessageType::HpMaxConfig:", 1)[1].split("case MessageType::DiagEcho:", 1)[0]
+
+    assert "frame.payload_length == 11" in protocol
+    assert "hpMaxConfigLocked = true;" in main
+    assert "hpMaxConfigGeneration = 0;" in main
+    assert "replayOrRejectDuplicate(frame)" in main
+    assert main.index("replayOrRejectDuplicate(frame)") < main.index("case MessageType::HpMaxConfig:")
+    assert "generation < hpMaxConfigGeneration" in handler
+    assert "generation == hpMaxConfigGeneration && hpMaxConfigLocked" in handler
+    assert "maxHits != localHitState.maxHits" in handler
+    assert "localHitState.down || localHitState.hpRemaining != localHitState.maxHits" in handler
+    assert "nackJetsonPacket(frame, NackError::Busy)" in handler
+    assert "applyPreparedMaxHp(maxHits, generation)" in handler
+    assert "queueJetsonHpSnapshotPacket();" in handler
+    assert "saveRuntimeConfigToNvs" not in handler
+    prepare = handler.split("if (operation == HpMaxConfigOperation::PrepareSet)", 1)[1].split(
+        "if (generation != hpMaxConfigGeneration)", 1
+    )[0]
+    assert prepare.index("savePersistentHpMaxConfig(maxHits, generation, false)") < prepare.index(
+        "applyPreparedMaxHp(maxHits, generation)"
+    )
+    assert prepare.index("savePersistentHpMaxConfig(maxHits, generation, false)") < prepare.index(
+        "rememberJetsonHostCommandSequence(frame)"
+    )
+    lock = handler.split("const AckResult result", 1)[1]
+    assert lock.index("savePersistentHpMaxConfig(maxHits, generation, true)") < lock.index("hpMaxConfigLocked = true")
+    assert lock.index("savePersistentHpMaxConfig(maxHits, generation, true)") < lock.index(
+        "rememberJetsonHostCommandSequence(frame)"
+    )
+    setup = main.split("void setup()", 1)[1]
+    assert setup.index("loadPersistentHpMaxConfig(persistentHpMaxConfig)") < setup.index("resetLocalHitState();")
+    assert "runtimeConfig.hit.maxHits = persistentHpMaxConfig.max_hits" in setup
+    assert "clearRuntimeConfigNvs()" in main
+    assert "clearPersistentHpMaxConfig()" in main
+    assert "configJsonRequestsMaxHits(json)" in main
+    assert "canApplyGenericMaxHits(hpMaxConfigGeneration, localHitState.maxHits, next.hit.maxHits)" in main
+    assert "max_hits cannot change during an active match session" in main
 
 
 def _hex_bytes(value: str) -> bytes:
