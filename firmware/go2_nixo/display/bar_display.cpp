@@ -17,7 +17,7 @@ int groupsForFill(float fillRatio, int groupCount) {
 void BarDisplay::begin(uint16_t brightness) {
   startupStartedMs_ = millis();
   startupLoading_ = true;
-  FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>(leds_, HP_BAR_NUM_LEDS);
+  FastLED.addLeds<WS2812B, HP_BAR_LED_PIN, RGB>(leds_, HP_BAR_NUM_LEDS);
   setBrightness(brightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(LED_MAX_VOLTS, LED_MAX_MA);
   dirty_ = true;
@@ -80,9 +80,15 @@ void BarDisplay::setBrightness(uint16_t brightness) {
 }
 
 void BarDisplay::setGroupCount(uint8_t count) {
-  if (count < 1 || count > HP_BAR_GROUP_COUNT) return;
+  if (count < 1 || count > HP_BAR_MAX_GROUP_COUNT) return;
   groupCount_ = count;
   clearDiagnostic();
+  dirty_ = true;
+}
+
+void BarDisplay::setColorOrder(uint8_t order) {
+  if (order > 5) return;
+  colorOrder_ = order;
   dirty_ = true;
 }
 
@@ -202,7 +208,7 @@ void BarDisplay::handleRemoteExpiry(uint32_t now) {
 
 void BarDisplay::renderStartupLoading(uint32_t now) {
   const CRGB color = now - startupStartedMs_ < STARTUP_COLOR_MS ? CRGB::Red : CRGB::Blue;
-  fill_solid(leds_, HP_BAR_NUM_LEDS, color);
+  fill_solid(leds_, HP_BAR_NUM_LEDS, wireColor(color));
   dirty_ = true;
 }
 
@@ -213,7 +219,7 @@ void BarDisplay::renderLocal(uint32_t now) {
       downBlinkOn_ = !downBlinkOn_;
       dirty_ = true;
     }
-    for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
+    for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = wireColor(downBlinkOn_ ? CRGB::Red : CRGB::Black);
     return;
   }
 
@@ -242,7 +248,7 @@ void BarDisplay::renderRemote(uint32_t now) {
       downBlinkOn_ = !downBlinkOn_;
       dirty_ = true;
     }
-    for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = downBlinkOn_ ? CRGB::Red : CRGB::Black;
+    for (int i = 0; i < HP_BAR_NUM_LEDS; i++) leds_[i] = wireColor(downBlinkOn_ ? CRGB::Red : CRGB::Black);
     return;
   }
 
@@ -272,15 +278,17 @@ void BarDisplay::renderHpBar(float fillRatio, const CRGB& healthyColor, const CR
 void BarDisplay::setHpBarGroup(int group1Based, const CRGB& color) {
   if (group1Based < 1 || group1Based > groupCount_) return;
 
-  // Serpentine rows: 28-column default -> 1/56/57, 28/29/84.
+  // Serpentine rows: 28-column default -> 1/56/57, 28/29/84;
+  // 29-column bar -> 1/58/59, 29/30/87.
   // go2_06 observed 27-column wiring -> 1/54/55, 27/28/81.
   int row1Index = group1Based - 1;
   int row2Index = 2 * groupCount_ - group1Based;
   int row3Index = 2 * groupCount_ - 1 + group1Based;
 
-  leds_[row1Index] = color;
-  leds_[row2Index] = color;
-  leds_[row3Index] = color;
+  const CRGB physicalColor = wireColor(color);
+  leds_[row1Index] = physicalColor;
+  leds_[row2Index] = physicalColor;
+  leds_[row3Index] = physicalColor;
 }
 
 void BarDisplay::setHpBarPixel(int group, int strip, const CRGB& color) {
@@ -288,11 +296,22 @@ void BarDisplay::setHpBarPixel(int group, int strip, const CRGB& color) {
   group = groupCount_ - 1 - group;
   strip = HP_BAR_LEDS_PER_GROUP - 1 - strip;
   if (strip == 0) {
-    leds_[group] = color;
+    leds_[group] = wireColor(color);
   } else if (strip == 1) {
-    leds_[2 * groupCount_ - 1 - group] = color;
+    leds_[2 * groupCount_ - 1 - group] = wireColor(color);
   } else {
-    leds_[2 * groupCount_ + group] = color;
+    leds_[2 * groupCount_ + group] = wireColor(color);
+  }
+}
+
+CRGB BarDisplay::wireColor(const CRGB& color) const {
+  switch (colorOrder_) {
+    case 1: return CRGB(color.g, color.r, color.b);  // GRB
+    case 2: return CRGB(color.r, color.b, color.g);  // RBG
+    case 3: return CRGB(color.g, color.b, color.r);  // GBR
+    case 4: return CRGB(color.b, color.r, color.g);  // BRG
+    case 5: return CRGB(color.b, color.g, color.r);  // BGR
+    default: return color;  // RGB; preserves legacy value 0
   }
 }
 

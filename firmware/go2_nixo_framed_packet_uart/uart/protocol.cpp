@@ -22,6 +22,12 @@ uint32_t readBe32(const uint8_t* data) {
          static_cast<uint32_t>(data[3]);
 }
 
+uint64_t readBe64(const uint8_t* data) {
+  uint64_t value = 0;
+  for (uint8_t i = 0; i < 8; ++i) value = (value << 8) | data[i];
+  return value;
+}
+
 void writeBe16(uint8_t* data, uint16_t value) {
   data[0] = static_cast<uint8_t>(value >> 8);
   data[1] = static_cast<uint8_t>(value);
@@ -32,6 +38,13 @@ void writeBe32(uint8_t* data, uint32_t value) {
   data[1] = static_cast<uint8_t>(value >> 16);
   data[2] = static_cast<uint8_t>(value >> 8);
   data[3] = static_cast<uint8_t>(value);
+}
+
+void writeBe64(uint8_t* data, uint64_t value) {
+  for (int8_t i = 7; i >= 0; --i) {
+    data[i] = static_cast<uint8_t>(value);
+    value >>= 8;
+  }
 }
 
 bool isKnownType(uint8_t value) {
@@ -47,6 +60,7 @@ bool isKnownType(uint8_t value) {
     case MessageType::HpSnapshot:
     case MessageType::HitEvent:
     case MessageType::HpDamageGuard:
+    case MessageType::HpMaxConfig:
     case MessageType::Ack:
     case MessageType::Nack:
     case MessageType::DiagEcho:
@@ -166,6 +180,12 @@ bool isPayloadValid(const Frame& frame) {
       const uint16_t lease_ms = readBe16(frame.payload + 2);
       return enabled ? lease_ms > 0 && lease_ms <= kMaxHpDamageGuardLeaseMs : !reset_hp && lease_ms == 0;
     }
+    case MessageType::HpMaxConfig:
+      return frame.payload_length == 11 && readBe16(frame.payload) > 0 &&
+             readBe16(frame.payload) <= kMaxConfiguredHp &&
+             (frame.payload[2] != 0 || frame.payload[3] != 0 || frame.payload[4] != 0 || frame.payload[5] != 0 ||
+              frame.payload[6] != 0 || frame.payload[7] != 0 || frame.payload[8] != 0 || frame.payload[9] != 0) &&
+             inRange(frame.payload[10], 1);
     case MessageType::Ack:
       return frame.payload_length == 4 && inRange(frame.payload[3], 2);
     case MessageType::Nack:
@@ -185,6 +205,7 @@ bool hasValidFlagsForType(const Frame& frame) {
     case MessageType::HpDamage:
     case MessageType::HitEvent:
     case MessageType::HpDamageGuard:
+    case MessageType::HpMaxConfig:
     case MessageType::DiagEcho:
       return frame.flags == FrameFlags::AckRequired;
     case MessageType::Ack:
@@ -211,6 +232,36 @@ bool composeDiagEchoReply(const Frame& request, Frame& reply) {
   reply.payload_length = request.payload_length;
   reply.version = kFrameVersion;
   memcpy(reply.payload, request.payload, request.payload_length);
+  return true;
+}
+
+bool canApplyGenericMaxHits(uint64_t active_generation, uint16_t current_max_hits, uint16_t requested_max_hits) {
+  return active_generation == 0 || requested_max_hits == current_max_hits;
+}
+
+bool encodePersistentHpMaxConfig(const PersistentHpMaxConfig& config, uint8_t* output, size_t capacity) {
+  if (output == nullptr || capacity < kPersistentHpMaxConfigBytes || config.max_hits == 0 ||
+      config.max_hits > kMaxConfiguredHp || config.generation == 0) {
+    return false;
+  }
+  output[0] = kPersistentHpMaxConfigVersion;
+  writeBe16(output + 1, config.max_hits);
+  writeBe64(output + 3, config.generation);
+  output[11] = config.locked ? 1 : 0;
+  return true;
+}
+
+bool decodePersistentHpMaxConfig(const uint8_t* input, size_t length, PersistentHpMaxConfig& config) {
+  if (input == nullptr || length != kPersistentHpMaxConfigBytes || input[0] != kPersistentHpMaxConfigVersion ||
+      input[11] > 1) {
+    return false;
+  }
+  const uint16_t max_hits = readBe16(input + 1);
+  const uint64_t generation = readBe64(input + 3);
+  if (max_hits == 0 || max_hits > kMaxConfiguredHp || generation == 0) return false;
+  config.max_hits = max_hits;
+  config.generation = generation;
+  config.locked = input[11] != 0;
   return true;
 }
 

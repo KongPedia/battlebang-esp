@@ -6,7 +6,7 @@
     "offline_hit_queue_capacity": 32,
     "offline_hit_queue_flush_interval_ms": 50,
     "led_pin": 18,
-    "num_leds": 84,
+    "num_leds": 87,
     "led_brightness": 120,
     "ring_led_pin": 4,
     "ring_num_leds": 40,

@@ -15,6 +15,7 @@ class BarDisplay {
   void markDirty();
   void setBrightness(uint16_t brightness);
   void setGroupCount(uint8_t count);
+  void setColorOrder(uint8_t order);
   void setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now);
   void resetLocalHpState(uint16_t maxHits);
   void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
@@ -50,6 +51,7 @@ class BarDisplay {
   int diagnosticPixel_ = 0;
   uint32_t diagnosticExpiresMs_ = 0;
   uint8_t groupCount_ = HP_BAR_GROUP_COUNT;
+  uint8_t colorOrder_ = 0;
 
   float localFillRatio() const;
   bool remoteExpired(uint32_t now) const;
@@ -63,6 +65,7 @@ class BarDisplay {
   void setHpBarGroup(int group1Based, const CRGB& color);
   void setHpBarPixel(int group, int strip, const CRGB& color);
   void showTick(uint32_t now);
+  CRGB wireColor(const CRGB& color) const;
 };
 
 }  // namespace go2

@@ -22,6 +22,9 @@ constexpr size_t kDedupeEntryCount = 16;
 constexpr size_t kReliableEntryCount = 8;
 constexpr uint8_t kMaxTransmitAttempts = 3;
 constexpr uint16_t kMaxHpDamageGuardLeaseMs = 1500;
+constexpr uint16_t kMaxConfiguredHp = 1000;
+constexpr uint8_t kPersistentHpMaxConfigVersion = 1;
+constexpr size_t kPersistentHpMaxConfigBytes = 12;
 
 // Framed UART header (wire format version 2): AA 55, version, type, flags, sequence, sender_epoch, payload_length, payload, crc16.
 enum class MessageType : uint8_t {
@@ -36,6 +39,7 @@ enum class MessageType : uint8_t {
   HpSnapshot = 0x22,
   HitEvent = 0x23,
   HpDamageGuard = 0x24,
+  HpMaxConfig = 0x25,
   Ack = 0x7E,
   Nack = 0x7F,
   DiagEcho = 0xF0,
@@ -67,6 +71,12 @@ enum CapabilityBits : uint32_t {
   CapabilityRelay2Ch = 0x00000020,
   CapabilityHpDamage = 0x00000040,
   CapabilityHpDamageGuard = 0x00000080,
+  CapabilityHpMaxConfig = 0x00000100,
+};
+
+enum class HpMaxConfigOperation : uint8_t {
+  PrepareSet = 0,
+  Lock = 1,
 };
 
 enum class LinkState : uint8_t {
@@ -159,6 +169,12 @@ struct ParserCounters {
   uint32_t flag_errors = 0;
 };
 
+struct PersistentHpMaxConfig {
+  uint16_t max_hits = 0;
+  uint64_t generation = 0;
+  bool locked = true;
+};
+
 using FrameHandler = void (*)(const Frame& frame, void* context);
 
 uint16_t crc16CcittFalse(const uint8_t* data, size_t length);
@@ -167,6 +183,9 @@ FrameError decodeFrame(const uint8_t* wire, size_t length, Frame& frame);
 bool isPayloadValid(const Frame& frame);
 bool hasValidFlagsForType(const Frame& frame);
 bool composeDiagEchoReply(const Frame& request, Frame& reply);
+bool canApplyGenericMaxHits(uint64_t active_generation, uint16_t current_max_hits, uint16_t requested_max_hits);
+bool encodePersistentHpMaxConfig(const PersistentHpMaxConfig& config, uint8_t* output, size_t capacity);
+bool decodePersistentHpMaxConfig(const uint8_t* input, size_t length, PersistentHpMaxConfig& config);
 uint16_t nextSequence(uint16_t sequence);
 bool isNewerSequence(uint16_t candidate, uint16_t previous);
 

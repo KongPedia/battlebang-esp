@@ -364,7 +364,7 @@
 #endif
 
 #ifndef BATTLEBANG_NUM_LEDS
-#define BATTLEBANG_NUM_LEDS 84
+#define BATTLEBANG_NUM_LEDS 87
 #endif
 
 #ifndef BATTLEBANG_LED_BRIGHTNESS
@@ -373,6 +373,10 @@
 
 #ifndef BATTLEBANG_HP_BAR_GROUP_COUNT
 #define BATTLEBANG_HP_BAR_GROUP_COUNT 28
+#endif
+
+#ifndef BATTLEBANG_HP_BAR_MAX_GROUP_COUNT
+#define BATTLEBANG_HP_BAR_MAX_GROUP_COUNT 29
 #endif
 
 #ifndef BATTLEBANG_HP_BAR_LEDS_PER_GROUP
@@ -463,9 +467,10 @@ static constexpr int RING_LED_PIN = BATTLEBANG_RING_LED_PIN;
 static constexpr int RING_NUM_LEDS = BATTLEBANG_RING_NUM_LEDS;
 static constexpr uint8_t RING_LED_BRIGHTNESS = BATTLEBANG_RING_LED_BRIGHTNESS;
 static constexpr int HP_BAR_GROUP_COUNT = BATTLEBANG_HP_BAR_GROUP_COUNT;
+static constexpr int HP_BAR_MAX_GROUP_COUNT = BATTLEBANG_HP_BAR_MAX_GROUP_COUNT;
 static constexpr int HP_BAR_LEDS_PER_GROUP = BATTLEBANG_HP_BAR_LEDS_PER_GROUP;
 static constexpr int HP_BAR_EXPECTED_LED_COUNT =
-    HP_BAR_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP;
+    HP_BAR_MAX_GROUP_COUNT * HP_BAR_LEDS_PER_GROUP;
 static constexpr uint8_t LED_MAX_VOLTS = 5;
 static constexpr uint16_t LED_MAX_MA = 900;
 static constexpr uint32_t LED_SHOW_PERIOD_MS = 16;
@@ -503,6 +508,8 @@ static_assert(OFFLINE_HIT_QUEUE_CAPACITY > 0,
 static_assert(OFFLINE_HIT_QUEUE_CAPACITY <= 255,
               "offline hit queue capacity must fit uint8_t counters");
 static_assert(HP_BAR_GROUP_COUNT > 0, "HP bar group count must be positive");
+static_assert(HP_BAR_GROUP_COUNT <= HP_BAR_MAX_GROUP_COUNT,
+              "HP bar default must fit physical capacity");
 static_assert(HP_BAR_LEDS_PER_GROUP == 3,
               "Go2 HP bar renderer expects 3 linked LEDs per group");
 static_assert(NUM_LEDS == HP_BAR_EXPECTED_LED_COUNT,

@@ -23,6 +23,7 @@ struct HitRuntimeConfig {
   uint32_t piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
   uint8_t piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
   uint8_t hpBarGroupCount = HP_BAR_GROUP_COUNT;
+  uint8_t hpBarColorOrder = 0;  // 0: RGB, 1: GRB, 2: RBG, 3: GBR, 4: BRG, 5: BGR
   uint16_t maxHits = MAX_HITS;
   uint32_t hitFlashMs = HIT_FLASH_MS;
 };

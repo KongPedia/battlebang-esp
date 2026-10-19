@@ -64,6 +64,12 @@ def healthy_groups(fill_ratio: float) -> int:
     return max(0, min(int(fill_ratio * HP_BAR_GROUP_COUNT + 0.5), HP_BAR_GROUP_COUNT))
 
 
+def platformio_env_block(platformio: str, name: str) -> str:
+    start = platformio.index(f"[env:{name}]")
+    end = platformio.find("\n[", start + 1)
+    return platformio[start:] if end < 0 else platformio[start:end]
+
+
 def test_hp_bar_reference_group_mapping() -> None:
     assert linked_group_indices(1) == (0, 55, 56)  # LEDs 1, 56, 57
     assert linked_group_indices(2) == (1, 54, 57)  # LEDs 2, 55, 58
@@ -102,7 +108,7 @@ def test_go2_nixo_defaults_disable_esp_side_nixo_cooldown() -> None:
     firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
     defaults = json.loads(robots_json.read_text())["defaults"]
     assert defaults["led_pin"] == 18, firmware
-    assert defaults["num_leds"] == HP_BAR_LED_COUNT, firmware
+    assert defaults["num_leds"] == 87, firmware  # 29-column capacity; default active length remains 28.
     assert defaults["led_brightness"] == 120, firmware
     assert defaults["ring_led_pin"] == 4, firmware
     assert defaults["ring_num_leds"] == RING_LED_COUNT, firmware
@@ -130,7 +136,11 @@ def test_hp_bar_renderer_uses_bar_led_layout() -> None:
         assert "void begin(uint16_t brightness = HP_BAR_LED_BRIGHTNESS);" in header, firmware
         assert "void setBrightness(uint16_t brightness);" in header, firmware
         assert "setBrightness(brightness);" in source, firmware
-        assert "FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>" in source, firmware
+        if firmware == "go2_nixo":
+            assert "FastLED.addLeds<WS2812B, HP_BAR_LED_PIN, RGB>" in source, firmware
+            assert "FastLED.addLeds<WS2815" not in source, firmware
+        else:
+            assert "FastLED.addLeds<WS2815, HP_BAR_LED_PIN, RGB>" in source, firmware
         assert "i < HP_BAR_NUM_LEDS" in source, firmware
         assert "i < NUM_LEDS" not in source, firmware
         assert "setHpBarGroup" in source, firmware
@@ -143,6 +153,20 @@ def test_hp_bar_renderer_uses_bar_led_layout() -> None:
             assert "group 28 -> LEDs 28, 29, 84" in source
             assert "row2Index = 2 * HP_BAR_GROUP_COUNT - group1Based" in source
             assert "row3Index = 2 * HP_BAR_GROUP_COUNT - 1 + group1Based" in source
+
+
+def test_integrated_go2_nixo_pins_pre_refactor_fastled_rmt_backend() -> None:
+    platformio = (ROOT / "platformio.ini").read_text()
+    standalone = platformio_env_block(platformio, "esp32dev")
+    base = platformio_env_block(platformio, "esp32dev_go2_nixo")
+    framed = platformio_env_block(platformio, "esp32dev_go2_nixo_framed_packet_uart")
+    usb_2ch = platformio_env_block(platformio, "esp32dev_go2_nixo_framed_packet_usb_2ch")
+
+    assert "fastled/FastLED@^3.7.0" in standalone
+    assert "fastled/FastLED@3.7.0" in base
+    assert "fastled/FastLED@^3.7.0" not in base
+    assert "extends = env:esp32dev_go2_nixo" in framed
+    assert "extends = env:esp32dev_go2_nixo_framed_packet_uart" in usb_2ch
 
 
 def test_fire_ring_renderer_uses_original_ring_pin_only_in_go2_nixo() -> None:
@@ -599,7 +623,7 @@ def test_go2_nixo_shows_one_short_red_blue_startup_then_local_hp() -> None:
         "void BarDisplay::renderLocal", 1
     )[0]
     assert "CRGB::Red : CRGB::Blue" in startup
-    assert "fill_solid(leds_, HP_BAR_NUM_LEDS, color);" in startup
+    assert "fill_solid(leds_, HP_BAR_NUM_LEDS, wireColor(color));" in startup
     assert "CRGB::Green" in bar_source.split("void BarDisplay::renderLocal", 1)[1]
     publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
         "static void updateAnalogDebugStats", 1
@@ -956,7 +980,7 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
     firmware, _bar_cpp, _ring_cpp, build_config, _robots_json = GO2_NIXO
     source = build_config.read_text()
     assert "#define BATTLEBANG_LED_PIN 18" in source, firmware
-    assert "#define BATTLEBANG_NUM_LEDS 84" in source, firmware
+    assert "#define BATTLEBANG_NUM_LEDS 87" in source, firmware
     assert "#define BATTLEBANG_LED_BRIGHTNESS 120" in source, firmware
     assert "#define BATTLEBANG_RING_LED_PIN 4" in source, firmware
     assert "#define BATTLEBANG_RING_NUM_LEDS 40" in source, firmware
@@ -964,6 +988,7 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
     assert "#define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 3000" in source, firmware
     assert "#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 0" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_GROUP_COUNT 28" in source, firmware
+    assert "#define BATTLEBANG_HP_BAR_MAX_GROUP_COUNT 29" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_LEDS_PER_GROUP 3" in source, firmware
     assert "HP bar LED count must match grouped bar layout" in source, firmware
     assert "HP bar and fire ring pins must be different" in source, firmware
@@ -1206,3 +1231,14 @@ def test_standalone_nixo_starts_local_cooldown_after_fire_completion() -> None:
     assert "#define NIXO_FIRE_DEFAULT_DURATION_MS 3000" in build_config
     assert "#define NIXO_FIRE_COOLDOWN_MS 1500" in build_config
     assert source.count("beginCooldown(now);") == 2
+
+
+def test_integrated_hp_bar_supports_all_six_wire_orders() -> None:
+    source = GO2_NIXO[1].read_text()
+    runtime = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
+    assert "if (order > 5) return;" in source
+    for value, channels in enumerate(("g, color.r, color.b", "r, color.b, color.g", "g, color.b, color.r", "b, color.r, color.g", "b, color.g, color.r"), 1):
+        assert f"case {value}: return CRGB(color.{channels});" in source
+    assert "default: return color;" in source
+    assert runtime.count("hpBarColorOrder > 5") == 3
+    assert "hpBarColorOrder > 1" not in runtime

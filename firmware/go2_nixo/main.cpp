@@ -18,7 +18,7 @@ using namespace go2;
 
 // Integrated Go2 hit/LED + Nixo fallback firmware:
 // - This ESP samples three piezo AO channels (ADC), accepts local hits immediately, owns
-//   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
+//   hp_remaining/down state, and renders the HP bar without waiting for
 //   Command Center per-hit ring_display round trips.
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
 // - Nixo fire uses Jetson UART as the default path; MQTT remains a secondary command path.
@@ -753,6 +753,7 @@ static void addHitTuningStatus(JsonObject doc) {
   doc["piezo_ao_capture_window_ms"] = runtimeConfig.hit.piezoAoCaptureWindowMs;
   doc["piezo_ao_debug_period_ms"] = runtimeConfig.hit.piezoAoDebugPeriodMs;
   doc["piezo_ao_rearm_stable_ms"] = runtimeConfig.hit.piezoAoRearmStableMs;
+  doc["hp_bar_color_order"] = runtimeConfig.hit.hpBarColorOrder;
   doc["max_hits"] = runtimeConfig.hit.maxHits;
   doc["hit_flash_ms"] = runtimeConfig.hit.hitFlashMs;
 }
@@ -1080,6 +1081,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
   nixoFire.begin(runtimeConfig);
   barDisplay.setBrightness(runtimeConfig.hit.ledBrightness);
+  barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
   ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
   syncLocalHitStateWithRuntimeConfig();
   resetAnalogPiezoState();
@@ -1414,6 +1416,7 @@ void setup() {
   postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
   runtimeConfig = runtimeConfigFromNvsOrBuild();
 
+  barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
   barDisplay.begin(runtimeConfig.hit.ledBrightness);
   ringDisplay.begin(runtimeConfig.hit.ringBrightness);
   beginAnalogPiezo();

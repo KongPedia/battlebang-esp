@@ -287,6 +287,7 @@ def build_payload(
         "piezo_ao_rearm_stable_ms": env_int(env, prefixed_tuning_keys("PIEZO_AO_REARM_STABLE_MS"), 30),
         "piezo_channel_enable_mask": env_int(env, prefixed_tuning_keys("PIEZO_CHANNEL_ENABLE_MASK"), 3),
         "hp_bar_group_count": env_int(env, prefixed_tuning_keys("HP_BAR_GROUP_COUNT"), 28),
+        "hp_bar_color_order": env_int(env, prefixed_tuning_keys("HP_BAR_COLOR_ORDER"), 0),
         "max_hits": env_int(env, (*prefixed_tuning_keys("MAX_HITS"), *prefixed_tuning_keys("HITS_TO_DOWN")), 14),
         "hit_flash_ms": env_int(env, prefixed_tuning_keys("HIT_FLASH_MS"), 900),
     }

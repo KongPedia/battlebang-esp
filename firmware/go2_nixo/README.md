@@ -53,8 +53,9 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 
 | Part | Default | Runtime? |
 | --- | --- | --- |
-| HP bar LED data | GPIO18 / 84 address capacity | No, build hardware profile |
-| HP bar logical columns per row | 28 default; go2_06 has 27 | Yes, `GO2_NIXO_HP_BAR_GROUP_COUNT` in per-robot env/NVS (framed firmware) |
+| HP bar LED data | GPIO18 / 5 V WS2812B, RGB baseline / 87 address capacity | No, build hardware profile |
+| HP bar logical columns per row | 28 default; 29 supported, older go2_06 has 27 | Yes, `GO2_NIXO_HP_BAR_GROUP_COUNT` in per-robot env/NVS (framed firmware) |
+| HP bar red/green order | 0=unchanged logical RGB, 1=swap red/green | Yes, `GO2_NIXO_HP_BAR_COLOR_ORDER` in per-robot env/NVS |
 | Ring LED data | GPIO4 / 40 LEDs | No, build hardware profile |
 | Piezo AO / D0 debug | left GPIO34, right GPIO35, front GPIO32 / D0 GPIO27 | No, build hardware profile |
 | Piezo threshold/rearm | 2400 / 1800 raw | Yes, NVS tuning |
@@ -63,6 +64,16 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 | Relay 1ch | GPIO23 active-HIGH | No, build variant |
 | Relay 2ch | GPIO22 flywheel + GPIO23 chain, active-LOW | No, build variant |
 | Nixo fire timing | default 3000ms, cooldown 0ms, prefire 600ms, relay delay1 800ms | Yes, NVS tuning |
+
+The integrated ESP32 environment pins FastLED to `3.7.0` for the Arduino 2.x /
+ESP-IDF 4.x RMT driver. Do not replace this with a caret range without hardware
+validation: FastLED 3.10.5 selected a generic clockless fallback on this core,
+and explicitly forcing its RMT path exposed incompatible RMT4 code. A standalone
+raw RMT color cycle was used to distinguish this from LED/pin failures.
+The RGB baseline preserves existing saved color-order values. For Go2-05's GRB
+strip, set `GO2_NIXO_HP_BAR_COLOR_ORDER=1`; the swap produces GRB wire data
+without changing other robots' saved settings.
+Changing a chipset or color-order setting does not change the LED supply voltage.
 
 ## Build, upload, provision
 
@@ -170,3 +181,19 @@ software, USB-TTL, Jetson UART, and dummy-load gates before connecting the live 
   "request_id": "manual-fire-001"
 }
 ```
+
+### HP bar RGB output order (runtime, NVS persisted)
+
+`hit.hp_bar_color_order`: `0=RGB`, `1=GRB`, `2=RBG`, `3=GBR`, `4=BRG`, `5=BGR`.
+Existing values 0/1 retain their meaning. Changes apply without reboot or reflash
+once firmware supporting these values is installed. HP rules and state colors
+are unchanged. Provisioning uses `GO2_NIXO_HP_BAR_COLOR_ORDER`.
+Via the Bluetooth management console (not the framed USB data port), send:
+
+```text
+config {"config_version":<NEW_VERSION>,"hit":{"hp_bar_color_order":1}}
+```
+
+Replace `<NEW_VERSION>` with a positive version not older than the current config.
+Require `config_applied` with saved success, then `show-status` to confirm
+`hp_bar_color_order`. Other runtime settings are preserved.
