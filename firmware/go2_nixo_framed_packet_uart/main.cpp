@@ -21,7 +21,7 @@ using namespace go2;
 
 // Integrated Go2 hit/LED + Nixo fallback firmware:
 // - This ESP samples three piezo AO channels (ADC), accepts local hits immediately, owns
-//   hp_remaining/down state, and renders the 84-LED HP bar without waiting for
+//   hp_remaining/down state, and renders the HP bar without waiting for
 //   Command Center per-hit ring_display round trips.
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
 // - Nixo fire uses Jetson UART as the default path; MQTT remains a secondary command path.
@@ -921,6 +921,7 @@ static void addHitTuningStatus(JsonObject doc) {
   doc["piezo_ao_rearm_stable_ms"] = runtimeConfig.hit.piezoAoRearmStableMs;
   doc["piezo_channel_enable_mask"] = runtimeConfig.hit.piezoChannelEnableMask;
   doc["hp_bar_group_count"] = runtimeConfig.hit.hpBarGroupCount;
+  doc["hp_bar_color_order"] = runtimeConfig.hit.hpBarColorOrder;
   JsonObject channels = doc.createNestedObject("piezo_channels");
   JsonObject left = channels.createNestedObject("left");
   left["pin"] = PIEZO_LEFT_AO_PIN;
@@ -1614,6 +1615,7 @@ static void reapplyRuntimeConfig(const char* reason) {
   nixoFire.begin(runtimeConfig);
   barDisplay.setBrightness(runtimeConfig.hit.ledBrightness);
   barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
+  barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
   ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
   syncLocalHitStateWithRuntimeConfig();
   beginAnalogPiezo();
@@ -1774,7 +1776,8 @@ static void handleCommandLine(String line, const char* source) {
     if (!accepted) {
       replyToSource(source,
                     pixelMode
-                        ? "{\"event\":\"led_test_rejected\",\"error\":\"pixel must be 1..84\"}"
+                        ? String("{\"event\":\"led_test_rejected\",\"error\":\"pixel must be 1..") +
+                              String(HP_BAR_NUM_LEDS) + "\"}"
                         : String("{\"event\":\"led_test_rejected\",\"error\":\"group must be 1..") +
                               String(runtimeConfig.hit.hpBarGroupCount) + "\"}");
       return;
@@ -1982,6 +1985,7 @@ void setup() {
   runtimeConfig = runtimeConfigFromNvsOrBuild();
 
   barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
+  barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
   barDisplay.begin(runtimeConfig.hit.ledBrightness);
   ringDisplay.begin(runtimeConfig.hit.ringBrightness);
   beginAnalogPiezo();
@@ -2016,7 +2020,7 @@ void setup() {
                 (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
   BB_DEBUG_SERIAL.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
                 CMD_RESET_HIT_DISPLAY);
-  BB_DEBUG_SERIAL.println("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, led-test <1..hp_bar_group_count>, led-test pixel <1..84>, led-test off, provision {json}, config {json}, clear-config, check-ota [manifest-url].");
+  BB_DEBUG_SERIAL.printf("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, led-test <1..hp_bar_group_count>, led-test pixel <1..%d>, led-test off, provision {json}, config {json}, clear-config, check-ota [manifest-url].\n", HP_BAR_NUM_LEDS);
   BB_DEBUG_SERIAL.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
   BB_DEBUG_SERIAL.print("release_repo=");
   BB_DEBUG_SERIAL.println(BB_GO2_NIXO_RELEASE_REPO);

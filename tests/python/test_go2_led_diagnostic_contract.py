@@ -61,6 +61,32 @@ def test_per_robot_27_column_serpentine_layout_and_nvs() -> None:
     assert [before - after for before, after in zip(groups_by_hp, groups_by_hp[1:])].count(1) == 1
 
 
+def test_29_column_capacity_and_per_robot_red_green_order() -> None:
+    def indices(group: int, count: int) -> tuple[int, int, int]:
+        return group, 2 * count + 1 - group, 2 * count + group
+
+    assert indices(1, 29) == (1, 58, 59)
+    assert indices(29, 29) == (29, 30, 87)
+    assert {pixel for group in range(1, 30) for pixel in indices(group, 29)} == set(range(1, 88))
+    assert "count > HP_BAR_MAX_GROUP_COUNT" in SOURCE
+    assert '"hp_bar_group_count must be 1..29"' in RUNTIME
+    assert "CRGB(color.g, color.r, color.b)" in SOURCE
+    assert 'putUChar("bar_color", hit.hpBarColorOrder)' in RUNTIME
+    assert 'putUChar("bar_color", current.hit.hpBarColorOrder)' in RUNTIME
+
+    env = os.environ.copy()
+    env.update(GO2_NIXO_HP_BAR_GROUP_COUNT="29", GO2_NIXO_HP_BAR_COLOR_ORDER="1")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/go2_nixo/provision.py"),
+         "--env-file", str(ROOT / "firmware/go2_nixo_framed_packet_uart/.env.go2_nixo_framed_packet_uart.example"),
+         "--robot-id", "go2_05", "--no-serial", "--print-json"],
+        cwd=ROOT, env=env, check=True, capture_output=True, text=True,
+    )
+    payload = json.loads(result.stdout.splitlines()[-1])
+    assert payload["hit"]["hp_bar_group_count"] == 29
+    assert payload["hit"]["hp_bar_color_order"] == 1
+
+
 def test_provision_env_can_select_go2_06_bar_without_changing_default() -> None:
     script = ROOT / "scripts/go2_nixo/provision.py"
     example = ROOT / "firmware/go2_nixo_framed_packet_uart/.env.go2_nixo_framed_packet_uart.example"

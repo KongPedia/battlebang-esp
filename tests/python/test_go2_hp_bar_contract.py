@@ -102,7 +102,7 @@ def test_go2_nixo_defaults_disable_esp_side_nixo_cooldown() -> None:
     firmware, _bar_cpp, _ring_cpp, _build_config, robots_json = GO2_NIXO
     defaults = json.loads(robots_json.read_text())["defaults"]
     assert defaults["led_pin"] == 18, firmware
-    assert defaults["num_leds"] == HP_BAR_LED_COUNT, firmware
+    assert defaults["num_leds"] == 87, firmware  # 29-column capacity; default active length remains 28.
     assert defaults["led_brightness"] == 120, firmware
     assert defaults["ring_led_pin"] == 4, firmware
     assert defaults["ring_num_leds"] == RING_LED_COUNT, firmware
@@ -599,7 +599,7 @@ def test_go2_nixo_shows_one_short_red_blue_startup_then_local_hp() -> None:
         "void BarDisplay::renderLocal", 1
     )[0]
     assert "CRGB::Red : CRGB::Blue" in startup
-    assert "fill_solid(leds_, HP_BAR_NUM_LEDS, color);" in startup
+    assert "fill_solid(leds_, HP_BAR_NUM_LEDS, wireColor(color));" in startup
     assert "CRGB::Green" in bar_source.split("void BarDisplay::renderLocal", 1)[1]
     publish_function = main.split("static void publishAdcHitEvent", 1)[1].split(
         "static void updateAnalogDebugStats", 1
@@ -956,7 +956,7 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
     firmware, _bar_cpp, _ring_cpp, build_config, _robots_json = GO2_NIXO
     source = build_config.read_text()
     assert "#define BATTLEBANG_LED_PIN 18" in source, firmware
-    assert "#define BATTLEBANG_NUM_LEDS 84" in source, firmware
+    assert "#define BATTLEBANG_NUM_LEDS 87" in source, firmware
     assert "#define BATTLEBANG_LED_BRIGHTNESS 120" in source, firmware
     assert "#define BATTLEBANG_RING_LED_PIN 4" in source, firmware
     assert "#define BATTLEBANG_RING_NUM_LEDS 40" in source, firmware
@@ -964,6 +964,7 @@ def test_go2_nixo_build_config_locks_bar_and_ring_shapes() -> None:
     assert "#define BATTLEBANG_NIXO_FIRE_DEFAULT_DURATION_MS 3000" in source, firmware
     assert "#define BATTLEBANG_NIXO_FIRE_COOLDOWN_MS 0" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_GROUP_COUNT 28" in source, firmware
+    assert "#define BATTLEBANG_HP_BAR_MAX_GROUP_COUNT 29" in source, firmware
     assert "#define BATTLEBANG_HP_BAR_LEDS_PER_GROUP 3" in source, firmware
     assert "HP bar LED count must match grouped bar layout" in source, firmware
     assert "HP bar and fire ring pins must be different" in source, firmware

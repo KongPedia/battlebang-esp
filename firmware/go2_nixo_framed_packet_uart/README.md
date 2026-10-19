@@ -59,12 +59,14 @@ cannot be reliably distinguished in firmware from a quiet connected sensor;
 disable absent channels explicitly. This is a configuration mitigation, not a
 substitute for electrical bias and a physical false-hit test.
 
-## Per-robot HP bar length
+## Per-robot HP bar length and color order
 
 The physical HP bar length is NVS-backed as `hp_bar_group_count` (columns per
 row, three serpentine rows). Set `GO2_NIXO_HP_BAR_GROUP_COUNT` independently
 in **each robot's private** `.env.go2_nixo` before provisioning. The shared
-example defaults to 28 columns; **go2_06 uses 27 columns (81 lit LEDs)**,
+example defaults to 28 columns; the firmware supports up to **29 columns
+(87 LED addresses)**. Set `GO2_NIXO_HP_BAR_GROUP_COUNT=29` only on the new
+29-column bar. **go2_06 previously used 27 columns (81 lit LEDs)**,
 verified by individual LED tests: left 1–27 bottom-to-top, middle 28–54
 top-to-bottom, right 55–81 bottom-to-top; 82–84 did not illuminate. Do not
 change the shared default for other robots without testing their hardware.
@@ -78,9 +80,16 @@ piezo detection if booted with a framed-only hardware profile.
 With 27 columns and 14 HP, one HP step necessarily removes one column rather
 than two; all other steps remove two columns, aligned across all three rows.
 
+The new 12 V HP bar model swaps red and green relative to the existing RGB
+model. Provision `GO2_NIXO_HP_BAR_COLOR_ORDER=1` **only for that bar**; the
+default `0` preserves existing robots. This setting affects only the HP bar,
+not the separate Nixo fire ring. Check startup red then blue, full-HP green,
+hit flash red, and down red on the physical bar before deployment. Firmware
+changes alone do not update a robot's saved NVS settings.
+
 ## HP bar row/column wiring check
 
-The generic HP bar capacity is 28 logical columns × 3 LEDs (84 addresses),
+The generic HP bar capacity is 29 logical columns × 3 LEDs (87 addresses),
 but the active column count may be lower per robot. If the three rows do not
 align, do not guess a new index mapping from the all-solid boot animation:
 that animation bypasses the column mapping. With the robot safely
@@ -91,7 +100,8 @@ framed Jetson packets in the USB transport build; never inject text there:
 ```text
 led-test 1         # only logical HP column 1: three white LEDs, 10 seconds
 led-test 14        # middle column
-led-test 28        # final column on a 28-column bar (27 on go2_06)
+led-test 29        # final column only on a configured 29-column bar
+led-test 28        # final column on a configured 28-column bar (27 on old go2_06)
 led-test pixel 1   # only raw LED index 1, 10 seconds
 led-test pixel 56  # trace the physical row wiring
 led-test off       # return immediately to the HP display

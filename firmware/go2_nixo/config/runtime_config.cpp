@@ -70,6 +70,9 @@ void readHitTuningJson(JsonObjectConst object, HitRuntimeConfig& hit) {
   uint16_t barGroupCount = hit.hpBarGroupCount;
   readUInt16ConfigField(object, "hp_bar_group_count", barGroupCount);
   hit.hpBarGroupCount = static_cast<uint8_t>(barGroupCount > 0xffU ? 0xffU : barGroupCount);
+  uint16_t barColorOrder = hit.hpBarColorOrder;
+  readUInt16ConfigField(object, "hp_bar_color_order", barColorOrder);
+  hit.hpBarColorOrder = static_cast<uint8_t>(barColorOrder > 0xffU ? 0xffU : barColorOrder);
   readUInt16ConfigField(object, "max_hits", hit.maxHits);
   readUInt16ConfigField(object, "hits_to_down", hit.maxHits);
   battlebang::esp::config::readUInt32Field(object, "hit_flash_ms", hit.hitFlashMs);
@@ -176,8 +179,12 @@ bool validateHitRuntimeConfig(const HitRuntimeConfig& hit, String& error) {
     error = "piezo_channel_enable_mask must use only bits 0..2";
     return false;
   }
-  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
-    error = "hp_bar_group_count must be 1..28";
+  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_MAX_GROUP_COUNT) {
+    error = "hp_bar_group_count must be 1..29";
+    return false;
+  }
+  if (hit.hpBarColorOrder > 1) {
+    error = "hp_bar_color_order must be 0 (RGB) or 1 (GRB)";
     return false;
   }
   if (hit.maxHits == 0 || hit.maxHits > 1000) {
@@ -300,9 +307,11 @@ void loadHitRuntimeConfigFromNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
     hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
   }
   hit.hpBarGroupCount = prefs.preferences().getUChar("bar_groups", hit.hpBarGroupCount);
-  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+  if (hit.hpBarGroupCount == 0 || hit.hpBarGroupCount > HP_BAR_MAX_GROUP_COUNT) {
     hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
   }
+  hit.hpBarColorOrder = prefs.preferences().getUChar("bar_color", hit.hpBarColorOrder);
+  if (hit.hpBarColorOrder > 1) hit.hpBarColorOrder = 0;
   hit.maxHits = prefs.preferences().getUInt("max_hits", hit.maxHits);
   hit.hitFlashMs = prefs.preferences().getUInt("hit_flash", hit.hitFlashMs);
 }
@@ -337,6 +346,7 @@ bool saveHitRuntimeConfigToNvs(battlebang::esp::nvs::ScopedPreferences& prefs,
   ok &= prefs.preferences().putUInt("piezo_arm_ms", hit.piezoAoRearmStableMs) > 0;
   ok &= prefs.preferences().putUChar("piezo_mask", hit.piezoChannelEnableMask) > 0;
   ok &= prefs.preferences().putUChar("bar_groups", hit.hpBarGroupCount) > 0;
+  ok &= prefs.preferences().putUChar("bar_color", hit.hpBarColorOrder) > 0;
   ok &= prefs.preferences().putUInt("max_hits", hit.maxHits) > 0;
   ok &= prefs.preferences().putUInt("hit_flash", hit.hitFlashMs) > 0;
   return ok;
@@ -371,6 +381,7 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   root["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
   root["piezo_channel_enable_mask"] = hit.piezoChannelEnableMask;
   root["hp_bar_group_count"] = hit.hpBarGroupCount;
+  root["hp_bar_color_order"] = hit.hpBarColorOrder;
   root["max_hits"] = hit.maxHits;
   root["hit_flash_ms"] = hit.hitFlashMs;
 
@@ -389,6 +400,7 @@ void writeHitRuntimeConfigJson(JsonObject root, const HitRuntimeConfig& hit) {
   hitObject["piezo_ao_rearm_stable_ms"] = hit.piezoAoRearmStableMs;
   hitObject["piezo_channel_enable_mask"] = hit.piezoChannelEnableMask;
   hitObject["hp_bar_group_count"] = hit.hpBarGroupCount;
+  hitObject["hp_bar_color_order"] = hit.hpBarColorOrder;
   hitObject["max_hits"] = hit.maxHits;
   hitObject["hits_to_down"] = hit.maxHits;
   hitObject["hit_flash_ms"] = hit.hitFlashMs;
@@ -449,6 +461,7 @@ RuntimeConfig runtimeConfigFromBuild() {
   config.hit.piezoAoRearmStableMs = HIT_REARM_STABLE_MS;
   config.hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
   config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
+  config.hit.hpBarColorOrder = 0;
   config.hit.maxHits = MAX_HITS;
   config.hit.hitFlashMs = HIT_FLASH_MS;
   config.nixo.nixoId = NIXO_ID_VALUE;
@@ -482,11 +495,15 @@ bool loadRuntimeConfigFromNvs(RuntimeConfig& config) {
     if (hardware.preferences().isKey("bar_groups")) {
       config.hit.hpBarGroupCount = hardware.preferences().getUChar("bar_groups", config.hit.hpBarGroupCount);
     }
+    if (hardware.preferences().isKey("bar_color")) {
+      config.hit.hpBarColorOrder = hardware.preferences().getUChar("bar_color", config.hit.hpBarColorOrder);
+    }
   }
   if ((config.hit.piezoChannelEnableMask & ~0x07U) != 0) config.hit.piezoChannelEnableMask = PIEZO_CHANNEL_ENABLE_MASK;
-  if (config.hit.hpBarGroupCount == 0 || config.hit.hpBarGroupCount > HP_BAR_GROUP_COUNT) {
+  if (config.hit.hpBarGroupCount == 0 || config.hit.hpBarGroupCount > HP_BAR_MAX_GROUP_COUNT) {
     config.hit.hpBarGroupCount = HP_BAR_GROUP_COUNT;
   }
+  if (config.hit.hpBarColorOrder > 1) config.hit.hpBarColorOrder = 0;
   config.common.configured = hasStoredConfig || config.common.configured;
   normalizeRuntimeConfig(config);
   return hasStoredConfig;
@@ -510,6 +527,7 @@ bool saveRuntimeConfigToNvs(const RuntimeConfig& config) {
   if (!hardware.begin(kHardwareNamespace, false)) return false;
   ok &= hardware.preferences().putUChar("piezo_mask", normalized.hit.piezoChannelEnableMask) > 0;
   ok &= hardware.preferences().putUChar("bar_groups", normalized.hit.hpBarGroupCount) > 0;
+  ok &= hardware.preferences().putUChar("bar_color", normalized.hit.hpBarColorOrder) > 0;
   return ok;
 }
 
@@ -518,7 +536,8 @@ bool clearRuntimeConfigNvs() {
   battlebang::esp::nvs::ScopedPreferences hardware;
   if (!hardware.begin(kHardwareNamespace, false)) return false;
   if (hardware.preferences().putUChar("piezo_mask", current.hit.piezoChannelEnableMask) == 0 ||
-      hardware.preferences().putUChar("bar_groups", current.hit.hpBarGroupCount) == 0) return false;
+      hardware.preferences().putUChar("bar_groups", current.hit.hpBarGroupCount) == 0 ||
+      hardware.preferences().putUChar("bar_color", current.hit.hpBarColorOrder) == 0) return false;
   hardware.end();
   return battlebang::esp::nvs::clearNamespace(kConfigNamespace);
 }
