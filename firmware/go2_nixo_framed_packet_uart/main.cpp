@@ -17,6 +17,7 @@
 #include "go2_nixo/debug_serial.h"
 #include "go2_nixo_framed_packet_uart/uart/protocol.h"
 #include "go2_nixo_framed_packet_uart/uart/runtime.h"
+#include "go2_nixo_framed_packet_uart/piezo_enable_switch.h"
 
 using namespace go2;
 
@@ -27,7 +28,7 @@ using namespace go2;
 // - Command Center ingests hit_event/status metadata for dashboard/world state.
 // - Nixo fire uses Jetson UART as the default path; MQTT remains a secondary command path.
 //   The original ring LED is reserved for Nixo ready/firing/inhibited state, never HP state.
-// - Piezo D0 is not used for hit judgment; it is read only for debug logs.
+// - GPIO27 is the local ADC-enable toggle button, not the former piezo D0 debug input.
 
 BluetoothSerial SerialBT;
 #if BB_GO2_NIXO_JETSON_USB_SERIAL
@@ -191,6 +192,8 @@ struct AnalogPiezoState {
 };
 
 AnalogPiezoState analogPiezo;
+constexpr int PIEZO_ENABLE_BUTTON_PIN = 27;
+PiezoEnableSwitch piezoEnableSwitch;
 
 static void onBarDisplayUpdate(const BarDisplayUpdate& update);
 static void publishDeviceStatusIfConnected(const char* reason);
@@ -207,12 +210,12 @@ static bool piezoAoEnabled() {
 }
 
 static bool piezoDoDebugEnabled() {
-  return PIEZO_DO_PIN >= 0;
+  return PIEZO_DO_PIN >= 0 && PIEZO_DO_PIN != PIEZO_ENABLE_BUTTON_PIN;
 }
 
 static PiezoSample readPiezoSample() {
   PiezoSample sample;
-  if (!piezoAoEnabled()) return sample;
+  if (!piezoEnableSwitch.enabled() || !piezoAoEnabled()) return sample;
   if (piezoChannelEnabled(PIEZO_CHANNEL_LEFT) && PIEZO_LEFT_AO_PIN >= 0) {
     sample.left = analogRead(PIEZO_LEFT_AO_PIN);
   }
@@ -402,6 +405,23 @@ static bool applyLocalHit(uint32_t sequence, uint32_t now) {
   return localHitState.down;
 }
 
+static void beginPiezoEnableButton() {
+  pinMode(PIEZO_ENABLE_BUTTON_PIN, INPUT_PULLDOWN);
+  piezoEnableSwitch.begin(digitalRead(PIEZO_ENABLE_BUTTON_PIN) == HIGH, millis());
+  barDisplay.setPiezoDetectionEnabled(false);
+}
+
+static void pollPiezoEnableButton(uint32_t now) {
+  if (!piezoEnableSwitch.update(digitalRead(PIEZO_ENABLE_BUTTON_PIN) == HIGH, now)) return;
+  // Discard pending peaks and channel qualification on BOTH edges. Enabling
+  // still requires the existing quiet/rearm dwell, never the switch transient.
+  resetAnalogPiezoState();
+  barDisplay.setPiezoDetectionEnabled(piezoEnableSwitch.enabled());
+  BB_DEBUG_SERIAL.printf("[PIEZO ADC] enabled=%s button_pin=%d\n",
+                         piezoEnableSwitch.enabled() ? "true" : "false", PIEZO_ENABLE_BUTTON_PIN);
+  publishDeviceStatusIfConnected("piezo_adc_toggle");
+}
+
 static void beginAnalogPiezo() {
   if (!piezoAoEnabled()) {
     resetAnalogPiezoState();
@@ -455,6 +475,7 @@ static void beginAnalogPiezo() {
 }
 
 static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
+  if (!piezoEnableSwitch.enabled()) return;
   if (!barDisplay.startupReady(eventTsMs)) {
     BB_DEBUG_SERIAL.printf("[PIEZO AO] ignored during startup loading target=%d peak=%d threshold=%d ts_ms=%lu\n",
                   targetId,
@@ -632,7 +653,7 @@ static void rearmAnalogPiezoWhenQuiet(uint32_t now, int raw) {
 }
 
 static void pollAnalogPiezo(uint32_t now) {
-  if (!piezoAoEnabled()) return;
+  if (!piezoEnableSwitch.enabled() || !piezoAoEnabled()) return;
 
   PiezoSample sample = readPiezoSample();
   qualifyPiezoChannels(sample, now);
@@ -914,6 +935,9 @@ static bool parsePositiveInt(const String& text, int& value) {
 }
 
 static void addHitTuningStatus(JsonObject doc) {
+  doc["piezo_adc_enabled"] = piezoEnableSwitch.enabled();
+  doc["piezo_enable_button_pin"] = PIEZO_ENABLE_BUTTON_PIN;
+  doc["piezo_enable_button_pressed"] = piezoEnableSwitch.pressed();
   doc["hit_cooldown_ms"] = runtimeConfig.hit.hitCooldownMs;
   doc["offline_queue_capacity"] = runtimeConfig.hit.offlineQueueCapacity;
   doc["offline_queue_flush_interval_ms"] = runtimeConfig.hit.offlineQueueFlushIntervalMs;
@@ -2127,6 +2151,7 @@ void setup() {
   barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
   barDisplay.begin(runtimeConfig.hit.ledBrightness);
   ringDisplay.begin(runtimeConfig.hit.ringBrightness);
+  beginPiezoEnableButton();
   beginAnalogPiezo();
   hitMqtt.setManagementHandlers(onMqttConfigMessage, onMqttOtaMessage);
   hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
@@ -2200,6 +2225,7 @@ void loop() {
   // Local hit judgment and HP/ring rendering must keep working even when
   // Command Center/MQTT is offline, so service local paths before network IO.
   pollCommands();
+  pollPiezoEnableButton(now);
   pollAnalogPiezo(now);
   nixoFire.tickLocal(now);
   updateJetsonFireHold(now);

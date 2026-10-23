@@ -125,3 +125,49 @@ The diagnostic expires automatically after 10 seconds and does not alter HP.
 Record which physical (row, column) lights for logical groups and individual
 pixels around each row boundary. On go2_06 the corrected mapping is group 1
 → raw LEDs 1/54/55 and group 27 → 27/28/81.
+
+## Physical piezo ADC enable button (GPIO27)
+
+The framed UART/USB firmware starts with **piezo ADC detection OFF** on every
+boot/OTA restart. GPIO27 is now the enable button input, replacing its former
+piezo D0 debug role. Disconnect any old D0 signal from that pin.
+
+- Module wiring: **S → GPIO27, V → 3.3V, G → GND**. A pull-down resistor belongs
+  between S and GND, not in series with GND. Press must drive S HIGH; firmware
+  uses `INPUT_PULLDOWN` and 50ms debounce.
+- Each press toggles OFF/ON; holding the button does not repeat. A button held
+  during boot cannot arm detection until it is released and pressed again.
+- OFF: no ADC hit processing or ADC-triggered HP reduction. The **normal HP colors and remaining fill stay visible**. A three-LED white
+  highlight circles the perimeter of the remaining HP region (90ms frames),
+  indicating piezo detection is disabled without lighting lost HP columns.
+- ON: the border highlight disappears; the same normal HP display remains. GPIO34/35 sampling uses the existing channel
+  mask and threshold/quiet qualification; optional front ADC follows the same
+  physical enable gate. Toggling discards any pending peak and requires fresh
+  quiet qualification, so a switch transient cannot replay an old hit.
+- Startup/bench diagnostic and dead/down safety indications take precedence
+  over the standby animation. HP reset, UART damage commands, relay controls,
+  identity and saved NVS settings are not changed by this button.
+- `show-status`/published status expose `piezo_adc_enabled`,
+  `piezo_enable_button_pin`, and `piezo_enable_button_pressed`. The enabled
+  state is intentionally **not persisted** or remotely armable.
+
+GPIO34/35 have **no internal pull-down**. GPIO27's pull-down only stabilizes
+the button, not those ADC pins. Use appropriate external ADC bias/protection
+wiring to prevent floating/noise while detection is ON; this software toggle
+is an opt-in gate, not an electrical repair. See the
+[Espressif GPIO reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html).
+
+### Version compatibility: 0.2.x versus 0.3.x
+
+- Existing immutable **0.2.x** release tags retain the pre-button firmware.
+- The GPIO27 button-gated framed UART/USB firmware releases use **0.3.x**.
+- Without the button, 0.3.x boots with ADC hit detection OFF and cannot be
+  armed remotely. UART/gamepad HP damage commands remain available.
+- Disconnect any old piezo D0 wire on GPIO27; otherwise its pulses can toggle
+  the gate unexpectedly. LOW cannot distinguish an absent button from release.
+- The release workflow does **not** advance the legacy stable/latest manifest
+  for these 0.3.x builds, including manual dispatch. Select an explicit versioned
+  release or this feature branch for deployment; do not blindly deploy main to
+  buttonless hardware. Existing 0.2.x releases are not rebuilt or overwritten.
+- A local PlatformIO upload does not consume an OTA release: its local version
+  string is not proof that a published 0.3.x release has been installed.

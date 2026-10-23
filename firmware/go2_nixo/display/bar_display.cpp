@@ -7,6 +7,7 @@ namespace {
 constexpr uint32_t STARTUP_COLOR_MS = 2000;
 constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
 constexpr uint32_t DIAGNOSTIC_TTL_MS = 10000;
+constexpr uint32_t PIEZO_DISABLED_FRAME_MS = 90;
 
 int groupsForFill(float fillRatio, int groupCount) {
   return constrain((int)(fillRatio * groupCount + 0.5f), 0, groupCount);
@@ -61,6 +62,10 @@ void BarDisplay::tick(uint32_t now) {
     } else {
       renderLocal(now);
     }
+    if (!piezoDetectionEnabled_ && !localDown_ &&
+        !(remoteActive_ && (remoteDown_ || remoteMode_ == "down" || remoteMode_ == "disabled"))) {
+      renderPiezoDisabled(now);
+    }
   }
   showTick(now);
 }
@@ -89,6 +94,12 @@ void BarDisplay::setGroupCount(uint8_t count) {
 void BarDisplay::setColorOrder(uint8_t order) {
   if (order > 5) return;
   colorOrder_ = order;
+  dirty_ = true;
+}
+
+void BarDisplay::setPiezoDetectionEnabled(bool enabled) {
+  if (piezoDetectionEnabled_ == enabled) return;
+  piezoDetectionEnabled_ = enabled;
   dirty_ = true;
 }
 
@@ -210,6 +221,40 @@ void BarDisplay::renderStartupLoading(uint32_t now) {
   const CRGB color = now - startupStartedMs_ < STARTUP_COLOR_MS ? CRGB::Red : CRGB::Blue;
   fill_solid(leds_, HP_BAR_NUM_LEDS, wireColor(color));
   dirty_ = true;
+}
+
+void BarDisplay::renderPiezoDisabled(uint32_t now) {
+  const uint32_t frame = now / PIEZO_DISABLED_FRAME_MS;
+  if (frame != lastPiezoDisabledFrame_) {
+    lastPiezoDisabledFrame_ = frame;
+    dirty_ = true;
+  }
+  // Overlay a three-pixel neutral trail on the remaining HP perimeter only.
+  // Never illuminate lost HP columns or replace the underlying HP colors.
+  const float fillRatio = remoteActive_ ? remoteFillRatio_ : localFillRatio();
+  const int healthyGroups = groupsForFill(fillRatio, groupCount_);
+  if (healthyGroups == 0) return;
+  const int perimeter = 2 * healthyGroups + 2;
+  // One column has three pixels; its middle is visited twice by this path.
+  const int trailSteps = healthyGroups == 1 ? 4 : 3;
+  for (int offset = 0; offset < trailSteps; ++offset) {
+    const int step = (frame + offset) % perimeter;
+    int group;
+    int index;
+    if (step < healthyGroups) {
+      group = step;
+      index = group;  // top row, left to right
+    } else if (step == healthyGroups) {
+      group = healthyGroups - 1;
+      index = 2 * groupCount_ - 1 - group;  // right edge
+    } else if (step <= 2 * healthyGroups) {
+      group = 2 * healthyGroups - step;
+      index = 2 * groupCount_ + group;  // bottom row, right to left
+    } else {
+      index = 2 * groupCount_ - 1;  // left edge
+    }
+    leds_[index] = wireColor(CRGB::White);
+  }
 }
 
 void BarDisplay::renderLocal(uint32_t now) {
