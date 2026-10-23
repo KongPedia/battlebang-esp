@@ -229,27 +229,32 @@ void BarDisplay::renderPiezoDisabled(uint32_t now) {
     lastPiezoDisabledFrame_ = frame;
     dirty_ = true;
   }
-  // Overlay one neutral highlight on the remaining HP perimeter only.
+  // Overlay a three-pixel neutral trail on the remaining HP perimeter only.
   // Never illuminate lost HP columns or replace the underlying HP colors.
   const float fillRatio = remoteActive_ ? remoteFillRatio_ : localFillRatio();
   const int healthyGroups = groupsForFill(fillRatio, groupCount_);
   if (healthyGroups == 0) return;
-  const int step = frame % (2 * healthyGroups + 2);
-  int group;
-  int index;
-  if (step < healthyGroups) {
-    group = step;
-    index = group;  // top row, left to right
-  } else if (step == healthyGroups) {
-    group = healthyGroups - 1;
-    index = 2 * groupCount_ - 1 - group;  // right edge
-  } else if (step <= 2 * healthyGroups) {
-    group = 2 * healthyGroups - step;
-    index = 2 * groupCount_ + group;  // bottom row, right to left
-  } else {
-    index = 2 * groupCount_ - 1;  // left edge
+  const int perimeter = 2 * healthyGroups + 2;
+  // One column has three pixels; its middle is visited twice by this path.
+  const int trailSteps = healthyGroups == 1 ? 4 : 3;
+  for (int offset = 0; offset < trailSteps; ++offset) {
+    const int step = (frame + offset) % perimeter;
+    int group;
+    int index;
+    if (step < healthyGroups) {
+      group = step;
+      index = group;  // top row, left to right
+    } else if (step == healthyGroups) {
+      group = healthyGroups - 1;
+      index = 2 * groupCount_ - 1 - group;  // right edge
+    } else if (step <= 2 * healthyGroups) {
+      group = 2 * healthyGroups - step;
+      index = 2 * groupCount_ + group;  // bottom row, right to left
+    } else {
+      index = 2 * groupCount_ - 1;  // left edge
+    }
+    leds_[index] = wireColor(CRGB::White);
   }
-  leds_[index] = wireColor(CRGB::White);
 }
 
 void BarDisplay::renderLocal(uint32_t now) {

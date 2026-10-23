@@ -117,7 +117,7 @@ int main() {
               }
             }
           }
-          assert(white == (filled ? 1 : 0));
+          assert(white == (filled ? 3 : 0));
           for (int i = 3*count; i < 87; ++i) assert(bar.leds_[i].value == 0);
         }
       }
