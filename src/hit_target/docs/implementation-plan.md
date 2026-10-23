@@ -1,4 +1,8 @@
-# Hit Target implementation status and runtime plan
+# Legacy Hit Target implementation reference
+
+This is historical standalone compatibility documentation, not an active firmware plan or fresh validation result.
+Current onboarding starts at [the owning README](../README.md); use [active families](../../../firmware/README.md)
+for new work. Retain sensor/power/TLS limits when retiring this path. No historical command authorizes live operations.
 
 ## Scope
 
@@ -31,7 +35,7 @@
   - default latest manifest asset: `hit-target-manifest.json`, intentionally separate from turret fleet `manifest.json`;
   - SHA-256 and app/hardware/build gates are enforced before update.
 - PlatformIO env `esp32dev_hit_target` builds only `src/hit_target/**` and uses `min_spiffs.csv` OTA-capable partitioning.
-- GitHub Actions workflow `.github/workflows/hit-target-firmware.yml` builds release firmware and manifest artifacts.
+- The historical per-family release workflow is retired. Active publishing uses the unified firmware matrix; this legacy target is not a current matrix entry.
 
 ## Runtime config rules
 
@@ -46,7 +50,7 @@
 - Secrets are persisted in NVS but masked in `show-config` and status by default.
 - `config_version` must be monotonic; stale patches are rejected.
 
-## Verification performed for current implementation
+## Historical verification record (not rerun)
 
 - Python static/contract checks:
   - `python3 -m py_compile scripts/hit_target_config.py scripts/firmware/make_release_manifest.py tests/python/test_hit_target_contract.py`
@@ -62,7 +66,7 @@
   - `h` simulated hit decremented HP to 14;
   - `r` reset restored HP to 15.
 
-## Remaining follow-ups
+## Historical limits requiring fresh assessment before revival
 
 - MQTT end-to-end needs a real broker/Wi-Fi provisioning test.
 - OTA end-to-end needs a published `hit-target-manifest.json` release artifact.

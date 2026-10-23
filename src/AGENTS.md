@@ -6,7 +6,7 @@ Applies to all firmware folders under `src/**` that remain in the legacy/referen
 
 ## Folder ownership
 
-- Treat each production folder as an independently operated firmware surface: source, README, local env example, provisioning helper, and PlatformIO env should stay aligned.
+- Treat each retained compatibility folder as a separately scoped surface: source, README, local env example, provisioning helper, and PlatformIO env should stay aligned. Configured envs do not prove current deployment.
 - Keep cross-firmware sharing explicit through `platformio.ini`, documented helper scripts, or common scripts under `scripts/`; do not silently copy private config between firmware folders in tracked files.
 - For generic devices, prefer ESP32-derived identity (eFuse MAC) plus runtime metadata (`group`, `location`) over numbered build profiles unless the folder README says otherwise.
 
@@ -33,5 +33,8 @@ Applies to all firmware folders under `src/**` that remain in the legacy/referen
 ## Verification
 
 - Run the matching PlatformIO env for firmware changes.
-- Run matching Python contract tests when docs/scripts/workflows/config contracts change.
-- For hardware behavior changes, upload to the correct ESP32 and capture serial/MQTT evidence before claiming end-to-end success.
+- Run matching offline behavioral/contract tests for application scripts/workflows/config changes.
+- Guidance-only docs/prompts/skills use static references/metadata/diff review; no application tests/builds/CI/hardware.
+- Report missing deployment/physical evidence rather than automatically uploading. Upload/NVS/OTA/reboot needs separately
+  authorized target-specific work; motion/fire/recovery needs explicit actuation approval. No live serial/MQTT by default.
+- Preserve historical calibration, electrical notes and configured compatibility targets until separately scoped retirement.

@@ -5,10 +5,16 @@
 ## 1. Build variants
 
 ```bash
-./.venv-pio/bin/pio run -e esp32dev_go2_nixo       # default 1ch
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_1ch
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch
 ```
+
+The unsuffixed `esp32dev_go2_nixo` env selects 2ch, not 1ch. Use explicit
+`_1ch`/`_2ch` envs. The checked-in 2ch profile is GPIO22/GPIO23, active-HIGH
+(ON=`1`, OFF=`0`), before optional build-time environment overrides. This is not
+physical validation; do not deploy to an active-LOW board without a reviewed
+matching profile and verified safe-OFF/output isolation. See the
+[hardware and historical per-device notes](../README.md#device-relay-polarity).
 
 ## 2. Upload
 

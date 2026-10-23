@@ -533,6 +533,51 @@ Direct `/ota` is treated as an explicit Command Center-approved update job. It
 still honors manifest validation and safe-state gating. For normal post-merge
 rollout, prefer `fleet-mqtt ... update --desired-build N`.
 
+## Current field recovery checklist
+
+This is the current recovery procedure, not a claim of automatic rollback or a
+new physical test. The historical `turret_2` rollout above is not proof that a
+new artifact boots successfully. `ota_rebooting` and hash acceptance prove
+neither a healthy boot nor safe physical outputs; the application has no
+healthy-boot confirmation/automatic rollback procedure here.
+
+1. Before an approved rollout, retain the exact known-good binary, manifest,
+   build identity and SHA-256, plus a compatible per-device config/calibration
+   backup (identity/stage/frame/pose, feedback offsets/limits and relay profile).
+   Securely retain the original provisioning inputs and approved config/calibration;
+   masked `show-config`/status output is not a complete restorable backup. Protect
+   credentials separately; never paste secret-bearing NVS/config dumps into logs.
+   A stable release pointer alone is not a recovery artifact.
+2. Reconfirm board, port, device/turret identity, app/hardware and relay profile,
+   current build/config version, power and recovery access. Upload, serial reset
+   and reboot can run boot probe/HOME: obtain approval covering boot motion or
+   verify physical output isolation before proceeding. Do not erase/reprovision
+   NVS as routine recovery or silently substitute another board's calibration.
+3. Canary one matching board before widening rollout. Observe the expected new
+   build and identity, heartbeat/status, retained config/calibration and safe
+   outputs after reboot. Stop the rollout on wrong identity or output, missing
+   expected build/heartbeat, repeated resets or a reboot loop; keep outputs
+   isolated and investigate power/profile/firmware before another attempt.
+4. Normal Command Center-controlled polling uses `force=false`: `desired_build`
+   must match the manifest and the build must be newer than the running build.
+   Setting an older
+   `desired_build` alone does not authorize or enable a downgrade. For recovery,
+   use a separately authorized direct OTA job with the exact known-good manifest
+   and `force=true`, or authorized USB service if networking/boot is unavailable.
+   `force` bypasses only the newer-build check, not app/hardware validation,
+   hash verification, size checks or the direct job's safe-state gate. Reserve
+   forced manifests for approved direct recovery; the shared predicate does not
+   technically restrict `force` to that path. Do not disable safe-state policy
+   or use a forced polling manifest as a workaround.
+5. Preserve config-version monotonicity: an older binary is not permission to
+   apply a stale config snapshot. Review schema compatibility and restore only
+   the matching values with a version not below the device's current
+   `config_version`. Preserve brownout/fire/recovery markers and inhibited boot
+   behavior; never restore saved firing or replay motion/fire commands. Boot
+   may clear a stable-feedback lockout, but HOME remains inhibited after a
+   safety/OTA boot until an explicit command. Inspect status first; movement,
+   `recover` and firing each need the applicable separate human approval.
+
 ## Status fields to monitor
 
 Subscribe to:
