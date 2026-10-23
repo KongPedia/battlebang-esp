@@ -7,6 +7,7 @@ namespace {
 constexpr uint32_t STARTUP_COLOR_MS = 2000;
 constexpr uint32_t STARTUP_LOADING_MS = 2 * STARTUP_COLOR_MS;
 constexpr uint32_t DIAGNOSTIC_TTL_MS = 10000;
+constexpr uint32_t PIEZO_DISABLED_FRAME_MS = 90;
 
 int groupsForFill(float fillRatio, int groupCount) {
   return constrain((int)(fillRatio * groupCount + 0.5f), 0, groupCount);
@@ -57,7 +58,11 @@ void BarDisplay::tick(uint32_t now) {
     if (localDown_) {
       renderLocal(now);
     } else if (remoteActive_) {
-      renderRemote(now);
+      if (remoteDown_ || remoteMode_ == "down") renderRemote(now);
+      else if (!piezoDetectionEnabled_) renderPiezoDisabled(now);
+      else renderRemote(now);
+    } else if (!piezoDetectionEnabled_) {
+      renderPiezoDisabled(now);
     } else {
       renderLocal(now);
     }
@@ -89,6 +94,12 @@ void BarDisplay::setGroupCount(uint8_t count) {
 void BarDisplay::setColorOrder(uint8_t order) {
   if (order > 5) return;
   colorOrder_ = order;
+  dirty_ = true;
+}
+
+void BarDisplay::setPiezoDetectionEnabled(bool enabled) {
+  if (piezoDetectionEnabled_ == enabled) return;
+  piezoDetectionEnabled_ = enabled;
   dirty_ = true;
 }
 
@@ -210,6 +221,25 @@ void BarDisplay::renderStartupLoading(uint32_t now) {
   const CRGB color = now - startupStartedMs_ < STARTUP_COLOR_MS ? CRGB::Red : CRGB::Blue;
   fill_solid(leds_, HP_BAR_NUM_LEDS, wireColor(color));
   dirty_ = true;
+}
+
+void BarDisplay::renderPiezoDisabled(uint32_t now) {
+  const uint32_t frame = now / PIEZO_DISABLED_FRAME_MS;
+  if (frame != lastPiezoDisabledFrame_) {
+    lastPiezoDisabledFrame_ = frame;
+    dirty_ = true;
+  }
+  // Neon standby: dim violet field, cyan comet. No delay or HP mutation.
+  renderBlank();
+  const int head = frame % groupCount_;
+  for (int group = 0; group < groupCount_; ++group) {
+    const int distance = (head - group + groupCount_) % groupCount_;
+    CRGB color(18, 0, 36);
+    if (distance == 0) color = CRGB(0, 255, 190);
+    else if (distance == 1) color = CRGB(0, 110, 100);
+    else if (distance == 2) color = CRGB(0, 40, 60);
+    setHpBarGroup(group + 1, color);
+  }
 }
 
 void BarDisplay::renderLocal(uint32_t now) {

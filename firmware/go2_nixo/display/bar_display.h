@@ -16,6 +16,7 @@ class BarDisplay {
   void setBrightness(uint16_t brightness);
   void setGroupCount(uint8_t count);
   void setColorOrder(uint8_t order);
+  void setPiezoDetectionEnabled(bool enabled);
   void setLocalHpState(uint16_t hpRemaining, uint16_t maxHits, bool down, uint32_t hitFlashMs, uint32_t now);
   void resetLocalHpState(uint16_t maxHits);
   void setRemoteDisplay(float fillRatio, const String& mode, bool down, uint32_t ttlMs, uint32_t now);
@@ -34,6 +35,7 @@ class BarDisplay {
   bool dirty_ = true;
   uint32_t lastBlinkMs_ = 0;
   uint32_t lastDownBlinkMs_ = 0;
+  uint32_t lastPiezoDisabledFrame_ = UINT32_MAX;
   uint32_t lastShowMs_ = 0;
   uint32_t startupStartedMs_ = 0;
   bool startupLoading_ = true;
@@ -52,12 +54,14 @@ class BarDisplay {
   uint32_t diagnosticExpiresMs_ = 0;
   uint8_t groupCount_ = HP_BAR_GROUP_COUNT;
   uint8_t colorOrder_ = 0;
+  bool piezoDetectionEnabled_ = true;
 
   float localFillRatio() const;
   bool remoteExpired(uint32_t now) const;
   void handleLocalFlashExpiry(uint32_t now);
   void handleRemoteExpiry(uint32_t now);
   void renderStartupLoading(uint32_t now);
+  void renderPiezoDisabled(uint32_t now);
   void renderLocal(uint32_t now);
   void renderRemote(uint32_t now);
   void renderBlank();
