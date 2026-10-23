@@ -351,13 +351,22 @@ jobs:
             CREATE_RELEASE="${{ inputs.create_release }}"
             UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"
           else
-            VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            if [[ "${{ matrix.id }}" == go2-nixo-framed-packet-* ]]; then
+              VERSION="0.3.${GITHUB_RUN_NUMBER}-main"
+            else
+              VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            fi
             BUILD="$((1000 + GITHUB_RUN_NUMBER))"
             FIRMWARE_BASE_URL=""
             PUBLIC_REPO="${GITHUB_REPOSITORY}"
             TARGET_BRANCH="${GITHUB_REF_NAME}"
             CREATE_RELEASE="true"
             UPDATE_STABLE_LATEST="true"
+          fi
+
+          # Button-gated firmware must not replace the legacy 0.2 polling pointer.
+          if [[ "${{ matrix.id }}" == go2-nixo-framed-packet-* ]]; then
+            UPDATE_STABLE_LATEST="false"
           fi
 
           if ! [[ "${BUILD}" =~ ^[0-9]+$ ]]; then

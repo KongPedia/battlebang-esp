@@ -82,3 +82,10 @@ def test_toggle_gates_adc_and_discards_pending_capture_without_resetting_hp():
     assert 'doc["piezo_adc_enabled"]' in MAIN
     # Runtime config / HP recovery must not re-arm the physical opt-in switch.
     assert MAIN.count("piezoEnableSwitch.begin(") == 1
+
+
+def test_button_firmware_has_separate_release_series():
+    workflow = (ROOT / ".github/workflows/firmware-ota.yml").read_text()
+    assert 'VERSION="0.3.${GITHUB_RUN_NUMBER}-main"' in workflow
+    assert 'VERSION="0.2.${GITHUB_RUN_NUMBER}-main"' in workflow
+    assert 'if [[ "${{ matrix.id }}" == go2-nixo-framed-packet-* ]]; then\n            UPDATE_STABLE_LATEST="false"' in workflow

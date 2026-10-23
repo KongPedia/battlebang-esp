@@ -156,3 +156,18 @@ the button, not those ADC pins. Use appropriate external ADC bias/protection
 wiring to prevent floating/noise while detection is ON; this software toggle
 is an opt-in gate, not an electrical repair. See the
 [Espressif GPIO reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html).
+
+### Version compatibility: 0.2.x versus 0.3.x
+
+- Existing immutable **0.2.x** release tags retain the pre-button firmware.
+- The GPIO27 button-gated framed UART/USB firmware releases use **0.3.x**.
+- Without the button, 0.3.x boots with ADC hit detection OFF and cannot be
+  armed remotely. UART/gamepad HP damage commands remain available.
+- Disconnect any old piezo D0 wire on GPIO27; otherwise its pulses can toggle
+  the gate unexpectedly. LOW cannot distinguish an absent button from release.
+- The release workflow does **not** advance the legacy stable/latest manifest
+  for these 0.3.x builds, including manual dispatch. Select an explicit versioned
+  release or this feature branch for deployment; do not blindly deploy main to
+  buttonless hardware. Existing 0.2.x releases are not rebuilt or overwritten.
+- A local PlatformIO upload does not consume an OTA release: its local version
+  string is not proof that a published 0.3.x release has been installed.
