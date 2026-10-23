@@ -137,9 +137,10 @@ piezo D0 debug role. Disconnect any old D0 signal from that pin.
   uses `INPUT_PULLDOWN` and 50ms debounce.
 - Each press toggles OFF/ON; holding the button does not repeat. A button held
   during boot cannot arm detection until it is released and pressed again.
-- OFF: no ADC hit processing or ADC-triggered HP reduction. The HP bar shows
-  a **violet background with a moving cyan comet** (90ms animation frames).
-- ON: normal HP display returns. GPIO34/35 sampling uses the existing channel
+- OFF: no ADC hit processing or ADC-triggered HP reduction. The **normal HP colors and remaining fill stay visible**. A small white
+  highlight circles the perimeter of the remaining HP region (90ms frames),
+  indicating piezo detection is disabled without lighting lost HP columns.
+- ON: the border highlight disappears; the same normal HP display remains. GPIO34/35 sampling uses the existing channel
   mask and threshold/quiet qualification; optional front ADC follows the same
   physical enable gate. Toggling discards any pending peak and requires fresh
   quiet qualification, so a switch transient cannot replay an old hit.

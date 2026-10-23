@@ -58,13 +58,13 @@ void BarDisplay::tick(uint32_t now) {
     if (localDown_) {
       renderLocal(now);
     } else if (remoteActive_) {
-      if (remoteDown_ || remoteMode_ == "down") renderRemote(now);
-      else if (!piezoDetectionEnabled_) renderPiezoDisabled(now);
-      else renderRemote(now);
-    } else if (!piezoDetectionEnabled_) {
-      renderPiezoDisabled(now);
+      renderRemote(now);
     } else {
       renderLocal(now);
+    }
+    if (!piezoDetectionEnabled_ && !localDown_ &&
+        !(remoteActive_ && (remoteDown_ || remoteMode_ == "down" || remoteMode_ == "disabled"))) {
+      renderPiezoDisabled(now);
     }
   }
   showTick(now);
@@ -229,17 +229,27 @@ void BarDisplay::renderPiezoDisabled(uint32_t now) {
     lastPiezoDisabledFrame_ = frame;
     dirty_ = true;
   }
-  // Neon standby: dim violet field, cyan comet. No delay or HP mutation.
-  renderBlank();
-  const int head = frame % groupCount_;
-  for (int group = 0; group < groupCount_; ++group) {
-    const int distance = (head - group + groupCount_) % groupCount_;
-    CRGB color(18, 0, 36);
-    if (distance == 0) color = CRGB(0, 255, 190);
-    else if (distance == 1) color = CRGB(0, 110, 100);
-    else if (distance == 2) color = CRGB(0, 40, 60);
-    setHpBarGroup(group + 1, color);
+  // Overlay one neutral highlight on the remaining HP perimeter only.
+  // Never illuminate lost HP columns or replace the underlying HP colors.
+  const float fillRatio = remoteActive_ ? remoteFillRatio_ : localFillRatio();
+  const int healthyGroups = groupsForFill(fillRatio, groupCount_);
+  if (healthyGroups == 0) return;
+  const int step = frame % (2 * healthyGroups + 2);
+  int group;
+  int index;
+  if (step < healthyGroups) {
+    group = step;
+    index = group;  // top row, left to right
+  } else if (step == healthyGroups) {
+    group = healthyGroups - 1;
+    index = 2 * groupCount_ - 1 - group;  // right edge
+  } else if (step <= 2 * healthyGroups) {
+    group = 2 * healthyGroups - step;
+    index = 2 * groupCount_ + group;  // bottom row, right to left
+  } else {
+    index = 2 * groupCount_ - 1;  // left edge
   }
+  leds_[index] = wireColor(CRGB::White);
 }
 
 void BarDisplay::renderLocal(uint32_t now) {
