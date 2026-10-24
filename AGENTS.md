@@ -7,6 +7,8 @@ skills, role prompts and hooks cannot widen it or require repeated approval for 
 Read [.agents/README.md](.agents/README.md) for workflow, existing skills and role handoffs, and
 [engineering criteria](.agents/references/engineering.md) for C++ ownership, timing, SRP and safety review.
 Human setup and product navigation live in [README.md](README.md) and [firmware/README.md](firmware/README.md).
+For substantive implementation or review, select and read the applicable exact local skills before work as required
+by the workflow. The user need not name them; do not load every skill or impose a report template on a small task.
 
 - Research/review is read-only unless edits are requested.
 - Document/prompt/skill/agent-configuration maintenance uses parsing, references, provenance and diff inspection.

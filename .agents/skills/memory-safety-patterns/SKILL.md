@@ -1,84 +1,40 @@
 ---
 name: memory-safety-patterns
-description: Implement memory-safe programming with RAII, ownership, smart pointers, and resource management across Rust, C++, and C. Use when writing safe systems code, managing resources, or preventing memory bugs.
+description: Review C++ firmware resource ownership, RAII, borrowed buffer lifetimes, bounds and shared state when changing ESP32/Arduino code; not a language migration or blanket heap/smart-pointer conversion.
 ---
 
 # Memory Safety Patterns
 
-Cross-language patterns for memory-safe programming including RAII, ownership, smart pointers, and resource management.
+> Adapted from the recorded upstream skill for this firmware repository. Cross-language safety rankings,
+> desktop/nightly tool commands and unrelated implementation recipes are intentionally omitted.
 
-## ESP32 application boundary
+Use this guidance for the resource or buffer boundary actually changing. Read the owning firmware/library instructions
+and selected PlatformIO environment first. Preserve the current compiler, allocation/error conventions and safe-off
+behavior; an ownership improvement must not introduce a new failure mode or move product interlocks into a helper.
 
-Read the owning firmware/library instructions and existing PlatformIO environment first. Examples here are design
-illustrations, not drop-in firmware or authorization to change compiler flags, dependencies, watchdogs, device state
-or hardware. Keep the existing C++ standard, allocation/error conventions and capability-scoped libraries. Host tools,
-Rust, throwing heap-backed examples, C++20 `std::span` and `std::shared_mutex` are not ESP32 requirements. Non-owning raw
-pointers are valid when lifetime, bounds and synchronization are explicit; prefer RAII for ownership, not forced shared ownership.
+## What matters here
 
-## When to Use This Skill
+- **A concrete owner and release path.** Reuse existing scoped owners such as `ScopedPreferences`; decide who closes
+  a resource after failed acquisition as well as normal use. Raw non-owning pointers/references are valid when their
+  lifetime and bounds are clear. A statically owned driver does not need a heap-backed smart-pointer wrapper.
+- **Borrowed data remains borrowed.** Trace callback and queue storage before retaining a pointer or handing it to
+  another execution context. An address/length pair or iterator does not prove ownership or checked access.
+- **Bounds and failure remain explicit.** Validate external lengths before indexing/copying/allocation and preserve
+  the existing rejection/overflow result. Cleanup must not silently turn a failed operation into success.
+- **Synchronization follows the real execution path.** Identify the foreground/task/ISR owner and use the target SDK
+  primitive where sharing actually occurs. `volatile`, a smart pointer or a desktop mutex recipe is not proof of
+  ESP32 cross-core/ISR safety.
 
-- Writing memory-safe systems code
-- Managing resources (files, sockets, memory)
-- Preventing use-after-free and leaks
-- Implementing RAII patterns
-- Choosing between languages for safety
-- Debugging memory issues
+The canonical [C++ ownership criteria](../../references/engineering.md#c-lifetime-ownership-and-memory) and
+[timing/concurrency criteria](../../references/engineering.md#time-callbacks-and-concurrency) define project policy.
+Read [the focused reference](references/details.md) when tracing a concrete owner, borrowed buffer or failure path;
+it points at existing production seams rather than providing another driver or allocator template.
 
-## Core Concepts
+## Verification boundary
 
-### 1. Memory Bug Categories
+For authorized firmware changes, use the existing offline seam and affected env/variant checks that prove the changed
+contract. Neither C++17 host compilation nor a nearby passing parser test proves target language support, product
+timing, stack headroom or physical safe-off. Report those limits according to the owning workflow.
 
-| Bug Type             | Description                      | Prevention        |
-| -------------------- | -------------------------------- | ----------------- |
-| **Use-after-free**   | Access freed memory              | Ownership, RAII   |
-| **Double-free**      | Free same memory twice           | Smart pointers    |
-| **Memory leak**      | Never free memory                | RAII, GC          |
-| **Buffer overflow**  | Write past buffer end            | Bounds checking   |
-| **Dangling pointer** | Pointer to freed memory          | Lifetime tracking |
-| **Data race**        | Concurrent unsynchronized access | Ownership, Sync   |
-
-### 2. Safety Spectrum
-
-```
-Manual (C) → Smart Pointers (C++) → Ownership (Rust) → GC (Go, Java)
-Less safe                                              More safe
-More control                                           Less control
-```
-
-## Detailed patterns and worked examples
-
-Detailed pattern documentation lives in `references/details.md`. Read that file when the navigation tier above is insufficient.
-
-## Best Practices
-
-### Do's
-
-- **Prefer RAII** - Tie resource lifetime to scope
-- **Use ownership deliberately** - RAII for owned resources; explicit lifetimes for non-owning pointers
-- **Understand ownership** - Know who owns what
-- **Check bounds** - Use safe access methods
-- **Use tools** - AddressSanitizer, Valgrind, Miri
-
-### Don'ts
-
-- **Don't leave ownership ambiguous** - Raw pointers may be non-owning views; document lifetime and bounds
-- **Don't return local references** - Dangling pointer
-- **Don't ignore compiler warnings** - They catch bugs
-- **Don't use `unsafe` carelessly** - In Rust, minimize it
-- **Don't assume thread safety** - Be explicit
-
-## Debugging Tools
-
-```bash
-# AddressSanitizer (Clang/GCC)
-clang++ -fsanitize=address -g source.cpp
-
-# Valgrind
-valgrind --leak-check=full ./program
-
-# Rust Miri (undefined behavior detector)
-cargo +nightly miri run
-
-# ThreadSanitizer
-clang++ -fsanitize=thread -g source.cpp
-```
+This skill does not authorize tool installation, sanitizer/nightly/Valgrind commands, build-flag changes, exceptions,
+C++20 APIs, new tasks or hardware access. Guidance-only work stays with static metadata/reference/hash/diff checks.

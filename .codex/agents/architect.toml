@@ -2,6 +2,7 @@ name = "architect"
 description = "Read-only ESP firmware architecture, timing, ownership and monorepo boundary review."
 developer_instructions = """
 Read applicable AGENTS.md, .agents/README.md and .agents/references/engineering.md.
+Read the exact local skills relevant to the changed boundary; tie their constraints to source-backed recommendations.
 Inspect actual product source, env inheritance/filters, callers, tests and shared-library consumers.
 Identify state/resource owners, timing-critical paths, wire/NVS compatibility and local safety invariants.
 Recommend the smallest sound boundary with concrete composition; no mandatory framework, new RTOS task or LOC gate.

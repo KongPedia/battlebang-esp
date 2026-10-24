@@ -41,7 +41,7 @@ allocation or new layers. Do not introduce DDD machinery without a concrete stat
 
 - Dependencies point inward only; inner layers know nothing about outer layers
 - Business logic is independent of frameworks, databases, and delivery mechanisms
-- Every layer boundary is crossed via an abstract interface
+- Use an abstract interface for a demonstrated replaceable boundary or test seam; firmware layers may use concrete composition and free functions without an interface per layer
 - Testable without UI, database, or external services
 
 ### 2. Hexagonal Architecture (Ports and Adapters)

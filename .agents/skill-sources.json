@@ -60,8 +60,8 @@
       "source_id": "wshobson",
       "source": "plugins/backend-development/skills/architecture-patterns/SKILL.md",
       "upstream_sha256": "350caf22b856b7d2908a10a69a8cc13e743c757ba9838716051b4e29fc1d7595",
-      "sha256": "c2f551e16b1c6fb1bb084511d1e174916f45924a7d4ef5724abb5efb1d19f8bb",
-      "modifications": "Added firmware state/safety ownership and capability-boundary discovery metadata/use case plus the ESP32 scope boundary; backend examples remain optional, non-prescriptive references."
+      "sha256": "6de57c82472e23d8995434abf3648168a51c375a7910a506685986173f7c112a",
+      "modifications": "Added firmware state/safety ownership and capability-boundary discovery metadata/use case plus the ESP32 scope boundary; backend examples remain optional, non-prescriptive references. Clarify that abstract interfaces serve demonstrated replaceable/test seams rather than every firmware layer; concrete composition and free functions remain valid."
     },
     {
       "local": ".agents/skills/architecture-patterns/references/advanced-patterns.md",
@@ -204,16 +204,16 @@
       "source_id": "wshobson",
       "source": "plugins/systems-programming/skills/memory-safety-patterns/SKILL.md",
       "upstream_sha256": "e23ee740f583c16e7633be4ee76ff028b8c9c486c6417fdfb69e0beb886327ca",
-      "sha256": "63a43567f4656199946939d3894ba2fc0b7c61c77640f2b1f52c65e4159d67af",
-      "modifications": "Added ESP32/C++ standard, ownership, allocation, tool and authorization boundaries; corrected blanket raw-pointer prohibition."
+      "sha256": "0006a4c75629a4f9c0f6c16db372a9d2192af646ddc91f8251786d0a0beaa7d3",
+      "modifications": "Added ESP32/C++ standard, ownership, allocation, tool and authorization boundaries; corrected blanket raw-pointer prohibition. Specialize discovery and entrypoint to ESP32 C++ ownership/buffer/shared-state changes; remove the unsupported language-safety ranking, cross-language agenda and desktop/nightly tool-command recipes. Retain canonical project criteria and scoped verification, without new implementation templates."
     },
     {
       "local": ".agents/skills/memory-safety-patterns/references/details.md",
       "source_id": "wshobson",
       "source": "plugins/systems-programming/skills/memory-safety-patterns/references/details.md",
       "upstream_sha256": "c07b8a66b6fd7afc6e957e3443cdbfa17787370d41e2ef16372eb7dd2b551a44",
-      "sha256": "91d450b3a66444872d56ce4061e4126de416510172494fe7f6cf4c937ca1b882",
-      "modifications": "Added ESP applicability boundary; Database shares one mutable mutex and const find-based reads; socket deleter frees invalid-descriptor storage; removed throwing generic destructor rollback; corrected shared_ptr exception-safety claim. Made host socket acquisition exception-safe by owning allocated descriptor storage before socket(); scoped Rust read guard before write acquisition to prevent self-deadlock."
+      "sha256": "003f8e708db64fa658ed126cbfb6dcb220eca3a3fb6d86a8934286c30413ba3f",
+      "modifications": "Added ESP applicability boundary; Database shares one mutable mutex and const find-based reads; socket deleter frees invalid-descriptor storage; removed throwing generic destructor rollback; corrected shared_ptr exception-safety claim. Made host socket acquisition exception-safe by owning allocated descriptor storage before socket(); scoped Rust read guard before write acquisition to prevent self-deadlock. Reduce the cross-language/desktop worked-example collection to firmware ownership, borrowed queue/callback storage, explicit failure cleanup and synchronization criteria linked to actual ScopedPreferences and FrameTxQueue code. Remove throwing/heap/POSIX, GCC cleanup, Rust and C++20/desktop skeletons rather than retaining them behind warnings; explicitly reject iterator/span bounds-safety inference and preserve NVS partial-save/timing limits. Keep original source identity/license and record this substantive specialization."
     },
     {
       "local": ".agents/licenses/jeffallan-LICENSE",
@@ -228,8 +228,8 @@
       "source_id": "jeffallan",
       "source": "skills/embedded-systems/SKILL.md",
       "upstream_sha256": "536161470752d40a2bfc3ec4b17ab5c34fd3593a8960bf8089b0ea59b6ddec1f",
-      "sha256": "d1041af2bbfb5dfc2c82cf167860cbf26fa8654b8df7ba5109797b5c0d8f5909",
-      "modifications": "Added ESP32/API/version/scope boundaries and removed null metadata. Preserved reviewed hardware profiles; removed unsupported ISR/task/register-blink copy skeletons, including unchecked queue saturation, and references existing topic criteria instead. Scoped workflow/output to necessary changes rather than mandatory drivers/tasks or hardware execution."
+      "sha256": "1f7603485beec148c3286000a7b58c721fd10abf4f33b56c1f7ea634ae33dfe4",
+      "modifications": "Added ESP32/API/version/scope boundaries and removed null metadata. Preserved reviewed hardware profiles; removed unsupported ISR/task/register-blink copy skeletons, including unchecked queue saturation, and references existing topic criteria instead. Scoped workflow/output to necessary changes rather than mandatory drivers/tasks or hardware execution. Clarify that an in-scope ISR defers to the existing foreground/task owner with SDK primitives, without requiring a new task."
     },
     {
       "local": ".agents/skills/embedded-systems/references/rtos-patterns.md",

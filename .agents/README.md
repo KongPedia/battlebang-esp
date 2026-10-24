@@ -42,11 +42,26 @@ Specs and docs must distinguish current, proposed and historical behavior. Synch
 removing a plan does not prove synchronization. Temporary task plans/review notes go in ignored `.omx/plans`; Git/PR history
 holds completed execution logs. Existing test-consumed plan paths are retained as short compatibility records, not live tasks.
 
-## Select existing skills, not a new wrapper
+## Required skill use for the changed firmware boundary
 
 Use these exact project paths when personal/plugin skills have the same name; do not load duplicates. Codex supports
 project `.agents/skills` discovery, but this session's inventory/fresh-session behavior must establish what actually loads.
 Direct reading proves inspection only. Repository policy and the actual toolchain override generic source examples.
+
+For substantive implementation or review, **read the relevant entrypoints before editing or reaching a conclusion**.
+Choose by the actual boundary: a relay deadline or ISR uses embedded timing guidance; a buffer/Preferences lifetime
+uses memory guidance; splitting product policy from a shared mechanism uses architecture guidance. Ordinary requests
+are sufficient; users do not need to supply `$skill-name`. Load detailed references only when that boundary needs them.
+
+Keep application visible without ceremony: briefly name the rule that affects the work (for example, preserving local
+safe-off before reconnect, or the lifetime of a borrowed transmit buffer), then report the decision and checks that
+support the result. Pass the exact skill paths and relevant env/variant constraints into delegated work. Reviewers and
+verifiers check those decisions and available read/check evidence, not a claimed list of skill names. Missing selected
+guidance is disclosed, not silently replaced by tool installation or a claim of full coverage.
+
+A typo or link correction still needs only its local context and static checks. There is no mandatory multi-agent
+pipeline, new planning document, fixed report layout or requirement to read all eight skills. This is a project
+instruction and review obligation, not an execution hook or a guarantee that a model will always select correctly.
 
 | Need | Entrypoint | Firmware adaptation |
 | --- | --- | --- |
@@ -62,6 +77,8 @@ Direct reading proves inspection only. Repository policy and the actual toolchai
 Domain skills have recorded local corrections for unsafe examples/platform assumptions. Read their compatibility notes,
 not only their names. Generic modern-C++ `cpp-pro` was considered but not imported: mandatory C++20/CMake/desktop tools
 and problematic ownership examples impose unnecessary adaptation here. Python/frontend bundles are not firmware defaults.
+The existing reuse, small-change and SRP criteria already cover the useful simplification discipline; do not add a
+separate role or general skill merely to repeat those rules.
 
 ESP-IDF task stack units are bytes for the documented APIs; scheduler startup is managed by the framework. Verify the
 installed version/API before using examples. `volatile` is not synchronization; ESP32 SMP needs the correct port primitives.
@@ -103,9 +120,10 @@ a minimal production seam or suitable offline adapter; do not credit a nearby pa
 For wire changes, follow the [framed host/fixture handoff](../firmware/go2_nixo_framed_packet_uart/README.md#protocol-consumer-handoff)
 and record consumer repository/ref plus fixture evidence, or explicitly report external compatibility pending.
 
-Task brief: "Read the applicable guides and selected local skill. Identify the env/variant and consumers. Preserve the
-named wire/NVS/timing/safety contract, reproduce offline where feasible, make the smallest causal change, and report scoped
-evidence and omissions. No unrequested hardware, release, dependency upgrades, global configuration, commits or refactor."
+Task briefs can stay in ordinary language: identify the affected env/variant and consumers, the selected local paths,
+the contract that must survive, and permitted evidence. For example, a fire-hold repair must preserve local expiry and
+safe-off while reaching the actual product policy in an offline regression; a nearby parser test is not a substitute.
+Do not turn this into another form to fill out or a reason to request permission again for already authorized work.
 
 ## Source maintenance and verification
 

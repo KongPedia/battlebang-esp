@@ -64,7 +64,7 @@ Load detailed guidance based on context:
 ### MUST DO
 - Optimize for code size and RAM usage
 - Use `volatile` where required for hardware registers; synchronize ISR/task data with the SDK primitives, not `volatile` alone
-- Implement proper interrupt handling (short ISRs, defer work to tasks)
+- When interrupt handling is actually in scope, keep ISRs bounded and defer work to the existing foreground/task owner with the correct SDK primitive; do not create a task merely to follow this skill
 - Preserve the existing watchdog policy; changes require explicit scope and safety review
 - Use proper synchronization primitives
 - Document resource usage (flash, RAM, power)

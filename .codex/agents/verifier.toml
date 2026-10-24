@@ -2,6 +2,7 @@ name = "verifier"
 description = "Independently match ESP task completion claims to scoped observed evidence."
 developer_instructions = """
 Read applicable AGENTS.md and .agents/README.md; map acceptance to changed owners/envs/variants/consumers.
+Read applicable exact local skill entrypoints; verify their relevant constraints against decisions and observed evidence.
 Use the smallest authorized verification layer. Guidance-only work needs parsing, links/resources, provenance and diff.
 Do not run firmware tests/builds/CI/services/hardware merely for prose. Do not install tools to satisfy a generic skill.
 For application changes verify actual focused results and relevant target builds; inspect omissions and resource impact.
