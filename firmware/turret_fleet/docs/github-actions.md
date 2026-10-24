@@ -1,5 +1,9 @@
 # GitHub Actions Release Flow
 
+This is a publication-capable operator procedure, not a document-verification checklist. Do not dispatch, publish,
+move stable pointers or send MQTT jobs without explicit scope. Upload/NVS/OTA/reboot and subsequent motion/fire/recovery
+are separate approvals. No current remote release or device readiness is asserted by this page.
+
 ## Goal
 
 Build one generic `esp32dev_turret_fleet` firmware artifact. Do not build one
@@ -9,18 +13,26 @@ first provisioning and later MQTT/NVS config.
 ## Triggers
 
 The unified `Firmware OTA Releases` workflow (`.github/workflows/firmware-ota.yml`) supports both normal
-merge-to-main releases and manual smoke-test builds.
+merge-to-main releases and explicitly requested manual builds. Dispatch selects the full matrix, not fleet alone.
 
 ### Automatic merge-to-main release
 
-A push to `main` automatically runs the workflow when one of these paths changes:
+The workflow selects the fleet row for relevant `main` changes. Current fleet/global selection includes:
 
 ```yaml
 .github/workflows/firmware-ota.yml
 platformio.ini
 firmware/turret_fleet/**
-scripts/turret_fleet/**
+lib/bb_esp_core/**
+lib/bb_esp_net/**
+lib/bb_esp_nvs/**
+lib/bb_esp_ota/**
+scripts/firmware/make_release_manifest.py
 ```
+
+Host-only `scripts/turret_fleet/**` helpers are not fleet release inputs. Firmware-folder Markdown is included by the
+current filter, so a prose-only merge can still publish images. See the committed matrix for all families; do not change
+release policy silently while editing documentation.
 
 For push builds the workflow derives release identity from the GitHub run number:
 
@@ -36,25 +48,25 @@ stays above older manual/PR smoke builds.
 
 ### Manual workflow dispatch
 
-Manual runs remain available for PR smoke tests or one-off builds:
+Manual runs are external actions requiring authorization. For an authorized build-only smoke run, explicitly disable
+publication; the workflow's default `create_release` is true, so omitting that input is not harmless:
 
 ```bash
 gh workflow run firmware-ota.yml \
   --repo KongPedia/battlebang-esp \
-  --ref feature/BTB-721-turret-fleet-rebuild-plan \
-  -f version=0.1.4-pr9-bootfix \
-  -f build=5 \
+  --ref "<reviewed-ref>" \
+  -f version="<reviewed-version>" \
+  -f build="<reviewed-build>" \
   -f firmware_base_url="" \
   -f public_release_repo=KongPedia/battlebang-esp \
-  -f public_release_target_branch=feature/BTB-721-turret-fleet-rebuild-plan \
-  -f create_release=true \
+  -f public_release_target_branch="<reviewed-ref>" \
+  -f create_release=false \
   -f update_stable_latest=false
 ```
 
-Manual branch smoke runs must keep `update_stable_latest=false` so they publish
-only versioned test assets and do not move device polling pointers. Main push
-builds always update stable latest tags. Set `update_stable_latest=true` only for
-an intentional manual stable release.
+Build-only smoke runs keep both `create_release=false` and `update_stable_latest=false`. Publishing versioned test
+assets requires separate authorization and `create_release=true`; keep stable updates off. Moving a stable pointer is a
+further intentional rollout decision, never a side effect of document validation. Main push builds update stable tags.
 
 For same-repo releases to `KongPedia/battlebang-esp`, no extra secret is needed;
 the workflow uses the built-in `GITHUB_TOKEN`. `PUBLIC_RELEASE_REPO_TOKEN` is
@@ -88,7 +100,7 @@ https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-lates
 ## Post-merge OTA operator flow
 
 1. Merge the PR to `main`.
-2. Wait for the **Turret Fleet Firmware** Action run to finish and create a
+2. Wait for the **Firmware OTA Releases** Action run to finish and create a
    release.
 3. Set the MQTT broker host locally. This is the Command Center/MQTT broker IP
    or DNS name, not the ESP device IP:
@@ -121,8 +133,8 @@ https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-lates
 6. Watch `battlebang/turrets/turret_2/status` for `config_applied`,
    `ota_downloading`, `ota_rebooting`, then `connected` with the new
    `firmware_build`.
-7. After OTA reboot, automatic HOME is intentionally inhibited. Send an explicit
-   command:
+7. After OTA reboot, automatic HOME is intentionally inhibited. Do not move the device just to prove an update.
+   Only after separate movement approval, use the reviewed device's explicit command:
 
    ```bash
    ./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
@@ -182,8 +194,7 @@ self-hosted runner on Jetson if direct publish is required.
 
 ## Security notes
 
-- `KongPedia/battlebang-esp` is public, so release assets are public and
-  reachable by ESP32 HTTPS downloads.
+- Confirm approved artifact visibility/reachability for the target device before deployment; this page is not a fresh remote availability check.
 - Do not put Wi-Fi/MQTT/GitHub secrets into the firmware image.
 - GitHub asset downloads may redirect; the firmware follows redirects.
 - The current prototype uses insecure TLS for convenience. Use CA pinning or

@@ -4,6 +4,10 @@
 
 Applies to active ESP32 firmware applications under `firmware/**`.
 
+Follow root scope and [.agents engineering criteria](../.agents/references/engineering.md). Guidance-only changes use
+static references/metadata/diff review, not builds, application tests or hardware. The application rules below do not
+authorize upload, provisioning, OTA/reboot, live serial/MQTT, movement or fire.
+
 ## Role of `firmware/`
 
 - Put new deployable ESP32 applications under `firmware/<firmware_name>/`.
@@ -32,6 +36,8 @@ When adding `firmware/<name>/`, add or update all of these in the same branch:
 - Device IDs, stage IDs, MQTT root/host, OTA policy, and tuning values that operators adjust should be NVS-backed.
 - Use runtime IDs for per-device identity. Do not create PlatformIO envs like `esp32dev_<firmware>_01` for numbered devices.
 - Keep unsafe electrical defaults such as relay pin maps, relay polarity, hardware variant channel count, and hard safety envelopes as build-time or hardware-profile data unless a safety review explicitly approves NVS control.
+- Preserve product-specific exceptions already implemented: Turret Fleet supports validated NVS-backed relay profiles and
+  per-channel polarity, unlike Go2/Nixo's build-only relay variants. Do not silently remove that contract or bypass safe-OFF.
 - `stage_id` is part of the standard runtime config so Command Center can target only devices in a stage.
 
 ## OTA channel rules
@@ -43,7 +49,9 @@ When adding `firmware/<name>/`, add or update all of these in the same branch:
 
 ## Verification before completion
 
-- Run the relevant `pio run -e <env>` build.
-- Run matching Python contract tests.
+- For application changes, run the relevant explicit `pio run -e <env>` build and affected variants/consumers.
+- Run matching offline host behavioral and Python contract tests; string/layout contracts are not C++ behavior.
 - Run `git diff --check`.
-- For hardware behavior changes, upload to the correct ESP32 and capture serial/MQTT evidence separately from software verification.
+- Report missing deployment/physical evidence. Upload/provisioning/reboot needs separate target-specific authorization;
+  movement/fire/recovery needs explicit actuation approval and human review. Do not automatically run hardware tests.
+- Preserve the selected product's transport: production USB-framed Go2/Nixo is binary-only, not a `show-status` text console.

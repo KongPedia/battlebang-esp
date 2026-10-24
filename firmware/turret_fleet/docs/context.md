@@ -1,148 +1,19 @@
-# Turret Fleet Context
+# Turret Fleet historical hardware observations
 
-This document is the compact handoff/context source for BTB-721 `turret_fleet` work.
+This retained `context.md` path contains per-unit bench evidence, not current operating instructions or a pending handoff.
+Past uploads, MQTT delivery, ports/IDs, raw ADC, PWM, calibration and power readings below are observations for the recorded
+session/hardware only. Rediscover the actual board/profile/port and verify current source before any approved operation.
+No historical log authorizes upload/NVS/OTA/reboot or physical motion/fire/recovery.
 
-## Goal
+Current contracts are [architecture](architecture.md), [wire/config](mqtt-http-contract.md), [operator usage](usage.md)
+and [release flow](github-actions.md). Duplicate boot/config/command handoff prose was consolidated there; hardware evidence
+below is retained because deleting it would lose calibration and electrical failure context.
 
-`firmware/turret_fleet` is the replacement ESP32 firmware path for operating multiple physical turrets without rebuilding per turret after first install.
+**Unsafe-mode warning:** the May bench session below used a temporary unsafe calibration build. Current
+`control/turret_control.cpp` sets `kUnsafeManualCalibrationMode=false`. Do not enable it, reuse old raw/PWM values globally,
+or bypass feedback guards to reproduce historical behavior. Historical descriptions of “current/latest” refer to that session.
 
-- First install is still USB serial because blank ESP32 devices have no Wi-Fi credentials.
-- After USB install, the ESP stores `turret_id`, pose, Wi-Fi, MQTT, calibration, motion/fire, and OTA policy in NVS.
-- After provisioning, Command Center can update config and trigger commands over MQTT without USB reflashing.
-- `src/turret` remains as the existing/legacy turret firmware reference; new fleet work happens in `firmware/turret_fleet`.
-
-## Boot behavior
-
-A configured fleet turret must not require a manual `start-network` command.
-
-1. Boot in `WAIT_COMMAND` with relay/ESC safe-off and no idle sweep.
-2. Start Wi-Fi/MQTT automatically, even if old NVS has `network.auto_start=false`.
-3. Subscribe to command/config/OTA topics.
-4. Run a small boot axis probe before any tracking drive:
-   - sample yaw/pitch potentiometer ADC,
-   - pulse only one axis at a time,
-   - avoid outward pulses at the edge of the range,
-   - learn/confirm motor direction when ADC movement is observed.
-5. Only if both axes are inside the configured calibrated software envelope, run one no-fire local `HOME` aim to `motion.home` (`yaw=0,pitch=0` by default).
-6. If an axis is already outside the envelope/deadzone guard, log the local home target but keep motion inhibited.
-7. Keep waiting for MQTT commands/config updates.
-
-The boot home exists so a powered turret actively returns to its calibrated local `0,0` instead of silently staying wherever the hardware happened to stop.
-It is intentionally gated by the boot probe so firmware does not force yaw/pitch into the observed yaw feedback deadzone/rail region.
-
-## Brownout/fire-reset recovery
-
-Brownout or a reset during active firing is treated as an interrupted unsafe operation, not as a normal reboot.
-
-- During an active fire sequence the firmware writes an NVS `fire_active` marker.
-- If boot sees ESP reset reason `BROWNOUT`, `fire_active=true`, or a persisted `recover_req=true` marker, it enters brownout/fire-reset lockout.
-- Lockout detaches/stops fire outputs, skips boot HOME output drive, and blocks direct fire via `brownout_lockout` until recovery. There is no MQTT/NVS pre-arm enable flag for fire.
-- Firmware immediately attempts automatic safe recovery. It clears the lockout only if current yaw/pitch feedback is stable and inside the calibrated soft window; it recovers to `WAIT_COMMAND`, not to a saved target.
-- If auto-recovery fails, the lockout marker stays in NVS and target/idle/dead/aim/jog/fire/pattern remain rejected until explicit `recover` succeeds.
-- Saved/stale pose is used for diagnostics only and is never trusted as authority to resume motion after a brownout.
-- Status exposes `motion_state.brownout_lockout`, `fire_recovery_required_at_boot`, `recovery_lockout_required_at_boot`, `boot_auto_recovery_attempted`, and `boot_auto_recovery_succeeded`.
-
-Recovery commands:
-
-```bash
-./bin/turret fleet-mqtt turret_2 hold --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 recover --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"  # only after lockout=false
-```
-
-## Clamp/reject rule
-
-Do not choose a single behavior for all safety cases. The intended double defense is:
-
-- Command Center clamps desired targets/config UI values before publishing.
-- ESP clamps valid motion setpoints to `motion.limits` so out-of-reach targets become nearest safe aim.
-- ESP rejects invalid authority/state/safety conditions: wrong frame, invalid config envelope, unconfigured turret, brownout/fire-reset lockout, fire in DEAD mode, or unsafe OTA.
-
-## Coordinate model
-
-Runtime config defines the shared coordinate frame:
-
-- `pose.x_cm`, `pose.y_cm`, `pose.z_cm`: turret position in frame centimeters.
-- `pose.default_target_z_cm`: fallback target height used only when an explicit `target` omits `z`.
-- MQTT `target` normally uses meters (`coordinate_frame.mqtt_target_unit = "m"`).
-- Target solve converts world target coordinates into local yaw/pitch goals.
-
-Calibration is split intentionally:
-
-- `calibration.yaw_axis_offset_deg` / `pitch_axis_offset_deg`: local feedback zero correction. Use these when direct local `aim yaw pitch` does not match the physical center.
-- `calibration.yaw_offset_deg` / `pitch_offset_deg`: world target-solver correction. Use these only after direct local aim is good but world-coordinate target lands consistently off.
-- `motion.home.yaw_deg` / `motion.home.pitch_deg`: boot local home pose. Default `0,0` assumes the local feedback zero is already calibrated to physical front/level.
-- `motion.limits`: persisted local command envelope. Default is 150° total (`yaw=-75..75`, `pitch=-75..75`) and is used by home/aim/target/idle/dead clamping.
-- `motion.yaw_stop_us` / `pitch_stop_us`: continuous-servo neutral PWM. Use these when `hold` creeps after outputs are stopped.
-
-## MQTT topics
-
-For `turret_2` and root `battlebang`:
-
-- Commands: `battlebang/turrets/turret_2/command`
-- Config: `battlebang/turrets/turret_2/config`
-- OTA job: `battlebang/turrets/turret_2/ota`
-- Fleet OTA broadcast: `battlebang/turrets/all/ota`
-- Status: `battlebang/turrets/turret_2/status` and `battlebang/devices/turret/{device_id}/status`
-
-Useful local helper examples:
-
-```bash
-./bin/turret fleet-mqtt turret_2 hold --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 home --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 initiate --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 aim 0 0 --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 config --yaw-axis-offset-deg 5 --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-mqtt turret_2 config --yaw-stop-us 1500 --pitch-stop-us 1500 --host "$MQTT_BROKER_HOST"
-```
-
-`home` / `init` / `initiate` are command-topic aliases that re-run the local
-`motion.home` aim (`0,0` by default) without reboot. They are absolute local
-yaw/pitch setpoints, not relative moves from the current position. MQTT
-`target` remains a world-coordinate `(x,y,z)` solve and should normally be sent
-after the turret has reached local home.
-
-## USB provisioning
-
-Provisioning reads the module-local env file:
-
-- Default env file: `firmware/turret_fleet/.env.turret_fleet`
-- Example file: `firmware/turret_fleet/.env.turret_fleet.example`
-- Local env files are gitignored; do not commit real Wi-Fi/MQTT secrets.
-
-Current expected first-install defaults:
-
-```bash
-TURRET_FLEET_WIFI_SSID=...
-TURRET_FLEET_WIFI_PASSWORD=...
-TURRET_FLEET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS
-TURRET_FLEET_MQTT_PORT=1883
-TURRET_FLEET_MQTT_ROOT=battlebang
-TURRET_FLEET_NETWORK_AUTO_START=true
-TURRET_FLEET_YAW_STOP_US=1500
-TURRET_FLEET_PITCH_STOP_US=1500
-```
-
-Upload/provision one device:
-
-```bash
-./bin/turret fleet-upload turret_2 /dev/cu.usbserial-120
-# or provision only after an upload:
-./bin/turret fleet-provision turret_2 /dev/cu.usbserial-120
-```
-
-## OTA / automatic deployment
-
-OTA is Command-Center-controlled by design.
-
-- Public release repo manifests are supported by HTTP OTA config.
-- The ESP stores OTA channel/build/manifest config in NVS.
-- Command Center can publish OTA jobs to turret-specific or all-turret MQTT topics.
-- Firmware applies OTA only in a safe state (`WAIT_COMMAND` / no firing / no pattern).
-- Status publishes firmware app/version/build/config fields for convergence checks.
-
-## Motion debugging and current bench finding
+## Historical motion-debugging bench findings
 
 Observed problem: during boot initial target `(0,0,default_z)`, pitch/yaw sometimes jumped and ESP brownout reset occurred.
 
@@ -211,7 +82,7 @@ Interpretation update: at the current physical/sensor state this is no longer a 
 
 Latest unsafe/manual calibration pass (2026-05-29):
 
-- Firmware now has `kUnsafeManualCalibrationMode=true` for the current bench session. In this mode:
+- That historical bench build temporarily had `kUnsafeManualCalibrationMode=true` (not the current source). In that build:
   - normal soft-window and rail guards no longer block `aim`, `jog`, `idle`, or `dead`;
   - the divergence guard is bypassed so `aim -20` / negative pitch tests keep running instead of stopping early;
   - debug jog accepts wider caller-provided pulses up to `400us` and `1200ms`;
@@ -469,7 +340,7 @@ Latest full MQTT/serial hardware suite after safe-envelope config (2026-05-29):
   - Yaw remains modulo/continuous; software cannot distinguish a mechanically 180-degree-wrong output if raw feedback is still near center. Operator-confirmed true physical home remains required before production deployment.
 
 
-## OTA release and polling
+## Historical OTA release and polling observation
 
 - Public release repo is `KongPedia/battlebang-esp`; verified via `gh repo view` as PUBLIC on 2026-05-29.
 - Firmware default latest manifest URL is `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json`.
