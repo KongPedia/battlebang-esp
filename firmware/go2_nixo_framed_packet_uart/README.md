@@ -40,6 +40,39 @@ The two firmware families never auto-detect or mix UART formats.
 The optional piezo-channel mask and qualification behavior described below
 apply to this **framed** firmware, not the legacy single-character firmware.
 
+## Protocol consumer handoff
+
+The ESP protocol owner is this family's `uart/protocol.h`, `uart/protocol.cpp`, and
+`uart/runtime.cpp`, with product command admission in `main.cpp`. The external
+Jetson consumer/producer lives in the separate `battlebang` repository, under
+`src/agents/go2_dora/`:
+
+- `battlebang_go2_dora/adapters/go2_nixo_uart/codec.py`: `encode_frame`/`decode_frame`
+  and typed message encoding/decoding; `constants.py` and `messages.py` own its wire registry/payloads.
+- The same adapter's `parser.py`, `transport.py`, and `client.py` own stream parsing,
+  transport, ACK/retry and client policy. Its callers include
+  `battlebang_go2_dora/bundles/go2_connection_bundle.py`,
+  `battlebang_go2_dora/runtime/hp_max_config.py`, and `scripts/go2_nixo_uart_echo.py`.
+- Host regression sources: `tests/test_go2_nixo_uart_codec.py`,
+  `tests/test_go2_nixo_uart_parser.py`, `tests/test_go2_nixo_uart_transport.py`, and
+  `tests/test_go2_nixo_uart_client.py`.
+
+The canonical ESP [golden vectors](../../tests/fixtures/go2_nixo_uart/golden_vectors.json)
+have a host mirror at `src/agents/go2_dora/tests/fixtures/go2_nixo_uart/golden_vectors.json`
+in `battlebang`. Source-only inspection at host commit
+`937c662447e40a2d104e49f68dd55227ef780cd5` found the two fixture files byte-identical;
+this is not executed host/ESP compatibility evidence. The ESP test
+`tests/python/test_go2_nixo_uart_protocol.py::test_uart_flags_match_python_registry`
+checks local C++ strings only; its name does not prove agreement with the host registry.
+
+For a wire/ID/flags/payload or retry/lease change, hand off the affected ESP producer
+and every host consumer (and reverse-direction commands) to one integration owner.
+Record both repository revisions, affected variants, fixture changes and matching
+offline behavioral results from both owners. Preserve existing wire/version/ID
+contracts; until that evidence exists, report **external compatibility pending**,
+not host-compatible or physically validated. No host tests or device operations
+were run for this documentation update.
+
 ## Piezo channel availability
 
 `piezo_channel_enable_mask` is NVS-backed: left=1, right=2, front=4. The

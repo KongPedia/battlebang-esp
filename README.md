@@ -2,6 +2,15 @@
 
 ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에 두고, 공통 NVS/MQTT/OTA/Wi-Fi 유틸은 `lib/bb_esp_*` PlatformIO 라이브러리로 조립합니다.
 
+- **펌웨어 선택·운영 문서:** [firmware index](firmware/README.md), [hardware assembly and power](BattleBang-HardwareKit-v1.0.md)
+- **Codex/LLM 개발:** [AGENTS.md](AGENTS.md) → [.agents workflow and skills](.agents/README.md) → [C++ engineering criteria](.agents/references/engineering.md)
+- **기존 경로:** [legacy/compatibility index](src/README.md). 새 작업은 활성 family를 선택합니다.
+
+`platformio.ini`의 기본 env는 아직 legacy `esp32dev_turret_5`입니다. 항상 `-e <env>`를 명시하세요.
+문서·프롬프트만 바꾸는 작업에는 빌드/테스트/장치 접속이 필요하지 않습니다.
+업로드·NVS provisioning·OTA/reboot와 실제 이동·발사는 별도 승인 범위입니다. 아래 운영 명령은 자동 실행 지시가 아닙니다.
+업로드/재부팅/serial reset 자체로 boot probe/HOME이 동작할 수 있으므로, 해당 부팅 이동까지 승인받거나 물리 출력을 격리·확인해야 합니다.
+
 | PlatformIO env | Source entrypoint | Purpose | Runtime config |
 | --- | --- | --- | --- |
 | `esp32dev_go2` | `firmware/go2/main.cpp` | Go2-mounted hit/LED ESP: local piezo hit/HP/down + ESP-owned HP bar display | NVS: identity, stage/group/location, Wi-Fi, MQTT, OTA, hit tuning |
@@ -10,12 +19,13 @@ ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에
 | `esp32dev_go2_nixo_framed_packet_usb_1ch`, `esp32dev_go2_nixo_framed_packet_usb_2ch` | `firmware/go2_nixo_framed_packet_uart/main.cpp` | Production Go2/Nixo framed packet over the board USB connector | USB is binary-only at runtime; Bluetooth/MQTT management remains available |
 | `esp32dev_boss_target` | `firmware/boss_target/main.cpp` | Boss target firmware | NVS/MQTT/OTA standard template |
 | `esp32dev_heavy_blaster` | `firmware/heavy_blaster/main.cpp` | Heavy blaster firmware | NVS/MQTT/OTA standard template |
+| `esp32dev_station` | `firmware/station/main.cpp` | Target Station firmware | NVS: station/device/stage identity, network, capture tuning, OTA |
 | `esp32dev_turret_fleet` | `firmware/turret_fleet/main.cpp` | Generic runtime-configured turret fleet firmware | NVS: turret/device/stage identity, Wi-Fi, MQTT, motion/fire config, OTA |
 | `esp32dev_nixo`, `esp32dev_nixo_1ch`, `esp32dev_nixo_2ch` | `src/nIxo/main.cpp` | Retired standalone Nixo relay ESP kept for compatibility | Build-time relay variant |
 | `esp32dev_hit_target` | `src/hit_target/main.cpp` | Retired standalone circular hit-target firmware | Legacy/runtime config retained but not active path |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Legacy turret variants | Legacy |
 
-ESP32 uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
+Uploading a different env replaces the running application. Reconfirm board, env/variant, port, NVS compatibility and rollback before an approved upload; do not assume flashing preserves or erases all NVS/partitions.
 
 ## Active Go2/Nixo firmware layout
 
@@ -35,7 +45,10 @@ ESP32 uploads are full-flash images. Pick the correct PlatformIO environment bef
   - relay pin/polarity/channel count는 안전상 build variant/hardware profile에 남깁니다.
 - Standalone Nixo `src/nIxo/`는 현재 active path가 아니며 compatibility env만 유지합니다.
 
-Canonical upload/provision flow:
+### Separately approved upload/provision flow
+
+다음은 장치별 승인 후 사용하는 운영 예시입니다. 실제 port/ID/variant를 다시 확인하고, 기존 NVS/보정값과 복구 경로를 보존하세요.
+소프트웨어 빌드 승인만으로 업로드·NVS 변경·재부팅·구동이 승인되지는 않습니다.
 
 ```bash
 # Go2 hit/LED generic image
@@ -54,12 +67,13 @@ cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
   --serial-port /dev/cu.usbserial-ZZZZ \
   --firmware framed_packet_uart \
   --jetson-transport usb_serial \
+  --management-transport uart2_usb_debug \
   --relay-variant relay_2ch
 # Production build last. After boot the USB port is binary-only.
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_usb_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
 ```
 
-Provision with the debug/service build before flashing the production USB build. Both builds keep the ESP bootloader USB upload path, but the production build intentionally disables USB text commands and application logs so they cannot corrupt framed packets. Do not feed the ESP 5 V rail from both the expansion-board regulator and Jetson USB unless the hardware explicitly isolates those sources.
+Provision with the UART2 maintenance/debug image (`esp32dev_go2_nixo_framed_packet_uart_2ch`) already flashed; `--management-transport uart2_usb_debug` declares that prerequisite, not a production USB text mode. Then flash the production USB build. Both builds keep the ESP bootloader USB upload path, but the production build intentionally disables USB text commands and application logs so they cannot corrupt framed packets. Do not feed the ESP 5 V rail from both the expansion-board regulator and Jetson USB unless the hardware explicitly isolates those sources.
 
 ## Go2 hit/LED ESP firmware summary
 
@@ -99,7 +113,7 @@ NVS로 바꾸는 값 기준:
 | Piezo D0 debug readback | `GPIO27` | No, build hardware profile |
 | Piezo threshold/rearm | defaults `200`/`150` raw | Yes, NVS tuning |
 
-### Recommended build/upload: PlatformIO
+### Setup and software-only builds: PlatformIO
 
 ```bash
 python3 -m venv .venv-pio
@@ -110,86 +124,29 @@ python3 -m venv .venv-pio
 ./.venv-pio/bin/pio run -e esp32dev_go2_nixo
 ./.venv-pio/bin/pio run -e esp32dev_boss_target
 ./.venv-pio/bin/pio run -e esp32dev_heavy_blaster
+./.venv-pio/bin/pio run -e esp32dev_station
 ./.venv-pio/bin/pio run -e esp32dev_turret_fleet
-
-# Upload + provision Go2 identity/config into NVS
-./.venv-pio/bin/pio run -e esp32dev_go2 -t upload --upload-port /dev/cu.usbserial-XXXX
-./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-XXXX
-
-# Serial monitor after upload.
-./.venv-pio/bin/pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
 ```
 
-For `turret_fleet`, prefer the repo-local PlatformIO venv and helper:
+Turret Fleet setup, approved upload and operator commands live in [its usage guide](firmware/turret_fleet/docs/usage.md).
+The MQTT host is the MQTT broker / Command Center host, **not** the ESP IP:
 
 ```bash
-./.venv-pio/bin/pio run -e esp32dev_turret_fleet
-./bin/turret fleet-upload 2 /dev/cu.usbserial-120
-
-# MQTT_BROKER_HOST is the Command Center/MQTT broker, not the ESP device IP.
 export MQTT_BROKER_HOST=COMMAND_CENTER_IP_OR_DNS
-./bin/turret fleet-mqtt turret_2 target 0 0 0.7 --host "$MQTT_BROKER_HOST"
-./bin/turret fleet-e2e turret_2 --host "$MQTT_BROKER_HOST" --allow-live-fire
 ```
+
+Use `"$MQTT_BROKER_HOST"` only for separately authorized live operations; a no-fire target can still move hardware.
 
 The fleet firmware is a single generic image. First provisioning over USB stores `turret_id`, `device_id`, `stage_id`, Wi-Fi, MQTT, pose, calibration, motion/fire, and OTA policy in ESP NVS. After that, Command Center can update config and command `target`, `idle`, `dead`, `home`, `recover`, and OTA jobs over MQTT without reflashing.
 
 ---
 
-## Generic standalone hit target firmware
+## Generic standalone hit target firmware (legacy)
 
-`src/hit_target/` is the generic circular hit-target firmware for a piezo sensor plus WS2812B-style LED ring. It is intentionally separate from the Go2-mounted `firmware/go2/` hit/LED firmware and the optional integrated `firmware/go2_nixo/` fallback:
-
-- `firmware/go2/`: Go2-mounted hit/LED ESP, MQTT-controlled by Command Center, robot/device/stage identity comes from NVS provisioning.
-- `firmware/go2_nixo/`: optional one-ESP integrated fallback, MQTT-controlled by Command Center.
-- `src/hit_target/`: standalone/tutorial hit target, local HP/effect loop, `target_id` is derived at boot from the ESP32 eFuse MAC address (for example `hit_target_AABBCCDDEEFF`).
-
-Implemented local UX:
-
-- ready state starts as a full green circle
-- HP uses large readable color phases: green 5 hits, yellow 5 hits, red 5 hits by default; each accepted hit removes 1/5 of the current color ring instead of a tiny `1 / max_hits` slice
-- while green/yellow phases are partially damaged, the removed rear arc shows a dim next-phase color with black gap LEDs at both boundaries; phase transitions keep that existing dim next-phase rear arc visible while the last removed chunk wipes; the next color grows behind that shrinking chunk, then promotes into the next full ring
-- compact feedback: no orbit, no full-ring hit flash, no remaining-HP pulse; accepted hits only decrement HP and run the faster red/orange recent-damage chip
-- activation can be `always_on` for standalone/Go2-style targets or `linked_device`, which follows a linked device status topic; kind `turret` follows turret command/pattern status
-- final HP0 publishes `destroyed=true` plus `linked_device_kind`/`linked_device_id`; Command Center can subscribe to that status and send `dead` when the linked device kind is `turret`
-- lock-term input ignore, final HP chunk wipe, short blackout beat, longer rainbow defeat sweep, and blackout
-- ESP32 BOOT/GPIO0 long-press initialize/reset in addition to USB serial reset
-- JSON-line USB serial events with MAC-derived `target_id` / `device_mac` for bench debugging and future controller parsing
-- DO-only piezo input uses configurable multi-edge capture/debounce (`digital_hit_min_edges`, `digital_isr_debounce_us`) to balance sensitivity against idle comparator noise
-- NVS-backed runtime config: `show-config`, `config {json}`, `provision {json}`, and `clear-config` let HP/effect/sensor/network/OTA values change without rebuilding
-- MQTT remote config/status/commands on `battlebang/devices/{device_type}/{device_id}/...` and `battlebang/hit_targets/{target_id}/...` topics
-- hit-target-specific OTA manifests use app `battlebang-hit-target`, hardware `esp32dev-hit-target-ring-v1`, stable tag `hit-target-latest`, and asset `hit-target-manifest.json` so they do not collide with turret fleet `turret-fleet-latest/manifest.json`
-
-Build/upload:
-
-```bash
-./.venv-pio/bin/pio run -e esp32dev_hit_target
-./.venv-pio/bin/pio run -e esp32dev_hit_target -t upload --upload-port /dev/cu.usbserial-XXXX
-./.venv-pio/bin/pio device monitor -p /dev/cu.usbserial-XXXX -b 115200
-```
-
-Local Wi-Fi / Command Center / MQTT settings are folder-owned, like `turret_fleet`:
-
-```bash
-cp src/hit_target/.env.hit_target.example src/hit_target/.env.hit_target
-# Edit HIT_TARGET_WIFI_* and HIT_TARGET_MQTT_HOST=COMMAND_CENTER_IP_OR_DNS.
-./.venv-pio/bin/python scripts/hit_target/provision.py --print-json --no-serial
-./.venv-pio/bin/python scripts/hit_target/provision.py --serial-port /dev/cu.usbserial-XXXX
-```
-
-`src/hit_target/` is legacy/unused for the current active firmware plan. Active firmware OTA publishing is handled by the unified Firmware OTA Releases workflow with firmware-specific stable release tags instead of the repo-wide latest release URL.
-
-Default pins are migrated from the wall-mounted target bench sketch and can be overridden while debugging hardware:
-
-- LED data: GPIO18
-- LED ring: 60 LEDs, WS2812B, GRB color order
-- piezo DO: GPIO27
-- piezo AO: disabled by default (`-1`; set an ADC1 GPIO such as GPIO34 if wired)
-- reset/initialize button: ESP32 BOOT/GPIO0 long-press after firmware boot
-- HP phases/hits-per-phase, activation mode, AO threshold, DO noise/sensitivity filtering, cooldown, damage-chip speed, and defeat timing are factory defaults in `src/hit_target/config.json`; after provisioning, NVS runtime config is the source of truth.
-- FastLED hardware-profile fields (`led.pin`, `led.type`, `led.color_order`) remain build/profile-bound; remote config can tune gameplay/sensor/brightness/LED count up to the compiled capacity.
-
-See `src/hit_target/README.md` for serial commands, MQTT topics, OTA manifest rules, and `BATTLEBANG_HIT_TARGET_*` factory-default overrides.
+`src/hit_target/` is retained standalone circular-target compatibility code, not the active Go2-mounted path.
+Its local HP/effect, pin/profile, serial/MQTT/NVS and prototype OTA details remain in
+[the owning README](src/hit_target/README.md); see [legacy scope](src/README.md) before maintenance.
+Do not use it as the template for new firmware or infer current hardware validation from historical records.
 
 ---
 
@@ -210,8 +167,14 @@ The current sources are Arduino-style C++ (`Arduino.h`, FastLED, PubSubClient/Ar
 
 ---
 
-## Unit tests
+## Offline software checks (application changes only)
 
+Select the owning tests; do not inherit `TURRET_RUN_HW_TESTS=1` or run live integration suites by accident.
+Host tests, Python string contracts, target builds and physical validation prove different things.
+See [agent verification policy](AGENTS.md#environments-and-verification).
+
+- Framed production protocol/runtime: `./.venv-pio/bin/pio test -e native_go2_nixo_uart`
+- Direct game-logic harness: `tests/run_tests.sh` (existing host GoogleTest required)
 - Native C++ tests:
   ```bash
   pio test -e native

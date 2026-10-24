@@ -4,6 +4,9 @@
 
 Applies to repo-private PlatformIO libraries under `lib/bb_esp_*`.
 
+Use [.agents engineering criteria](../.agents/references/engineering.md) for C++ lifetime, timing and dependency review.
+Root guidance-only/static-check and hardware-authorization boundaries also apply here.
+
 ## Role of `lib/`
 
 - `lib/` owns reusable, firmware-agnostic capabilities.
@@ -35,4 +38,8 @@ Applies to repo-private PlatformIO libraries under `lib/bb_esp_*`.
 
 - Update `.github/workflows/firmware-ota.yml` path filters if a firmware starts or stops depending on the library.
 - Add or update tests that prove only the intended firmware families are affected.
-- Build every PlatformIO env that includes the changed library.
+- For application changes, build every PlatformIO env/variant that includes the changed library and review resource impact.
+- Preserve NVS key maps/error reporting, bounded buffers/deadlines and product safe-state ownership during extraction.
+- Reuse concrete composition/RAII where appropriate; do not add C++20, exceptions/RTTI, tasks or heap ownership from generic
+  examples without selected-toolchain evidence and a demonstrated need. No automatic LOC-based split or new framework.
+- Documentation-only edits use static references/diff review; builds/tests/CI/hardware are not prose completion gates.
