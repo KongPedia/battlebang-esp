@@ -49,7 +49,7 @@ holds completed execution logs. Existing test-consumed plan paths are retained a
 
 ## Selected plugins and the changed firmware boundary
 
-The project selects `common`, `cpp-firmware` and `robotics` from `konglabs-agent-skills`; the optional
+The project selects `common`, `cpp-firmware`, `robotics` and `python` from `konglabs-agent-skills`; the optional
 `session-guidance` hook bundle is off. [Plugin setup](plugin-setup.md) describes host-owned provisioning/refresh;
 project activation is not installation, trust, discovery or correct model behavior. Reusable bodies/resources are
 plugin-delivered, not copied under `.agents/skills`. Repository policy and the actual toolchain override examples.
@@ -76,10 +76,19 @@ A typo/link correction needs only local context and static checks; no mandatory 
 | Completion claims | `common`: `verification-before-completion` | Check the scoped claim; build/ACK/hash is not physical or successful-boot evidence |
 | Documentation/guidance | `common`: `docs-sync`, `writing-for-agents` for instruction design | Owning firmware/library READMEs, preserved calibration and [guidance checks](#guidance-maintenance-and-verification) |
 | Device command/sensor/I/O contracts | `robotics`: `robotics-software` | Real representation/freshness/authority/reconnect/shutdown boundary; product interlocks remain local, no hardware permission |
+| Python host helpers/tests | `python`: `python-resource-management`, `python-error-handling`, `python-testing-patterns`; design/types/structure when affected | Existing `scripts/` and `tests/python/` owners, explicit I/O/failure/test seams and supported Python; not target-firmware tooling |
+
+Python activation is a project-owned override for the existing host helpers/tests, not a generated Python application.
+Keep genuine Copier answers on the C++ firmware profile; no new Python package, dependency, environment or checker is
+implied. Apply resource/error/testing guidance to serial/socket/subprocess/file lifetimes and observable failures;
+use `python-type-safety` for changed annotations/contracts without treating annotations as runtime validation.
+The helpers are synchronous: select `async-python-patterns` only for an actual async boundary, never to require an
+asyncio rewrite. During audits, never import or run SCons generators, provisioning, flash or MQTT helpers—even for
+smoke checks. Read their source and guards; application checks require the owning task's separate execution scope.
 
 For ESP implementation, apply the [project resource policy](references/engineering.md#existing-esp-resource-boundaries),
 not desktop/POSIX, throwing heap wrappers, GCC cleanup-extension, C/Rust or C++20 desktop-locking recipes. Generic
-`cpp-pro`, Python/frontend tooling, CMake, new compiler standards or dependencies are not firmware defaults.
+`cpp-pro`, Python host/frontend tooling, CMake, new compiler standards or dependencies are not target-firmware defaults.
 
 ESP-IDF task stack units are bytes for the documented APIs; scheduler startup is framework-managed. Verify exact
 API/version and static-buffer units. `volatile` is not synchronization; ESP32 SMP needs the matching port primitives.

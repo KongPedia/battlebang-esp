@@ -6,6 +6,11 @@ and domain policy remain local. Canonical shared source records and license noti
 this consumer does not maintain a duplicate skill-source/hash or common-license inventory.
 A marketplace is a local/private catalog, not a requirement to publish to a public store.
 
+This project selects Common, C++ firmware, Robotics and Python: the released `v0.1.1` payloads provide 28 skill
+entrypoints across those four bundles. This is provider capability, not evidence of installation or session discovery.
+Python is a project-owned activation override for existing host helpers/tests; genuine Copier answers retain the C++
+firmware profile. Do not invent a Python package/layout, hand-edit answers or add dependencies to represent this override.
+
 ## Register a source once per host
 
 
@@ -45,12 +50,14 @@ Codex recovery: first verify the registered marketplace source and cached revisi
 codex plugin add common@konglabs-agent-skills
 codex plugin add cpp-firmware@konglabs-agent-skills
 codex plugin add robotics@konglabs-agent-skills
+codex plugin add python@konglabs-agent-skills
 ```
 
 ```bash
 claude plugin install common@konglabs-agent-skills --scope project
 claude plugin install cpp-firmware@konglabs-agent-skills --scope project
 claude plugin install robotics@konglabs-agent-skills --scope project
+claude plugin install python@konglabs-agent-skills --scope project
 ```
 
 The host manages downloads/cache; Codex installation globally enables selected bundles. Copier `--trust` authorizes
@@ -106,3 +113,5 @@ Keep local rules in project-owned files. Never edit host caches, credentials or 
 `.copier-answers.yml` records the template source/revision for genuine Copier updates; it is not the retired
 `skill-sources.json` or a per-project plugin-version lock. Do not remove or hand-rewrite it. `.codex/config.toml` and
 `.claude/settings.json` record plugin enablement. Shared skill updates remain host-owned, separate from these files.
+Preserve the reviewed Python host-tool activation override when inspecting a future Copier update; the retained C++
+profile describes template enrollment, not every language already owned by this repository.
