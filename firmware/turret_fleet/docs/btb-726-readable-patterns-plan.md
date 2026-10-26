@@ -1,10 +1,8 @@
-# BTB-726 — Readable 3-Pattern Boss Turret MVP Plan
+# Readable pattern decision record (BTB-726)
 
-Date: 2026-05-29
-Branch: `feature/BTB-726-readable-turret-patterns`
-Jira: https://kongpedia.atlassian.net/browse/BTB-726
-Related: BTB-721
-Scope: `firmware/turret_fleet/**`, `tests/python/test_turret_fleet_contract.py`, turret fleet docs/examples
+This existing path is retained for contract readers. Pattern compilation/execution is implemented; it is not an open
+branch task or authorization for a live demo. Exact current commands live in [mqtt-http-contract.md](mqtt-http-contract.md)
+and [usage.md](usage.md); [architecture.md](architecture.md) owns cross-cutting safety and coordinate constraints.
 
 ## Requirements Summary
 
@@ -93,134 +91,12 @@ Command Center can also persist those coordinates as runtime config under
 7. Status reports at least: `pattern_id`, `pattern_instance_id`, `pattern_state`, current step index/type, last pattern error/reason.
 8. `two_point_bounce` default executes two A/B round trips when `loop` is omitted.
 9. `telegraph_column` supports an aim-only warning dwell before fire so a player can visually read the attack.
-10. Python contract tests, `py_compile`, PlatformIO build, and `git diff --check` pass before completion.
+10. Application changes use relevant offline behavioral/contracts and explicit target builds; prose-only updates use static review. Physical execution is separately approved and evidenced.
 
-## Implementation Steps
+## Limits and verification
 
-### 1. Lock the reduced contract with tests first
-
-Files:
-- `tests/python/test_turret_fleet_contract.py`
-- `firmware/turret_fleet/docs/implementation-plan.md` or a new focused docs file
-- `firmware/turret_fleet/examples/pattern.*.json`
-
-Test/contract additions:
-- Assert the docs/examples define exactly the three player-facing patterns.
-- Assert stale five-pattern language is removed or explicitly marked superseded by BTB-726.
-- Assert example payloads use `command: pattern`, `frame_id`, `pattern_id`, `pattern_instance_id`, and bounded timing params.
-- Assert `calibration_no_fire`, if present, is documented as operator-only and no-fire.
-
-### 2. Add pattern model/state fields in `TurretControl`
-
-Files:
-- `firmware/turret_fleet/control/turret_control.h`
-- `firmware/turret_fleet/control/turret_control.cpp`
-
-Add a small internal state machine, avoiding new dependencies:
-
-```cpp
-enum PatternKind { PATTERN_NONE, PATTERN_LANE_SWEEP, PATTERN_TWO_POINT_BOUNCE, PATTERN_TELEGRAPH_COLUMN, PATTERN_CALIBRATION_NO_FIRE };
-enum PatternStepType { STEP_MOVE, STEP_DWELL, STEP_FIRE, STEP_WAIT_FIRE_SAFE, STEP_DONE };
-```
-
-State fields should include:
-- active kind/id/instance
-- step index
-- loop counters
-- dwell/fire/move timeout timestamps
-- current/next point
-- no-fire flag for calibration
-
-Keep it compact because `turret_control.cpp` is already large.
-
-### 3. Replace first-point-only pattern handling with validation + compile
-
-Files:
-- `firmware/turret_fleet/control/turret_control.cpp:2418-2472`
-
-`handlePatternCommand()` should:
-- validate configured/frame/DEAD/fire lockout as it does now
-- validate allowlisted `pattern_id`
-- normalize params with defaults and min/max bounds
-- merge `patterns.presets[pattern_id]` from runtime config before applying
-  per-command param overrides
-- require exactly two points for `lane_sweep` and `two_point_bounce`
-- require at least one and up to the bounded preset point maximum for `telegraph_column`
-- compile into a small sequence of move/dwell/fire-move/fire/wait steps
-- start the pattern by applying the first move target
-
-### 4. Drive the pattern from the main control loop
-
-Files:
-- `firmware/turret_fleet/control/turret_control.cpp`
-
-Add `updatePattern()` and call it from `TurretControl::loop()` after current angle/PID/fire updates are in a safe order.
-
-Rules:
-- MOVE step completes when `aimReached()` or move timeout occurs.
-- DWELL step is a visible warning/settle pause.
-- FIRE step calls the existing `startFireSequence()` with normalized hold ms.
-- WAIT_FIRE_SAFE waits until the fire sequence returns safe before next movement unless the direct fire sequence already guarantees safe handoff.
-- DONE returns to `WAIT_COMMAND` or configured `return_to`.
-
-### 5. Make interruption semantics explicit
-
-Files:
-- `firmware/turret_fleet/control/turret_control.cpp:2518-2559`
-
-- `hold` clears active pattern state and safe-offs fire.
-- `dead` clears active pattern state and safe-offs fire.
-- new `pattern` replaces an active pattern only after current fire outputs are safe; if firing, reject or mark pending replacement. MVP recommendation: reject while firing with clear `lastError_`.
-- direct `target` during active pattern should reject unless payload has `interrupt: true`.
-
-### 6. Status/docs/examples update
-
-Files:
-- `firmware/turret_fleet/docs/usage.md`
-- `firmware/turret_fleet/docs/mqtt-http-contract.md`
-- `firmware/turret_fleet/docs/implementation-plan.md`
-- `firmware/turret_fleet/examples/pattern.lane_sweep.json`
-- `firmware/turret_fleet/examples/pattern.two_point_bounce.json`
-- `firmware/turret_fleet/examples/pattern.telegraph_column.json`
-- `firmware/turret_fleet/pattern_presets/turret_2.json`
-
-Document:
-- 4-turret layout assumptions: 1F/2F, left/right, about 1m horizontal spacing, forward-facing.
-- 3 pattern IDs and sample MQTT payloads.
-- Runtime `patterns.presets` config JSON for per-turret coordinates/timings.
-- Command Center compiles group/choreography into per-turret primitive commands.
-- Pattern readability guideline: always include dwell/telegraph; avoid random, unreadable firing.
-
-## Verification Steps
-
-Run, in order:
-
-```bash
-.venv-turret-tests/bin/python -m pytest tests/python/test_turret_fleet_contract.py -q
-python3 -m py_compile scripts/turret_fleet/*.py tests/python/test_turret_fleet_contract.py
-./.venv-pio/bin/pio run -e esp32dev_turret_fleet
-git diff --check
-```
-
-If hardware is available before claiming live readiness:
-
-```bash
-./.venv-pio/bin/pio run -e esp32dev_turret_fleet -t upload --upload-port /dev/cu.usbserial-120
-# then verify serial/MQTT status for pattern start, step progress, fire safe-off, hold/dead interrupt
-```
-
-## Risks and Mitigations
-
-- Risk: `turret_control.cpp` is already large and pattern logic may increase coupling.
-  - Mitigation: keep hardware execution in `TurretControl` and extract the pure
-    pattern compiler under `control/patterns/`.
-- Risk: four-turret sync over MQTT is not exact.
-  - Mitigation: MVP relies on simple `phase_offset_ms`; defer wall-clock `start_at_ms` until time sync is available.
-- Risk: pattern timing can become unreadable or unsafe.
-  - Mitigation: enforce minimum dwell/default telegraph timings and clamp `fire_ms` through existing fire config bounds.
-- Risk: stale retained MQTT pattern could replay.
-  - Mitigation: document non-retained command topics and implement/validate `ttl_ms` if current command path has enough timestamp context; otherwise leave as Command Center publish rule for MVP.
-
-## Stop Condition
-
-Stop after the reduced contract is documented, implementation plan is attached to the branch, tests/build pass, and the branch is ready for implementation work under BTB-726.
+Hardware execution remains in `TurretControl`; the pure compiler stays under `control/patterns/`. Keep minimum warning/
+dwell timing, bounded fire duration and interrupt safe-off. MQTT phase offsets do not establish exact cross-unit time sync.
+Retained/stale pattern replay and `ttl_ms` support must be checked in the current command path; old proposed mitigations
+are not proof of implemented freshness guarantees. Software checks never authorize movement/fire or broker access.
+Completed implementation steps, branch stop conditions and duplicate execution logs are removed; use Git/PR history.

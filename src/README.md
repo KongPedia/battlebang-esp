@@ -2,7 +2,7 @@
 
 `src/` is the current compatibility workspace for firmware sources that have not yet moved. New standardized firmware should live under `firmware/` and use common modules from the `bb_esp_*` private libraries under `lib/` instead of copying NVS/Wi-Fi/MQTT/OTA code into each firmware folder.
 
-The detailed migration plan is `firmware/MIGRATION_PLAN.md`; the composition template is `firmware/_template/README.md`.
+The current family index is [firmware/README.md](../firmware/README.md); the [composition template](../firmware/_template/README.md) is canonical onboarding. The former [migration-plan path](../firmware/MIGRATION_PLAN.md) is a short compatibility decision record, not an execution queue.
 
 | Folder | PlatformIO env | Local config/env | Current policy |
 | --- | --- | --- | --- |
@@ -20,7 +20,7 @@ The detailed migration plan is `firmware/MIGRATION_PLAN.md`; the composition tem
 
 ## Current compatibility status
 
-Some active firmware still builds from `src/` while common modules are introduced under `lib/`. Treat this as an intermediate state, not the final layout:
+Active family source has moved to `firmware/`. Configured `src/` envs remain legacy/compatibility (including the root default turret env), not evidence of current deployment:
 
 - `go2`: physically moved to `firmware/go2/`; common MQTT topic helper, build-time `CommonRuntimeConfig` adapter, common runtime-config JSON helper, NVS-backed runtime-config bridge, device-level MQTT management topics, local/host provisioning helpers, real `bb_esp_ota` OTA/auto-polling, and NVS-tunable hit sensor/display values are adopted.
 - `go2_nixo`: physically moved to `firmware/go2_nixo/`; common MQTT topic helper, build-time `CommonRuntimeConfig` adapter, common runtime-config JSON helper, NVS-backed runtime-config bridge, device-level MQTT management topics, local/host provisioning helpers, relay-safe OTA deferral, real `bb_esp_ota` OTA/auto-polling, and NVS-tunable hit sensor/display plus Nixo fire timing values are adopted.
@@ -53,9 +53,9 @@ Use `bb_esp_*` for repo-private PlatformIO libraries:
 
 Keep `.cpp`-heavy capabilities split so including a topic helper does not compile OTA/Wi-Fi code. Include paths should mirror the library name, for example `#include <bb_esp_hw/relay_pin_utils.h>`.
 
-## Active migration scope
+## Completed active-family moves
 
-Refactor these to the template/common-module model:
+Maintain these on the template/common-module model; do not repeat the completed moves:
 
 - `firmware/go2/` — already moved
 - `firmware/go2_nixo/` — already moved
@@ -64,9 +64,9 @@ Refactor these to the template/common-module model:
 - `firmware/station/` — already moved
 - `firmware/turret_fleet/` — already moved
 
-Move shared relay safety helper:
-
-- `src/common/relay_pin_utils.h` -> `lib/bb_esp_hw/src/bb_esp_hw/relay_pin_utils.h`
+The relay safety implementation already lives in `lib/bb_esp_hw/src/bb_esp_hw/relay_pin_utils.h`.
+`src/common/relay_pin_utils.h` is a retained forwarding compatibility header; preserve it for remaining consumers until
+their migration is explicitly scoped and verified. This is not pending extraction work.
 
 ## Legacy / retirement policy
 

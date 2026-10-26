@@ -31,7 +31,7 @@ Rules:
 
 ## Shared library suite
 
-Target shared-code layout:
+Implemented shared-code layout:
 
 ```text
 lib/
@@ -56,18 +56,13 @@ lib/
     src/bb_esp_net/
       wifi_manager.h
       wifi_manager.cpp
-  bb_esp_mqtt/
-    library.json
-    src/bb_esp_mqtt/
-      mqtt_json_bus.h
-      mqtt_json_bus.cpp
   bb_esp_ota/
     library.json
     src/bb_esp_ota/
       ota_manifest.h
       ota_manifest.cpp
-      http_ota_core.h
-      http_ota_core.cpp
+      http_ota.h
+      http_ota.cpp
       reboot_marker.h
       reboot_marker.cpp
   bb_esp_hw/
@@ -76,13 +71,16 @@ lib/
       relay_pin_utils.h
 ```
 
+`bb_esp_mqtt` is not implemented. Add it only when a repeated PubSubClient JSON/device bus pattern justifies
+a shared helper; do not create an empty library or framework. MQTT product adapters remain local meanwhile.
+
 Boundary rules:
 
 - `bb_esp_core` is header-first and safe to include broadly; NVS `.cpp` code lives in `bb_esp_nvs`.
 - `bb_esp_core/config/build_time_config.h` is only a compatibility adapter for existing profile/local-secret firmware while it migrates to NVS.
 - `bb_esp_core/config/runtime_config_json.h` owns common runtime-config JSON apply/serialize policy, including required `config_version`, stale-version rejection, topic-root validation, and secret masking.
 - `bb_esp_core/config/string_buffer.h` provides fixed-buffer copy/truncation status for ESP clients that still use stack/static char arrays.
-- `.cpp` modules that depend on `WiFi`, `PubSubClient`, `Preferences`, `HTTPClient`, `Update`, or `WiFiClientSecure` belong in separate capability libraries such as `bb_esp_net`, `bb_esp_mqtt`, `bb_esp_nvs`, and `bb_esp_ota`.
+- `.cpp` modules that depend on `WiFi`, `PubSubClient`, `Preferences`, `HTTPClient`, `Update`, or `WiFiClientSecure` belong in separate capability libraries such as `bb_esp_net`, `bb_esp_nvs`, and `bb_esp_ota`; a future `bb_esp_mqtt` must meet the repeated-use rule above.
 - Do not create a generic all-device base class.
 - Do not add virtual-heavy command frameworks on ESP.
 - Prefer plain structs, free functions, callbacks, and compile-time composition.
@@ -174,7 +172,7 @@ Common fields owned by `CommonRuntimeConfig`:
 Firmware folders add only domain fields, for example:
 
 - Go2 hit/LED: `robot_id`, hit thresholds, HP bar LED settings, offline hit queue policy.
-- Go2 Nixo: Go2 hit/LED fields plus `nixo_id`, relay variant, relay pins/polarity/timing, fire cooldown.
+- Go2 Nixo: Go2 hit/LED fields plus `nixo_id`, validated fire timing and cooldown; relay pins/polarity/channel count remain build-profile data.
 - Boss target: target count, HP/ring LED settings, piezo pins/thresholds, gameplay settings.
 - Heavy blaster: station/slot config, relay unlock policy, matrix settings.
 - Turret fleet: turret identity, pose/calibration/motion/fire safety envelope.
@@ -190,7 +188,7 @@ Rules:
 - Store identity, network, MQTT, OTA policy, hardware tuning, and safety limits.
 - Do not store ordinary live match progress by default.
 
-Minimum local management surface for newly standardized firmware:
+Minimum local management surface for newly standardized firmware with a supported text management channel:
 
 ```text
 show-status
@@ -200,9 +198,19 @@ config {json}
 clear-config
 ```
 
+These are management-channel commands, not a universal USB console. Production USB-framed Go2/Nixo reserves
+USB for binary packets: use the supported management channel in its
+[family guide](../go2_nixo_framed_packet_uart/README.md), never ASCII on the application stream.
+
 `provision`/`config` payloads should share the common field shape above and include a positive `config_version`. Firmware may add domain fields such as `robot_id`, `hit_topic_prefix`, `nixo_id`, or relay variant names, but it must not expose unsafe live hardware actions as generic common config.
 
-Host-side `scripts/<firmware_family>/provision.py` helpers should build this JSON shape from ignored `.env.<firmware_family>` files and delegate common field handling to shared script helpers where possible. They should not duplicate firmware parsing policy in every folder. Hardware safety-critical build/variant data, such as Go2-Nixo relay pins/polarity/timing, must not become generic runtime config just because the provisioning script exists.
+Host-side `scripts/<firmware_family>/provision.py` helpers should build this JSON shape from ignored `.env.<firmware_family>` files and delegate common field handling to shared script helpers where possible. They should not duplicate firmware parsing policy in every folder.
+
+Go2/Nixo relay pins, polarity, and channel count remain build/variant data, not generic runtime config.
+Its existing NVS-backed `nixo.prefire_delay_ms` and `nixo.relay_delay1_ms` are supported runtime tuning,
+each validated at <= 60000 ms in `firmware/go2_nixo/config/runtime_config.cpp`. Preserve those bounds and sequencing.
+Turret Fleet separately supports validated NVS relay profiles and per-channel polarity; do not remove that
+product-specific contract.
 
 ## MQTT composition
 
@@ -212,7 +220,7 @@ Common module ownership:
 
 - `bb_esp_core/mqtt/topic_utils.h`: root normalization, segment validation, topic join helpers.
 - `bb_esp_core/mqtt/device_topics.h`: device-level `status`, `config`, and `ota` topic construction.
-- `bb_esp_mqtt`: optional PubSubClient JSON glue for firmware that wants the shared bus helper.
+- `bb_esp_mqtt`: proposed only, not available; extract PubSubClient JSON glue only after repeated product use justifies it.
 
 Common topic model:
 
@@ -235,7 +243,7 @@ Firmware domain code owns:
 Rules:
 
 - Common topic utilities normalize `mqtt.root`, reject empty path segments, and validate topic segment characters.
-- Common bus code may handle device-level status/config/OTA glue.
+- A future shared bus may handle repeated device-level status/config/OTA glue; current product adapters own it.
 - Domain command parsing and safety checks stay firmware-specific.
 - No generic command executor should be shared across turret, target, blaster, and Go2 relay firmware.
 
@@ -290,17 +298,17 @@ For a firmware family:
 
 1. Add or update `[env:esp32dev_<firmware_family>]` in `platformio.ini`.
 2. Add only the needed private libs to `lib_deps` or include them so PlatformIO's LDF selects them.
-3. Keep `.cpp`-heavy capabilities split (`bb_esp_net`, `bb_esp_ota`, `bb_esp_mqtt`, `bb_esp_nvs`) so unused subsystems are not compiled.
+3. Keep implemented `.cpp`-heavy capabilities split (`bb_esp_net`, `bb_esp_ota`, `bb_esp_nvs`) so unused subsystems are not compiled; do not depend on the unimplemented `bb_esp_mqtt`.
 4. Do not include `firmware/_template/**` in any build.
 5. Use an OTA-capable partition table only for firmware that actually supports OTA.
 6. Add only external libraries the firmware uses.
-7. Capture `pio run -t size` before/after any shared-library extraction.
+7. Capture `./.venv-pio/bin/pio run -e <selected_env> -t size` for each affected env before/after shared-library extraction.
 
-Recommended migration path:
+Current retention policy:
 
-- Short term: keep existing `src/` envs working while `bb_esp_*` libraries are introduced.
-- Medium term: move kept firmware families from `src/<family>` to `firmware/<family>` one at a time.
-- Long term: reserve/remove `src/` after all kept firmware has moved and legacy folders are deleted.
+- Active families already live under `firmware/`; put new active applications there.
+- Retain `src/` as legacy/reference/compatibility, including existing envs and hardware/calibration notes.
+- Do not repeat completed moves or delete legacy sources/defaults as template cleanup; dependency review and separately scoped cleanup are required.
 
 ## Script and workflow checklist
 
@@ -309,26 +317,28 @@ Add or migrate:
 - `scripts/<firmware_family>/provision.py`
 - `scripts/<firmware_family>/mqtt_command.py`
 - `.env.<firmware_family>.example`
-- optional `.github/workflows/<firmware-family>-firmware.yml`
+- a family/variant matrix row and matching path filters in `.github/workflows/firmware-ota.yml`
 
 Rules:
 
 - Real `.env` files stay gitignored.
 - Provision helpers emit common config plus domain config.
 - MQTT helpers support at minimum `status`, `config`, `ota`, and `all-ota`; domain commands are firmware-specific.
-- Workflows publish firmware-family-specific stable tags, not repo-wide latest URLs.
+- Use the unified `firmware-ota.yml` publishing matrix, not separate per-family publishing workflows. Each family/variant gets its own stable tag and versioned artifacts, not repo-wide latest URLs.
 
-## Active migration and legacy policy
+## Active families and legacy policy
 
-Template-standardization targets:
+Current active families (folder moves are complete, not pending work):
 
 - `firmware/go2/` — already moved
 - `firmware/go2_nixo/` — already moved
 - `firmware/boss_target/` — already moved
 - `firmware/heavy_blaster/` — already moved
 - `firmware/turret_fleet/` — already moved
+- `firmware/station/` — already moved
+- `firmware/go2_nixo_framed_packet_uart/` — active framed UART/USB composition of Go2/Nixo
 
-Retire/quarantine instead of standardizing:
+Retained legacy/reference/compatibility paths, not sources for new active firmware:
 
 - `src/feeder/`
 - `src/hit_target/` — unused; do not use as template source for new work
@@ -336,16 +346,13 @@ Retire/quarantine instead of standardizing:
 - `src/turret/`
 - loose legacy sketches such as `src/turret_demo*.cpp` and `src/test.cpp`
 
-Safe retirement sequence:
+Keep these paths and their hardware notes unless a separately scoped cleanup establishes that no active or
+compatibility env depends on them. The root default still selects a legacy turret env; choose an explicit active
+env rather than treating that default as a migration instruction.
 
-1. Mark the folder legacy in docs.
-2. Remove it from active docs, release workflows, and default build paths.
-3. Preserve useful hardware notes in documentation.
-4. Delete in a separate cleanup commit after builds/tests prove no active env depends on it.
+## Composition decision record
 
-## Migration plan
-
-The detailed plan is stored at:
+The former migration-plan path is retained for existing links/tests; it records current boundaries, not an open migration:
 
 ```text
 firmware/MIGRATION_PLAN.md

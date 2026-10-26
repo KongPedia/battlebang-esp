@@ -13,8 +13,17 @@ This firmware is also **generic image + NVS runtime config**:
 
 ## Device relay polarity
 
-These are the verified per-device electrical settings. Do not assume the
-generic relay variant polarity applies to every robot.
+The checked-in `variants/relay_2ch/config.json` default is active-HIGH: GPIO22/GPIO23,
+ON=`1`, OFF=`0`. This is source evidence, not physical validation of any board.
+The build script merges the hardware profile and relay variant, then appends
+optional environment defines; confirm the actual artifact/profile before deployment.
+
+The following historical per-device electrical notes are retained for service,
+not current hardware verification or generic-image defaults. In particular,
+`go2_03`'s active-LOW note does **not** match the checked-in generic 2ch image.
+Do not deploy that image to an active-LOW board without a reviewed matching
+build-time profile and verified safe-OFF/output isolation; NVS provisioning
+cannot change Go2/Nixo relay polarity.
 
 | Robot | Relay channels | `nixo_relay_on_level` | `nixo_relay_off_level` |
 | --- | ---: | ---: | ---: |
@@ -49,7 +58,11 @@ battlebang/nixo/nixo_go2_03/command
 
 Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay variant JSON files under `firmware/go2_nixo/variants/`.
 
-`hardware_profile.json` still keeps the 1ch safe fallback values (`GPIO23`, relay2 disabled). For this 2ch Nixo, build `esp32dev_go2_nixo_2ch`; it merges `variants/relay_2ch/config.json` and compiles relay1=`GPIO22`, relay2=`GPIO23`, active-LOW.
+`hardware_profile.json` keeps the 1ch fallback values (`GPIO23`, relay2 disabled).
+Explicit `_2ch` envs merge `variants/relay_2ch/config.json`: relay1=`GPIO22`,
+relay2=`GPIO23`, active-HIGH (ON=`1`, OFF=`0`) before optional build-time env defines.
+The unsuffixed `esp32dev_go2_nixo` env selects 2ch in `platformio.ini`; select
+explicit `_1ch` or `_2ch` envs rather than treating it as a 1ch default.
 
 | Part | Default | Runtime? |
 | --- | --- | --- |
@@ -62,7 +75,7 @@ Defaults live in `firmware/go2_nixo/hardware_profile.json` plus optional relay v
 | Local HP model | 14 max hits, 900ms hit flash | Yes, NVS tuning |
 | HP/ring brightness | 120 / 80 | Yes, NVS tuning |
 | Relay 1ch | GPIO23 active-HIGH | No, build variant |
-| Relay 2ch | GPIO22 flywheel + GPIO23 chain, active-LOW | No, build variant |
+| Relay 2ch | GPIO22 flywheel + GPIO23 chain, active-HIGH (ON=1, OFF=0) | No, build variant |
 | Nixo fire timing | default 3000ms, cooldown 0ms, prefire 600ms, relay delay1 800ms | Yes, NVS tuning |
 
 The integrated ESP32 environment pins FastLED to `3.7.0` for the Arduino 2.x /
@@ -140,7 +153,8 @@ Provision NVS with the matching `GO2_NIXO_RELAY_VARIANT` or `scripts/go2_nixo/pr
 
 ## Runtime verification logs
 
-After provisioning `go2_03`:
+Historical 1ch UART/text-console example using `robot_id=go2_03`, not the
+2ch wiring/polarity table or production binary-only USB output:
 
 ```text
 [CC] robot_id=go2_03 mqtt=enabled broker=<MQTT_BROKER_IP>:1883 event_topic=battlebang/hit/go2_03/events ring_topic=battlebang/hit/go2_03/ring_display/command
