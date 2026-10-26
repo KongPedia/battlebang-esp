@@ -11,7 +11,7 @@
         "code-review-excellence",
         "memory-safety-patterns"
       ],
-      "resource_scope": "Selected skill entrypoints and their referenced resources only; generic examples are illustrative, not ESP build or hardware commands."
+      "resource_scope": "Historical architecture, review and memory imports; generic skill trees are retired. Firmware engineering/workflow adaptations and the active focused ownership reference retain attribution. Exact former paths/hashes/modifications are in 0037fccf6742a1539fc362028c37a229418a71e7:.agents/skill-sources.json, not current-file claims."
     },
     {
       "id": "superpowers",
@@ -23,7 +23,7 @@
         "systematic-debugging",
         "verification-before-completion"
       ],
-      "resource_scope": "Selected skill entrypoints and their referenced resources only; generic examples are illustrative, not ESP build or hardware commands."
+      "resource_scope": "Historical TDD, debugging and verification imports; copied skill trees are retired. Firmware characterization, authority and static-only guidance adaptations survive in .agents/README.md and engineering criteria. See the immutable pre-adoption manifest locator in .agents/README.md for former file/hash records."
     },
     {
       "id": "openai",
@@ -33,7 +33,7 @@
       "skills": [
         "docs-sync"
       ],
-      "resource_scope": "Selected skill entrypoints and their referenced resources only; generic examples are illustrative, not ESP build or hardware commands."
+      "resource_scope": "Historical docs-sync import; copied procedure/UI/checklist files are retired. Owning firmware/library documentation, parser/profile/consumer review and static-only maintenance adaptations survive in .agents/README.md. See its immutable pre-adoption manifest locator for former file/hash records."
     },
     {
       "id": "jeffallan",
@@ -43,7 +43,7 @@
       "skills": [
         "embedded-systems"
       ],
-      "resource_scope": "Existing embedded-systems entrypoint and all five named upstream topic references; reference implementation recipes were deliberately removed/adapted after safety review, retaining concise platform/repository criteria instead of unsupported drivers. No additional tooling, hooks or dependencies imported."
+      "resource_scope": "Historical embedded-systems import; copied entrypoint/topic resources are retired. ESP platform, ISR existing-owner, local safety/timing and no-unsafe-recipe adaptations survive in AGENTS.md and .agents references/workflow. See the immutable pre-adoption manifest locator in .agents/README.md for former file/hash records."
     }
   ],
   "files": [
@@ -56,116 +56,12 @@
       "modifications": "Removed trailing whitespace only; upstream license terms and notice are unchanged."
     },
     {
-      "local": ".agents/skills/architecture-patterns/SKILL.md",
-      "source_id": "wshobson",
-      "source": "plugins/backend-development/skills/architecture-patterns/SKILL.md",
-      "upstream_sha256": "350caf22b856b7d2908a10a69a8cc13e743c757ba9838716051b4e29fc1d7595",
-      "sha256": "6de57c82472e23d8995434abf3648168a51c375a7910a506685986173f7c112a",
-      "modifications": "Added firmware state/safety ownership and capability-boundary discovery metadata/use case plus the ESP32 scope boundary; backend examples remain optional, non-prescriptive references. Clarify that abstract interfaces serve demonstrated replaceable/test seams rather than every firmware layer; concrete composition and free functions remain valid."
-    },
-    {
-      "local": ".agents/skills/architecture-patterns/references/advanced-patterns.md",
-      "source_id": "wshobson",
-      "source": "plugins/backend-development/skills/architecture-patterns/references/advanced-patterns.md",
-      "upstream_sha256": "e1cb31c83b532e579991de277836a1ea5e3d88b2ca30fc8ac16f6047ceca439e",
-      "sha256": "e1cb31c83b532e579991de277836a1ea5e3d88b2ca30fc8ac16f6047ceca439e",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/architecture-patterns/references/details.md",
-      "source_id": "wshobson",
-      "source": "plugins/backend-development/skills/architecture-patterns/references/details.md",
-      "upstream_sha256": "a53411600b253b343247db9d86140f3136ee7bd26a67aa8411962bcc1f5ff981",
-      "sha256": "a53411600b253b343247db9d86140f3136ee7bd26a67aa8411962bcc1f5ff981",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/code-review-excellence/SKILL.md",
-      "source_id": "wshobson",
-      "source": "plugins/developer-essentials/skills/code-review-excellence/SKILL.md",
-      "upstream_sha256": "014fff1c8db75807106484d5b16451607f0dde266ae50182a2753d68ad3449ed",
-      "sha256": "c75fd3a67b173533f75b024652fc7506a63ed0069d4b0743b2d6bf53f1a2ac3d",
-      "modifications": "Added ESP32 review priorities and authorization/evidence boundary."
-    },
-    {
       "local": ".agents/licenses/superpowers-LICENSE",
       "source_id": "superpowers",
       "source": "LICENSE",
       "upstream_sha256": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400",
       "sha256": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400",
       "modifications": ""
-    },
-    {
-      "local": ".agents/skills/test-driven-development/SKILL.md",
-      "source_id": "superpowers",
-      "source": "skills/test-driven-development/SKILL.md",
-      "upstream_sha256": "64b03fce4aee5a97a93160cea8111f3ba13a17b7c001db4bd5836d67fd10705d",
-      "sha256": "863ad390e13a66794c519f2914855b5591e1db6e7547eaf8c2a7969353f554ff",
-      "modifications": "Added firmware/static-only authority boundaries and authorized offline owner/consumer checks; explicitly uses characterization for preserved behavior throughout introduction, restart/red-flag rules, checklist and final summary. Protects existing/shared/others code and avoids repeated exception approval; failing-first applies to new/changed behavior only."
-    },
-    {
-      "local": ".agents/skills/test-driven-development/writing-good-tests.md",
-      "source_id": "superpowers",
-      "source": "skills/test-driven-development/writing-good-tests.md",
-      "upstream_sha256": "51471c853306ff92ca8bb41dcaea05f31c0e46b03651f8f3c99754b7172f4ae1",
-      "sha256": "51471c853306ff92ca8bb41dcaea05f31c0e46b03651f8f3c99754b7172f4ae1",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/systematic-debugging/SKILL.md",
-      "source_id": "superpowers",
-      "source": "skills/systematic-debugging/SKILL.md",
-      "upstream_sha256": "51c6435d98c83c42c96ba7c35725a0b2c376cd487fb1a4e6bd0ddbe7e33ef202",
-      "sha256": "44c28f08791010266be2825acd9af6f25ec0cd301b88342a7752b887429d30ad",
-      "modifications": "Added scope-specific firmware/static-only execution and hardware evidence boundary; resolved bundled skill names locally where applicable."
-    },
-    {
-      "local": ".agents/skills/systematic-debugging/condition-based-waiting-example.ts",
-      "source_id": "superpowers",
-      "source": "skills/systematic-debugging/condition-based-waiting-example.ts",
-      "upstream_sha256": "40ae5ebe497fdf310200e43fe986552546d0a22837c0d39e855db1cfd33eb88e",
-      "sha256": "40ae5ebe497fdf310200e43fe986552546d0a22837c0d39e855db1cfd33eb88e",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/systematic-debugging/condition-based-waiting.md",
-      "source_id": "superpowers",
-      "source": "skills/systematic-debugging/condition-based-waiting.md",
-      "upstream_sha256": "e89fec8400d6cd50f43407cec9fab50976ba4d55d0ec2eb51c0bd68036b54c26",
-      "sha256": "e89fec8400d6cd50f43407cec9fab50976ba4d55d0ec2eb51c0bd68036b54c26",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/systematic-debugging/defense-in-depth.md",
-      "source_id": "superpowers",
-      "source": "skills/systematic-debugging/defense-in-depth.md",
-      "upstream_sha256": "1e175fb86fc357e58c6aebf5441e481e1b7868b4380c0456b63a17eefbd18ba7",
-      "sha256": "1e175fb86fc357e58c6aebf5441e481e1b7868b4380c0456b63a17eefbd18ba7",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/systematic-debugging/find-polluter.sh",
-      "source_id": "superpowers",
-      "source": "skills/systematic-debugging/find-polluter.sh",
-      "upstream_sha256": "dd7b8f13c4cc2a24b33ff87b18da9248f3e1c80a085c3316224f69ff0fa5c43c",
-      "sha256": "dd7b8f13c4cc2a24b33ff87b18da9248f3e1c80a085c3316224f69ff0fa5c43c",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/systematic-debugging/root-cause-tracing.md",
-      "source_id": "superpowers",
-      "source": "skills/systematic-debugging/root-cause-tracing.md",
-      "upstream_sha256": "75b933b6a8c40bdb2031b10f21654395b56ec6ab6bc7b018c18d3fe57aeb7fb8",
-      "sha256": "75b933b6a8c40bdb2031b10f21654395b56ec6ab6bc7b018c18d3fe57aeb7fb8",
-      "modifications": ""
-    },
-    {
-      "local": ".agents/skills/verification-before-completion/SKILL.md",
-      "source_id": "superpowers",
-      "source": "skills/verification-before-completion/SKILL.md",
-      "upstream_sha256": "2befe7fc55bcadaa3d97dd9e8efeb633d2561c0ebe74c5a8b17c4d9e7e4520b3",
-      "sha256": "e18e47b73455c030e59b1e3508cb67d8153889a841e4515543dd33c5e6197f57",
-      "modifications": "Added scope-specific firmware/static-only execution and hardware evidence boundary; resolved bundled skill names locally where applicable."
     },
     {
       "local": ".agents/licenses/openai-LICENSE",
@@ -176,44 +72,12 @@
       "modifications": ""
     },
     {
-      "local": ".agents/skills/docs-sync/SKILL.md",
-      "source_id": "openai",
-      "source": ".agents/skills/docs-sync/SKILL.md",
-      "upstream_sha256": "e5989e548a13d73e1b91ecc32e89a1e53af509cc2688b98d72a9ec48c2ab6d57",
-      "sha256": "e29a4e5d364fe6a99c3466911a173eae6b50d3c93298662896fca0d833f4da01",
-      "modifications": "Adapt SDK/English-only documentation paths, release assumptions and build/tool dependencies to BattleBang docs/.agents, current-branch evidence, authorization boundaries and static-only guidance checks; retain doc-first/code-first procedure.; Adapted source-backed docs-sync to ESP owning firmware/library docs and firmware verification; retained audit/update authority and static-only guidance."
-    },
-    {
-      "local": ".agents/skills/docs-sync/agents/openai.yaml",
-      "source_id": "openai",
-      "source": ".agents/skills/docs-sync/agents/openai.yaml",
-      "upstream_sha256": "2e62bee17a95e89aa6455cb2ef56474d34c43c7bf608b337621b0dcca17c09ad",
-      "sha256": "acf51a737b8ebe640849ca26c449f3b05274dfbf49f312bb7096190ec2c0efc6",
-      "modifications": "Adapted default prompt to requested scope, owning firmware/library README and relevant documentation or .agents guidance without assuming a docs/ tree."
-    },
-    {
-      "local": ".agents/skills/docs-sync/references/doc-coverage-checklist.md",
-      "source_id": "openai",
-      "source": ".agents/skills/docs-sync/references/doc-coverage-checklist.md",
-      "upstream_sha256": "066aae6de4b25c3c600b0ae87d94954479f197415c5f745e1fdf2a7401a37977",
-      "sha256": "081dbbf0d2848daebf63a14cf536b84bc3a32060dcfcef2f8f3019485bb1e4ab",
-      "modifications": "Adapted to owner firmware/library and agent guidance; added canonical-link/template/CLI-guard/electrical-profile review, external consumer/fixture evidence limits, and semantic inspection/removal of unsafe imported examples without application execution."
-    },
-    {
-      "local": ".agents/skills/memory-safety-patterns/SKILL.md",
-      "source_id": "wshobson",
-      "source": "plugins/systems-programming/skills/memory-safety-patterns/SKILL.md",
-      "upstream_sha256": "e23ee740f583c16e7633be4ee76ff028b8c9c486c6417fdfb69e0beb886327ca",
-      "sha256": "0006a4c75629a4f9c0f6c16db372a9d2192af646ddc91f8251786d0a0beaa7d3",
-      "modifications": "Added ESP32/C++ standard, ownership, allocation, tool and authorization boundaries; corrected blanket raw-pointer prohibition. Specialize discovery and entrypoint to ESP32 C++ ownership/buffer/shared-state changes; remove the unsupported language-safety ranking, cross-language agenda and desktop/nightly tool-command recipes. Retain canonical project criteria and scoped verification, without new implementation templates."
-    },
-    {
-      "local": ".agents/skills/memory-safety-patterns/references/details.md",
+      "local": ".agents/references/firmware-ownership.md",
       "source_id": "wshobson",
       "source": "plugins/systems-programming/skills/memory-safety-patterns/references/details.md",
       "upstream_sha256": "c07b8a66b6fd7afc6e957e3443cdbfa17787370d41e2ef16372eb7dd2b551a44",
-      "sha256": "003f8e708db64fa658ed126cbfb6dcb220eca3a3fb6d86a8934286c30413ba3f",
-      "modifications": "Added ESP applicability boundary; Database shares one mutable mutex and const find-based reads; socket deleter frees invalid-descriptor storage; removed throwing generic destructor rollback; corrected shared_ptr exception-safety claim. Made host socket acquisition exception-safe by owning allocated descriptor storage before socket(); scoped Rust read guard before write acquisition to prevent self-deadlock. Reduce the cross-language/desktop worked-example collection to firmware ownership, borrowed queue/callback storage, explicit failure cleanup and synchronization criteria linked to actual ScopedPreferences and FrameTxQueue code. Remove throwing/heap/POSIX, GCC cleanup, Rust and C++20/desktop skeletons rather than retaining them behind warnings; explicitly reject iterator/span bounds-safety inference and preserve NVS partial-save/timing limits. Keep original source identity/license and record this substantive specialization."
+      "sha256": "09645eadf81f9ba6295832101ef65db43a4b352a17b0ac46c80242f0c205779a",
+      "modifications": "Added ESP applicability boundary; Database shares one mutable mutex and const find-based reads; socket deleter frees invalid-descriptor storage; removed throwing generic destructor rollback; corrected shared_ptr exception-safety claim. Made host socket acquisition exception-safe by owning allocated descriptor storage before socket(); scoped Rust read guard before write acquisition to prevent self-deadlock. Reduce the cross-language/desktop worked-example collection to firmware ownership, borrowed queue/callback storage, explicit failure cleanup and synchronization criteria linked to actual ScopedPreferences and FrameTxQueue code. Remove throwing/heap/POSIX, GCC cleanup, Rust and C++20/desktop skeletons rather than retaining them behind warnings; explicitly reject iterator/span bounds-safety inference and preserve NVS partial-save/timing limits. Keep original source identity/license and record this substantive specialization. Moved the focused project adaptation from the retired skill tree to the project reference; repaired local links and stated the ESP example exclusion explicitly. Original upstream source identity and upstream hash are unchanged."
     },
     {
       "local": ".agents/licenses/jeffallan-LICENSE",
@@ -222,54 +86,6 @@
       "upstream_sha256": "06dcddbb6908a0c6dd4a9e8ec822eea41d5a460a53089fecccc8a68049e99241",
       "sha256": "06dcddbb6908a0c6dd4a9e8ec822eea41d5a460a53089fecccc8a68049e99241",
       "modifications": ""
-    },
-    {
-      "local": ".agents/skills/embedded-systems/SKILL.md",
-      "source_id": "jeffallan",
-      "source": "skills/embedded-systems/SKILL.md",
-      "upstream_sha256": "536161470752d40a2bfc3ec4b17ab5c34fd3593a8960bf8089b0ea59b6ddec1f",
-      "sha256": "1f7603485beec148c3286000a7b58c721fd10abf4f33b56c1f7ea634ae33dfe4",
-      "modifications": "Added ESP32/API/version/scope boundaries and removed null metadata. Preserved reviewed hardware profiles; removed unsupported ISR/task/register-blink copy skeletons, including unchecked queue saturation, and references existing topic criteria instead. Scoped workflow/output to necessary changes rather than mandatory drivers/tasks or hardware execution. Clarify that an in-scope ISR defers to the existing foreground/task owner with SDK primitives, without requiring a new task."
-    },
-    {
-      "local": ".agents/skills/embedded-systems/references/rtos-patterns.md",
-      "source_id": "jeffallan",
-      "source": "skills/embedded-systems/references/rtos-patterns.md",
-      "upstream_sha256": "feab7e2d9a8026c602ea92cb0ac4d6ad47714291d373ab18201979b7ac4f2931",
-      "sha256": "39b8debafb19d471e49e83b74d8098a497b73d3e02b949a4860385c1b13258bb",
-      "modifications": "Retained upstream RTOS topics with ESP-IDF byte-unit/framework-scheduler/SMP/volatile/private-config limits; removed unsupported task/queue/mutex/semaphore/timer/event/memory/notification skeletons rather than presenting unchecked platform/error-handling examples."
-    },
-    {
-      "local": ".agents/skills/embedded-systems/references/microcontroller-programming.md",
-      "source_id": "jeffallan",
-      "source": "skills/embedded-systems/references/microcontroller-programming.md",
-      "upstream_sha256": "d35352d4e3a0d573e2f10037895c0658dbf44a710b6c57777ce10080ec1a1ce6",
-      "sha256": "0361bf7eaf0c2c0bb52df1be3fbded65c18cbaa9fd1aab6c5db88386ed70dceb",
-      "modifications": "Retained upstream peripheral topics with explicit ESP32/API/scope limits; removed STM32/ARM register/HAL, interrupt, blocking-poll, PWM/ADC/DMA/UART/clock/watchdog/sleep copy recipes in favor of source/datasheet-backed review criteria."
-    },
-    {
-      "local": ".agents/skills/embedded-systems/references/power-optimization.md",
-      "source_id": "jeffallan",
-      "source": "skills/embedded-systems/references/power-optimization.md",
-      "upstream_sha256": "935d9bb0d93e8935479beff2eb986fac4538d965ad0dddb43bee6a48b05466a9",
-      "sha256": "54186ec70eb24cba60bc5426abc5ad74e8d57958462f3f8686199f4760445327",
-      "modifications": "Retained upstream power topics with ESP32/scope limits; removed uncalibrated sleep/clock/peripheral/GPIO/ADC/battery/RTC/current-estimator implementations. Requires existing product safe outputs, actual hardware constraints and separately authorized measurement."
-    },
-    {
-      "local": ".agents/skills/embedded-systems/references/communication-protocols.md",
-      "source_id": "jeffallan",
-      "source": "skills/embedded-systems/references/communication-protocols.md",
-      "upstream_sha256": "c11b9462c6bdc07aa82fe9a0d7c991e84c80416351328efb8006b33580e7da32",
-      "sha256": "3697ec9d7d5694d74096f9f7202d9b77b903b23b8dbd381b74b09126fdaf0caf",
-      "modifications": "Retained upstream protocol topics; removed non-ESP register-level I2C/SPI-DMA/UART/CAN implementations, including unsigned timeout wrap and fixed eight-byte reads. Added bounded error/length/ownership criteria and existing production protocol/queue pointers; no replacement driver code."
-    },
-    {
-      "local": ".agents/skills/embedded-systems/references/memory-optimization.md",
-      "source_id": "jeffallan",
-      "source": "skills/embedded-systems/references/memory-optimization.md",
-      "upstream_sha256": "573eb22555200e5446dbf0c69bbb9c31b0e1e8c8f5061fc3cdd7c96a7b8668a6",
-      "sha256": "271bd099c0ce1d3ed7a9034ac6bb4ae4795de825a67abcf0201324536f179a7d",
-      "modifications": "Retained upstream topic structure; replaced unsupported implementation recipes with concise ESP32/repository review criteria. Removed unsafe raw-flash/recursive-retry, live-stack painting/scanning and unchecked pool/ring-buffer/allocation/linker examples; points to existing bounded queue and ScopedPreferences and version-checked SDK headroom measurement."
     }
   ]
 }

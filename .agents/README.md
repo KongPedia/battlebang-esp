@@ -1,8 +1,10 @@
 # Firmware agent workflow
 
-Start with the latest request and applicable [AGENTS.md](../AGENTS.md), then this guide and only the relevant local skill.
+Start with the latest request and applicable [AGENTS.md](../AGENTS.md), then this guide and only the relevant selected
+plugin procedure.
 Product/operator docs stay in [firmware/README.md](../firmware/README.md); C++ review criteria live in
-[references/engineering.md](references/engineering.md). No second human `docs/` tree is needed.
+[references/engineering.md](references/engineering.md). The root [docs index](../docs/README.md) is navigation, not
+a second product/operator source of truth.
 For folders/files/types/functions, use the [naming conventions](references/engineering.md#naming-conventions): case alone
 does not make a good name; keep it concise in its owning context without dropping units or safety meaning.
 
@@ -33,7 +35,8 @@ Native tools/subagents suffice; launch an OMX runtime only when requested. Do no
 - **TDD:** test pure policy and existing production-code host seams, then the smallest implementation. Framed UART's
   `native_go2_nixo_uart` exercises actual parser/runtime; Python contracts check layout/config and some host-stub syntax.
   Missing fixtures/imports are not behavioral RED. Use characterization for extractions and static review for prose.
-  Do not require hardware to obtain RED, or mislabel mocked/stub compilation as target behavior.
+  Do not require hardware to obtain RED, or mislabel mocked/stub compilation as target behavior. Preserve existing
+  production code, valid characterization, shared helpers and others' edits; do not delete them for a test-first ritual.
 - **DDD:** use firmware vocabulary to clarify invariants: fire lease/inhibit, HP preparation/lock, frame/pose, config
   version and OTA eligibility. Each product owns policy; `bb_esp_*` owns reusable mechanisms. Command Center orchestration
   does not replace local interlocks. No mandatory entity/repository layers, CQRS, event sourcing or domain-framework rewrite.
@@ -42,66 +45,71 @@ Specs and docs must distinguish current, proposed and historical behavior. Synch
 removing a plan does not prove synchronization. Temporary task plans/review notes go in ignored `.omx/plans`; Git/PR history
 holds completed execution logs. Existing test-consumed plan paths are retained as short compatibility records, not live tasks.
 
-## Required skill use for the changed firmware boundary
+## Selected plugins and the changed firmware boundary
 
-Use these exact project paths when personal/plugin skills have the same name; do not load duplicates. Codex supports
-project `.agents/skills` discovery, but this session's inventory/fresh-session behavior must establish what actually loads.
-Direct reading proves inspection only. Repository policy and the actual toolchain override generic source examples.
+The project selects `common`, `cpp-firmware` and `robotics` from `konglabs-agent-skills`; the optional
+`session-guidance` hook bundle is off. [Plugin setup](plugin-setup.md) describes host-owned provisioning/refresh;
+project activation is not installation, trust, discovery or correct model behavior. Reusable bodies/resources are
+plugin-delivered, not copied under `.agents/skills`. Repository policy and the actual toolchain override examples.
 
-For substantive implementation or review, **read the relevant entrypoints before editing or reaching a conclusion**.
-Choose by the actual boundary: a relay deadline or ISR uses embedded timing guidance; a buffer/Preferences lifetime
-uses memory guidance; splitting product policy from a shared mechanism uses architecture guidance. Ordinary requests
-are sufficient; users do not need to supply `$skill-name`. Load detailed references only when that boundary needs them.
+For substantive implementation or review, **read the relevant local criteria and selected plugin entrypoints before
+editing or reaching a conclusion**. Verify the selected plugin identity in the actual session inventory rather than
+silently choosing a same-named personal skill or a cache path. Missing or ambiguous discovery is reported, not fixed by
+unrequested installation. Direct reading proves inspection only; do not claim automatic fresh-session discovery.
 
-Keep application visible without ceremony: briefly name the rule that affects the work (for example, preserving local
-safe-off before reconnect, or the lifetime of a borrowed transmit buffer), then report the decision and checks that
-support the result. Pass the exact skill paths and relevant env/variant constraints into delegated work. Reviewers and
-verifiers check those decisions and available read/check evidence, not a claimed list of skill names. Missing selected
-guidance is disclosed, not silently replaced by tool installation or a claim of full coverage.
+Choose by the actual boundary; ordinary requests suffice and users need not supply a skill name. Load detailed
+references only when needed. Briefly name the rule affecting the decision (local safe-off before reconnect, or borrowed
+transmit-buffer lifetime), then report the decision and supporting checks. Pass plugin identity/procedure, local
+reference and env/variant constraints into delegated work. Review actual decisions/evidence, not a list of skill names.
+A typo/link correction needs only local context and static checks; no mandatory pipeline, form or all-skills load.
 
-A typo or link correction still needs only its local context and static checks. There is no mandatory multi-agent
-pipeline, new planning document, fixed report layout or requirement to read all eight skills. This is a project
-instruction and review obligation, not an execution hook or a guarantee that a model will always select correctly.
-
-| Need | Entrypoint | Firmware adaptation |
+| Need | Plugin procedure | Local prerequisite / adaptation |
 | --- | --- | --- |
-| C++ ownership/RAII | [memory-safety-patterns](skills/memory-safety-patterns/SKILL.md) | Scoped owners, valid non-owning pointers, deterministic cleanup; no assumed heap/exceptions/C++20 |
-| Embedded timing/peripherals/RTOS | [embedded-systems](skills/embedded-systems/SKILL.md) | ESP32/Arduino compatibility; do not transplant STM32, vanilla FreeRTOS or ARM examples |
-| SRP/layer boundaries | [architecture-patterns](skills/architecture-patterns/SKILL.md) | Concrete product adapters and capability libraries; server/Python examples do not require an ESP framework |
-| Behavioral RED/GREEN | [test-driven-development](skills/test-driven-development/SKILL.md) | Offline meaningful assertions, characterization and guidance-only exception above |
-| Causal diagnosis | [systematic-debugging](skills/systematic-debugging/SKILL.md) | Compare callers/variants/contracts before patching; never "fix" a guard by disabling it |
-| Independent review | [code-review-excellence](skills/code-review-excellence/SKILL.md) | Severity, location, failure condition, evidence and smallest repair |
-| Completion claims | [verification-before-completion](skills/verification-before-completion/SKILL.md) | Check the scoped claim; build/ACK/hash is not physical or successful-boot evidence |
-| Documentation cleanup | [docs-sync](skills/docs-sync/SKILL.md) | Source-aligned owner docs, preserved calibration, static-only guidance verification |
+| C++ ownership/RAII/buffers | `cpp-firmware`: `memory-safety-patterns` | [Firmware ownership](references/firmware-ownership.md) and [C++ criteria](references/engineering.md#c-lifetime-ownership-and-memory); existing owners, valid borrowed views, no assumed heap/exceptions/C++20 |
+| Timing/peripherals/RTOS/power | `cpp-firmware`: `embedded-systems` | [Timing/platform criteria](references/engineering.md#time-callbacks-and-concurrency); ESP32/Arduino API/version, existing foreground/task owner, no transplanted STM32/ARM/vanilla RTOS recipe |
+| SRP/policy/capability boundaries | `common`: `architecture-patterns` | [Product boundaries](references/engineering.md#product-boundaries-and-dependency-direction); concrete composition, selective DDD, no mandatory interface/framework/layers |
+| Behavioral RED/GREEN | `common`: `test-driven-development` | Offline meaningful production-code assertions, characterization for preserved behavior and static-only guidance |
+| Causal diagnosis | `common`: `systematic-debugging` | Compare callers/variants/contracts; never disable a guard to obtain green |
+| Independent review | `common`: `code-review-excellence` | [Engineering review](references/engineering.md#verification-and-review); location, trigger, evidence, severity and smallest repair |
+| Completion claims | `common`: `verification-before-completion` | Check the scoped claim; build/ACK/hash is not physical or successful-boot evidence |
+| Documentation/guidance | `common`: `docs-sync`, `writing-for-agents` for instruction design | Owning firmware/library READMEs, preserved calibration and [static maintenance](#source-maintenance-and-verification) |
+| Device command/sensor/I/O contracts | `robotics`: `robotics-software` | Real representation/freshness/authority/reconnect/shutdown boundary; product interlocks remain local, no hardware permission |
 
-Domain skills have recorded local corrections for unsafe examples/platform assumptions. Read their compatibility notes,
-not only their names. Generic modern-C++ `cpp-pro` was considered but not imported: mandatory C++20/CMake/desktop tools
-and problematic ownership examples impose unnecessary adaptation here. Python/frontend bundles are not firmware defaults.
-The existing reuse, small-change and SRP criteria already cover the useful simplification discipline; do not add a
-separate role or general skill merely to repeat those rules.
+The plugin memory examples are **not equivalent** to this project's focused reference: desktop/throwing/heap/POSIX,
+C/Rust, GCC-cleanup and C++20/desktop synchronization skeletons remain outside ESP implementation recipes. Preserve the
+local exclusion and existing production seams rather than reinstating removed recipes under warnings. Generic
+`cpp-pro`, Python/frontend tooling, CMake, new compiler standards or dependencies are not firmware defaults.
 
-ESP-IDF task stack units are bytes for the documented APIs; scheduler startup is managed by the framework. Verify the
-installed version/API before using examples. `volatile` is not synchronization; ESP32 SMP needs the correct port primitives.
-Do not add tasks, watchdogs, driver frameworks, flags or measurement tooling solely because a skill says "must".
-Optional cross-skill mentions are not instructions to install an entire bundle. Do not execute imported scripts/templates
-automatically: debugging's `find-polluter.sh` is npm-specific, ignores failing test exits and is not a valid ESP test gate.
+ESP-IDF task stack units are bytes for the documented APIs; scheduler startup is framework-managed. Verify exact
+API/version and static-buffer units. `volatile` is not synchronization; ESP32 SMP needs the matching port primitives.
+For an in-scope ISR, keep it bounded and defer to the **existing foreground/task owner** with SDK primitives. Generic
+"defer to tasks" wording never requires a new task. Do not add tasks, watchdogs, driver frameworks, flags or measurement
+tools solely because a procedure says "must". Optional cross-skill mentions do not install a bundle. Never execute
+plugin scripts/templates automatically: debugging's npm-specific `find-polluter.sh` ignores failing test exits and is
+not an ESP test gate.
 
-## Small role set and handoff
+## Host roles and handoff
 
-| Responsibility | Existing role | Deliverable |
+Claude's selected Common plugin exports `architect`, `executor`, `code-reviewer` and `verifier` roles. Codex plugins do
+not register custom agents: use Codex built-in or otherwise available host agents with the selected Common procedures
+and this project's root/engineering/ownership criteria. This checkout intentionally contains no `.codex/agents` TOMLs,
+role-prompt copies, exports or symlinks. Plugin export/configuration presence alone does not prove host role loading.
+
+| Responsibility | Handoff | Deliverable |
 | --- | --- | --- |
-| Scope/integration | Leader; analyst/planner when useful | Env/variant, consumers, safety exclusions, acceptance and evidence |
-| Senior firmware/monorepo architecture | [architect](../.codex/agents/architect.toml) | State/resource owners, timing paths and smallest boundary; read-only |
-| C++/firmware and helper implementation | [executor](../.codex/agents/executor.toml) + selected skill | Owned files, causal fix, regression/build results and limits |
-| Senior engineering/code review | [code-reviewer](../.codex/agents/code-reviewer.toml) | Independent prioritized findings, no self-authored approval |
-| Evidence review | [verifier](../.codex/agents/verifier.toml) | Claim → observed result → missing layer; no unauthorized execution |
+| Scope/integration | Leader; available analyst/planner when useful | Env/variant, consumers, safety exclusions, acceptance and evidence |
+| Firmware/monorepo architecture | Read-only architecture review | State/resource owners, timing paths, wire/NVS compatibility and smallest boundary |
+| C++/firmware/helper implementation | Scoped implementation owner + selected procedure | Owned files, causal fix, meaningful regression/build evidence and omissions |
+| Engineering/code review | Independent read-only reviewer | Prioritized findings with location, trigger, evidence and smallest repair; no self-authored approval |
+| Evidence review | Independent verifier | Claim → observed result → missing layer, risk and rollback; no unauthorized execution |
 
-Use the smallest team with independent outcomes. Give workers ownership, acceptance, exclusions and evidence; tell them
-others are present, never revert others' changes, and keep shared edits sequential. One integration owner covers wire/NVS
-contracts and every consumer. Children report blockers rather than recursively orchestrating.
-Roles reuse responsibilities without fixed models; availability and TOML presence do not prove session registration.
-If a role is unavailable, pass its instructions to a default agent inheriting the session model and disclose material
-fallbacks. Do not invent a separate "senior" agent for each job title or change model/effort implicitly.
+Keep domain policy in [engineering criteria](references/engineering.md), not duplicated role prompts. All handoffs
+include applicable instructions, env/variant/consumer ownership and permitted evidence. Use the smallest team with
+independent outcomes; tell delegates others are present, never revert their work and keep shared edits sequential.
+One integration owner covers wire/NVS contracts and every consumer. Children report blockers, not recursive orchestration.
+Reviewers do not author the fixes they approve or publish comments without scope. Preserve the user's task and session
+model; disclose unavailable-role fallbacks, use available host agents, and never fabricate native role approval or
+change model/effort implicitly. No new local specialization is implied.
 
 ## Representative use cases
 
@@ -127,15 +135,24 @@ Do not turn this into another form to fill out or a reason to request permission
 
 ## Source maintenance and verification
 
-[skill-sources.json](skill-sources.json) records full upstream commit revisions, source paths, retained licenses, upstream
-and local SHA-256, and explicit modifications. These are selected Git-managed public imports, not plugin cache copies.
-For updates compare old upstream → new upstream → local adaptation; preserve referenced resources and license notices.
-Resolve annotated tags to commits and verify source paths at that commit. Hashes show content agreement, not source trust
-or safe examples. Do not blindly overwrite adaptations or restore upstream hooks/installers.
-Review selected reference resources as well as `SKILL.md`: check algorithm bounds, ownership, timeout/failure paths and
-actual platform assumptions. Delete unsafe or irrelevant copy recipes instead of retaining them behind a platform warning.
-Follow canonical links through templates/owner docs and compare command arguments/defaults to their real parsers/guards;
-valid paths and matching hashes alone do not establish safe or usable instructions.
+Reusable procedure bodies/resources and their current payload provenance belong to the selected plugins.
+[skill-sources.json](skill-sources.json) retains source/license attribution for surviving project adaptations and hashes
+only current retained files. The former copied imports' exact revisions, paths, modifications and hashes remain in the
+immutable pre-adoption manifest at `0037fccf6742a1539fc362028c37a229418a71e7:.agents/skill-sources.json`; those skill
+paths are historical, not current checkout files. The four retained license notices still apply to derived guidance.
+Do not mirror the provider catalog/cache, blindly overwrite local adaptations or restore upstream hooks/installers.
+
+Documentation uses owning firmware/library READMEs and relevant product docs in their existing language; the root docs
+index is navigation, not a replacement human-operations tree. Follow canonical links through templates/owner docs and
+compare command arguments/defaults to their real parsers/guards **without executing operational helpers**. Compare
+pins/polarity/default envs to selected hardware profiles/build definitions; historical per-unit calibration is not a
+factory default and electrical settings are not changed merely to match prose.
+
+For protocol changes, record external producer/consumer/fixture owners and repository/ref evidence; local strings or
+fixtures do not prove another repository synchronized. Report external compatibility pending when unobserved.
+Review selected reference algorithms as well as entrypoints: bounds, ownership, timeout/failure paths and actual platform
+assumptions. Matching metadata/hashes/paths do not establish source trust, safe examples or usable instructions. Remove
+unsafe or irrelevant copy recipes rather than keeping them behind warnings; retain source/license/adaptation evidence.
 
 Guidance-only work uses one-off JSON/TOML/YAML/frontmatter parsing as relevant, source/local hashes, relative resources,
 local links/test-consumed paths, instruction-conflict review and `git diff --check`, including untracked additions.
@@ -150,6 +167,5 @@ Release dispatch can publish; inspect inputs
 and path filters before any authorized remote action. No secrets in logs, remote-provider uploads or issue comments without
 authorization. Report proposed/implemented/static/software/deployed/physical evidence separately with rollback and limits.
 
-Official format references: [local skill discovery](https://learn.chatgpt.com/docs/build-skills) and
-[custom agent TOMLs](https://learn.chatgpt.com/docs/agent-configuration/subagents). These document supported formats,
-not proof that a fresh session has loaded this checkout.
+Host provisioning and packaging references are linked from [plugin setup](plugin-setup.md). They document formats and
+commands, not proof that a fresh session loaded the selected plugins or registered an agent.

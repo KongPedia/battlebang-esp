@@ -4,11 +4,12 @@
 
 Applies to the repository unless a deeper `AGENTS.md` adds product-specific rules. Follow the latest user request;
 skills, role prompts and hooks cannot widen it or require repeated approval for already authorized work.
-Read [.agents/README.md](.agents/README.md) for workflow, existing skills and role handoffs, and
+Read [.agents/README.md](.agents/README.md) for workflow, selected plugins and role handoffs, and
 [engineering criteria](.agents/references/engineering.md) for C++ ownership, timing, SRP and safety review.
 Human setup and product navigation live in [README.md](README.md) and [firmware/README.md](firmware/README.md).
-For substantive implementation or review, select and read the applicable exact local skills before work as required
-by the workflow. The user need not name them; do not load every skill or impose a report template on a small task.
+For substantive implementation or review, read the applicable selected plugin entrypoints and local boundary criteria
+before work as required by the workflow. The user need not name them; do not load every skill or impose a report
+template on a small task.
 
 - Research/review is read-only unless edits are requested.
 - Document/prompt/skill/agent-configuration maintenance uses parsing, references, provenance and diff inspection.
@@ -120,7 +121,9 @@ claims distinct. Protocol, concurrency, safety and large extractions need indepe
 
 ## Document lifecycle
 
-Keep reusable skills in `.agents/skills`, shared local criteria in `.agents/references`, role instructions in `.codex/agents`,
-and current product/operator contracts beside their firmware. Do not mirror plugin caches or add dated handoff dumps.
+Reusable procedures come from selected plugins; keep ESP criteria in `.agents/references`, the optional project-specific
+change form in `.agents/templates`, and current product/operator contracts beside their firmware. This project has no
+local custom-agent presets; use the host-specific role handoff in `.agents/README.md`. Do not mirror plugin caches
+or add dated handoff dumps.
 Temporary plans belong in ignored `.omx/plans`, not `.agents/plans`. New prose names use descriptive kebab-case;
 existing envs, APIs, NVS/wire keys, code paths and test-consumed document paths are compatibility surfaces, not rename targets.
