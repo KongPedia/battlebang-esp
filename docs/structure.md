@@ -13,7 +13,7 @@ This is an existing Arduino ESP32 / PlatformIO monorepo, not a generated native 
 | `test/`, `tests/` | Production-code native seams, game-logic harness, focused Python contracts and separately gated hardware tests |
 | `.github/workflows/` | Firmware OTA build/package/publication matrix; not proof of native/Python test execution |
 | `docs/` | Navigation and cross-cutting pointers; current product/operator contracts remain beside firmware |
-| `.agents/` | Project workflow, ESP engineering/ownership criteria, optional firmware change form, attribution and plugin setup |
+| `.agents/` | Project workflow, ESP engineering policy and plugin setup; reusable bodies/forms/provenance/licenses stay with the provider |
 | `.codex/config.toml`, `.claude/settings.json` | Selected plugin activation, not installation/trust/discovery or custom Codex agent registration |
 
 Existing environments are `.venv-pio` and `.venv-turret-tests`; setup is separately requested work. Host C++17 checks do

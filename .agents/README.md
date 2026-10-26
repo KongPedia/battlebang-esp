@@ -29,7 +29,9 @@ Native tools/subagents suffice; launch an OMX runtime only when requested. Do no
 
 - **Specification-driven development (SDD):** for meaningful firmware changes state env/relay variant, command/state owner,
   expected outputs, timing/failure bounds, wire/NVS compatibility and acceptance first. An issue/PR is sufficient for small
-  changes; use the [change template](templates/change-spec.md) when cross-family detail merits a separate spec.
+  changes. Keep cross-family detail in the issue/PR or existing owner spec: include consumer refs/fixtures, bounds,
+  failure/safe-state conditions, compatibility, evidence gaps and rollback. Common's `spec-driven-development` optional
+  resource is available when structure helps; this consumer does not keep a template bundle.
   Do not install a spec framework or reverse-specify the whole repository. SDD here is not the similarly abbreviated
   subagent-driven development workflow.
 - **TDD:** test pure policy and existing production-code host seams, then the smallest implementation. Framed UART's
@@ -65,19 +67,18 @@ A typo/link correction needs only local context and static checks; no mandatory 
 
 | Need | Plugin procedure | Local prerequisite / adaptation |
 | --- | --- | --- |
-| C++ ownership/RAII/buffers | `cpp-firmware`: `memory-safety-patterns` | [Firmware ownership](references/firmware-ownership.md) and [C++ criteria](references/engineering.md#c-lifetime-ownership-and-memory); existing owners, valid borrowed views, no assumed heap/exceptions/C++20 |
+| C++ ownership/RAII/buffers | `cpp-firmware`: `memory-safety-patterns` | [C++ policy and actual resource owners](references/engineering.md#c-lifetime-ownership-and-memory); existing owners, valid borrowed views, no assumed heap/exceptions/C++20 |
 | Timing/peripherals/RTOS/power | `cpp-firmware`: `embedded-systems` | [Timing/platform criteria](references/engineering.md#time-callbacks-and-concurrency); ESP32/Arduino API/version, existing foreground/task owner, no transplanted STM32/ARM/vanilla RTOS recipe |
 | SRP/policy/capability boundaries | `common`: `architecture-patterns` | [Product boundaries](references/engineering.md#product-boundaries-and-dependency-direction); concrete composition, selective DDD, no mandatory interface/framework/layers |
 | Behavioral RED/GREEN | `common`: `test-driven-development` | Offline meaningful production-code assertions, characterization for preserved behavior and static-only guidance |
 | Causal diagnosis | `common`: `systematic-debugging` | Compare callers/variants/contracts; never disable a guard to obtain green |
 | Independent review | `common`: `code-review-excellence` | [Engineering review](references/engineering.md#verification-and-review); location, trigger, evidence, severity and smallest repair |
 | Completion claims | `common`: `verification-before-completion` | Check the scoped claim; build/ACK/hash is not physical or successful-boot evidence |
-| Documentation/guidance | `common`: `docs-sync`, `writing-for-agents` for instruction design | Owning firmware/library READMEs, preserved calibration and [static maintenance](#source-maintenance-and-verification) |
+| Documentation/guidance | `common`: `docs-sync`, `writing-for-agents` for instruction design | Owning firmware/library READMEs, preserved calibration and [guidance checks](#guidance-maintenance-and-verification) |
 | Device command/sensor/I/O contracts | `robotics`: `robotics-software` | Real representation/freshness/authority/reconnect/shutdown boundary; product interlocks remain local, no hardware permission |
 
-The plugin memory examples are **not equivalent** to this project's focused reference: desktop/throwing/heap/POSIX,
-C/Rust, GCC-cleanup and C++20/desktop synchronization skeletons remain outside ESP implementation recipes. Preserve the
-local exclusion and existing production seams rather than reinstating removed recipes under warnings. Generic
+For ESP implementation, apply the [project resource policy](references/engineering.md#existing-esp-resource-boundaries),
+not desktop/POSIX, throwing heap wrappers, GCC cleanup-extension, C/Rust or C++20 desktop-locking recipes. Generic
 `cpp-pro`, Python/frontend tooling, CMake, new compiler standards or dependencies are not firmware defaults.
 
 ESP-IDF task stack units are bytes for the documented APIs; scheduler startup is framework-managed. Verify exact
@@ -92,7 +93,7 @@ not an ESP test gate.
 
 Claude's selected Common plugin exports `architect`, `executor`, `code-reviewer` and `verifier` roles. Codex plugins do
 not register custom agents: use Codex built-in or otherwise available host agents with the selected Common procedures
-and this project's root/engineering/ownership criteria. This checkout intentionally contains no `.codex/agents` TOMLs,
+and this project's root/engineering criteria. This checkout intentionally contains no `.codex/agents` TOMLs,
 role-prompt copies, exports or symlinks. Plugin export/configuration presence alone does not prove host role loading.
 
 | Responsibility | Handoff | Deliverable |
@@ -133,31 +134,25 @@ the contract that must survive, and permitted evidence. For example, a fire-hold
 safe-off while reaching the actual product policy in an offline regression; a nearby parser test is not a substitute.
 Do not turn this into another form to fill out or a reason to request permission again for already authorized work.
 
-## Source maintenance and verification
+## Guidance maintenance and verification
 
-Reusable procedure bodies/resources and their current payload provenance belong to the selected plugins.
-[skill-sources.json](skill-sources.json) retains source/license attribution for surviving project adaptations and hashes
-only current retained files. The former copied imports' exact revisions, paths, modifications and hashes remain in the
-immutable pre-adoption manifest at `0037fccf6742a1539fc362028c37a229418a71e7:.agents/skill-sources.json`; those skill
-paths are historical, not current checkout files. The four retained license notices still apply to derived guidance.
-Do not mirror the provider catalog/cache, blindly overwrite local adaptations or restore upstream hooks/installers.
+This consumer keeps project policy and routing, not reusable procedures or their legal/provenance bundle. The selected
+provider release owns those payloads: see the central [Common package](https://github.com/KongPedia/agent-skills/tree/v0.1.1/plugins/common),
+[firmware package](https://github.com/KongPedia/agent-skills/tree/v0.1.1/plugins/cpp-firmware) and
+[provenance documentation](https://github.com/KongPedia/agent-skills/blob/v0.1.1/docs/provenance.md).
+Review their actual licensing terms before use or redistribution. This delivery boundary is not legal clearance for
+this product, historical copies or separately incorporated third-party material; do not choose a product license here.
 
-Documentation uses owning firmware/library READMEs and relevant product docs in their existing language; the root docs
-index is navigation, not a replacement human-operations tree. Follow canonical links through templates/owner docs and
-compare command arguments/defaults to their real parsers/guards **without executing operational helpers**. Compare
-pins/polarity/default envs to selected hardware profiles/build definitions; historical per-unit calibration is not a
-factory default and electrical settings are not changed merely to match prose.
+For ESP documentation changes, check the owning firmware/library README and every linked command/profile it relies on.
+Read parsers and guards without running operational helpers; distinguish selected board polarity/calibration from old
+bench values. Keep product contracts with their owners and preserve the existing language. For protocol changes,
+identify the external consumer/fixture repository and ref; a local string assertion cannot establish its compatibility.
+Check the changed algorithm and error paths when judging guidance, not only the existence of a path or matching hash.
 
-For protocol changes, record external producer/consumer/fixture owners and repository/ref evidence; local strings or
-fixtures do not prove another repository synchronized. Report external compatibility pending when unobserved.
-Review selected reference algorithms as well as entrypoints: bounds, ownership, timeout/failure paths and actual platform
-assumptions. Matching metadata/hashes/paths do not establish source trust, safe examples or usable instructions. Remove
-unsafe or irrelevant copy recipes rather than keeping them behind warnings; retain source/license/adaptation evidence.
-
-Guidance-only work uses one-off JSON/TOML/YAML/frontmatter parsing as relevant, source/local hashes, relative resources,
-local links/test-consumed paths, instruction-conflict review and `git diff --check`, including untracked additions.
-Use existing parser tools without installing application environments. No permanent checker or checker tests are needed.
-Review representative routing and report automatic discovery/model adherence as unverified unless observed fresh.
+Guidance-only checks are static: parse changed metadata with available tools, resolve local references/anchors, inspect
+instruction conflicts and complete-file whitespace, and run `git diff --check`. Do not create a validator, install an
+environment or run firmware to prove prose. Provider inspection and session discovery are distinct evidence; disclose
+missing or ambiguous plugin discovery rather than claiming host loading from configuration.
 
 Application work follows root/owner checks: focused offline host/contracts and explicit target builds; shared changes cover
 all consumers/variants. Prevent inherited hardware-test flags and do not run operational helper scripts as smoke tests.

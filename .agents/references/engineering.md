@@ -1,10 +1,9 @@
 # C++ firmware engineering criteria
 
 Read the owning source and applicable `AGENTS.md` first. These are review criteria, not a claim every existing path
-already complies. Preserve actual hardware behavior and compatibility before improving shape. Selected plugin examples
-are subordinate to these ESP criteria. For resource/buffer/persistence boundaries read the focused
-[firmware ownership reference](firmware-ownership.md) before applying generic memory examples; it preserves the local
-`ScopedPreferences` and `FrameTxQueue` seams and explicit exclusion of unrelated desktop/native recipes.
+already complies. Preserve actual hardware behavior and compatibility before improving shape. These ESP policy
+requirements govern the use of selected plugin procedures; inspect the production owners below rather than importing
+a worked example or adding another reference bundle.
 
 ## Product boundaries and dependency direction
 
@@ -43,6 +42,24 @@ Framed UART/USB shares Go2/Nixo sources; changing a shared file can affect more 
 - For resource-affecting changes compare image RAM/flash and relevant stack/heap headroom; static build size alone does
   not establish runtime peak usage, timing or electrical stability. No invented universal percentage budget.
 
+### Existing ESP resource boundaries
+
+- NVS edits start with [ScopedPreferences](../../lib/bb_esp_nvs/src/bb_esp_nvs/common_runtime_config_store.h) and its
+  [implementation](../../lib/bb_esp_nvs/src/bb_esp_nvs/common_runtime_config_store.cpp). Copy operations are disabled;
+  `begin()` closes an earlier session, records the open result, and `end()` only closes an opened session. Retain this
+  single session owner and its failure status; a destructor does not validate a save or recover a partially written config.
+- Framed transmission uses [FrameTxQueue](../../firmware/go2_nixo_framed_packet_uart/uart/runtime.h) and its
+  [implementation](../../firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp). Keep bounded admission and observable
+  overflow. `peek()` lends queue storage; account for the bytes actually accepted by the writer before `consume()`.
+  Trace all callers before retaining that address or reusing storage, including deferred callbacks. Do not replace this
+  transport owner with an unbounded container or mistake it for a synchronized ISR queue.
+- Check zero, full-capacity and oversized inputs at the relevant parser/queue boundary before size subtraction, casts
+  or copies. A view/iterator or fixed allocation does not prove bounds, ownership or lifetime. Exercise failed opens,
+  short writes, saturation, deferred-buffer reuse and interrupted saves only when the changed contract can affect them.
+- ESP implementation does not use plugin desktop/POSIX, throwing heap wrappers, GCC cleanup extensions, C/Rust or
+  C++20 desktop-locking examples as drop-in recipes. Keep the selected Arduino/PlatformIO facilities and existing
+  owners; no language conversion, nightly/sanitizer/Valgrind tooling, new flags, allocation framework or task is implied.
+
 ## Time, callbacks and concurrency
 
 - Preserve local safety/protocol work before reconnect/networking: framed main-loop ordering and `NixoFireClient::tickLocal()`
@@ -53,6 +70,7 @@ Framed UART/USB shares Go2/Nixo sources; changing a shared file can affect more 
   rollover, zero/maximum lengths, duplicate/conflicting frames, lost ACKs/retries and sender restart/epoch where relevant.
 - Add a task/queue only for demonstrated timing/concurrency need. Document one state/resource owner, queue capacity,
   overload policy, shutdown and synchronization. `volatile` does not provide atomicity, mutual exclusion or cross-core order.
+  An atomic counter alone is not a publication contract for a multi-field frame; establish ownership for the whole state.
 - If an ISR is actually compiled/wired, keep it bounded with ISR-safe primitives; no blocking, heap, logging or network/NVS.
   Defer substantial work to the existing foreground/task owner with matching SDK primitives, not a new task by default.
   A source file's existence is not proof it is selected by a particular env (Go2's sensor directory is filtered).

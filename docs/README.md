@@ -10,5 +10,6 @@ Current product/operator contracts remain with their owners; this index does not
 - [Specifications](specs/README.md) and [decisions](adr/README.md): pointers to existing owner-side contracts/rationale
 - [Agent workflow](../.agents/README.md) and [plugin setup](../.agents/plugin-setup.md)
 
-Shared development procedures come from the selected plugins. This repository keeps ESP-specific engineering criteria,
-safety constraints and its optional firmware change form locally; no documentation per task or new framework is required.
+Shared development procedures come from the selected plugins. This repository keeps ESP-specific engineering criteria
+and safety policy locally. Issues/PRs or existing owner specs hold change acceptance; Common supplies optional generic
+resources. No documentation per task, local template bundle or new framework is required.
