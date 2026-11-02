@@ -1126,8 +1126,8 @@ def test_go2_full_integrated_fire_is_two_channel_only() -> None:
     assert "custom_robot_id" not in config_script
     assert "BATTLEBANG_BUILD_ROBOT_ID" not in config_script
     assert '"blaster_relay_delay1_ms": "BATTLEBANG_BUILD_BLASTER_RELAY_DELAY1_MS"' in config_script
-    assert "#define BATTLEBANG_BLASTER_RELAY1_PIN 22" in build_config
-    assert "#define BATTLEBANG_BLASTER_RELAY2_PIN 23" in build_config
+    assert "#define BATTLEBANG_BLASTER_RELAY1_PIN 23" in build_config
+    assert "#define BATTLEBANG_BLASTER_RELAY2_PIN 22" in build_config
     assert "#define BATTLEBANG_BLASTER_RELAY_ON_LEVEL HIGH" in build_config
     assert "#define BATTLEBANG_BLASTER_RELAY_OFF_LEVEL LOW" in build_config
     assert "#define BATTLEBANG_BLASTER_RELAY_DELAY1_MS 150" in build_config
