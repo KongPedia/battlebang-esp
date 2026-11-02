@@ -16,7 +16,7 @@ firmware/
   README.md
   _template/
   go2/
-  go2_nixo/
+  go2_full/
   boss_target/
   heavy_blaster/
   station/
@@ -45,16 +45,17 @@ Agent-facing rules live in `firmware/AGENTS.md`, `lib/AGENTS.md`, `.github/workf
 
 ## Current branch status
 
-This branch is standardizing through common libraries first, then folder moves. `go2`, `go2_nixo`, `boss_target`, `heavy_blaster`, `station`, and `turret_fleet` have been physically moved to `firmware/`; active standardized firmware now lives under `firmware/` while legacy `src/` folders remain available for retirement work:
+This branch is standardizing through common libraries first, then folder moves. `go2`, `go2_full`, `boss_target`, `heavy_blaster`, `station`, and `turret_fleet` live under `firmware/`; active standardized firmware now lives under `firmware/` while legacy `src/` folders remain available for retirement work:
 
 - `bb_esp_core`, `bb_esp_hw`, `bb_esp_net`, `bb_esp_ota`, and `bb_esp_nvs` exist under `lib/`.
 - `boss_target`, `heavy_blaster`, `station`, and `turret_fleet` have started using common Wi-Fi/NVS/OTA/topic helpers through thin firmware adapters.
-- `go2` and `go2_nixo` use common MQTT topic helpers, build-time `CommonRuntimeConfig` adapters, common JSON config apply/serialize helpers, and an NVS-backed runtime-config bridge that falls back to existing robot-profile/local-secret defaults when NVS is empty; `go2_nixo` uses the common relay pin helper.
-- `go2` and `go2_nixo` now expose serial/BT line commands for the NVS bridge: `show-status`, `show-config`, `provision {json}`, `config {json}`, and `clear-config`. `go2_nixo` also accepts those commands from the Jetson UART.
-- `scripts/go2/provision.py` and `scripts/go2_nixo/provision.py` generate the same standard runtime-config JSON shape from ignored `.env.*` files and send it over the firmware management command line; relay pin/timing values stay build/variant-time data.
-- `go2` and `go2_nixo` now use real `bb_esp_ota` OTA execution from serial/BT/Jetson `check-ota`, MQTT device `/ota`, and configured automatic manifest polling; stored OTA policy is active policy, not status-only data.
+- `go2` and `go2_full` use common MQTT topic helpers, build-time `CommonRuntimeConfig` adapters, common JSON config apply/serialize helpers, and an NVS-backed runtime-config bridge that falls back to existing robot-profile/local-secret defaults when NVS is empty; `go2_full` uses the common relay pin helper.
+- `go2_full` combines the previous integrated implementation and PR #59 framed packet implementation in one runtime main. It supports only the 2ch relay profile; the single-character Jetson protocol and 1ch integrated variant are not retained.
+- Go2 Full USB builds reserve USB for binary Jetson packets and use Bluetooth SPP for text management. UART2 builds carry Jetson packets on UART2 and retain USB text management.
+- `scripts/go2/provision.py` and `scripts/go2_full/provision.py` generate the standard runtime-config JSON shape from ignored `.env.*` files; relay pins, polarity, and the fixed 2ch count stay build-time safety data.
+- `go2` and `go2_full` use real `bb_esp_ota` OTA execution from management/MQTT paths and configured automatic manifest polling; stored OTA policy is active policy, not status-only data.
 - Go2 physical migration is complete: `platformio.ini`, `scripts/go2_config.py`, `scripts/go2_flash.py`, `scripts/go2/provision.py`, docs, and tests now point at `firmware/go2/`.
-- Go2-Nixo physical migration is complete: `platformio.ini`, `scripts/go2_nixo_config.py`, `scripts/go2_nixo/provision.py`, docs, variants, and tests now point at `firmware/go2_nixo/`.
+- Go2 Full consolidation is complete in the source layout: `platformio.ini`, `scripts/go2_full_config.py`, `scripts/go2_full/provision.py`, docs, the fixed `relay_2ch` profile, and tests point at `firmware/go2_full/`.
 - Boss Target physical migration is complete: `platformio.ini`, `scripts/boss_target/provision.py`, `scripts/boss_target/mqtt_command.py`, CI workflow path filters, docs, and tests now point at `firmware/boss_target/`.
 - Heavy Blaster physical migration is complete: `platformio.ini`, `scripts/heavy_blaster/provision.py`, `scripts/heavy_blaster/mqtt_command.py`, docs, and tests now point at `firmware/heavy_blaster/`.
 - Station physical migration is complete: `platformio.ini`, `scripts/station/provision.py`, `scripts/station/flash_and_provision.py`, CI workflow path filters, docs, and tests now point at `firmware/station/`.
@@ -91,7 +92,7 @@ These firmware folders should be refactored to, or kept on, the template/common-
 | Current folder | Target folder | Notes |
 | --- | --- | --- |
 | `firmware/go2/` | `firmware/go2/` | Active Go2 hit/LED ESP path; physical move complete. Uses common runtime config/NVS/topic helpers, device MQTT management topics, host provisioning script, and real `bb_esp_ota` OTA/auto-polling. |
-| `firmware/go2_nixo/` | `firmware/go2_nixo/` | Active integrated Go2 hit/LED + Nixo relay path; physical move complete. Relay variants remain firmware-specific data and relay GPIO helper uses `bb_esp_hw`. |
+| `firmware/go2_full/` | `firmware/go2_full/` | Active integrated Go2 hit/HP + Blaster relay + framed Jetson packet path. Relay hardware is fixed at 2ch; relay GPIO safety uses `bb_esp_hw`. |
 | `firmware/boss_target/` | `firmware/boss_target/` | Active boss-stage target path; physical move complete. Uses common NVS/Wi-Fi/OTA/topic helpers through thin firmware adapters while gameplay remains local. |
 | `firmware/heavy_blaster/` | `firmware/heavy_blaster/` | Active heavy blaster station path; physical move complete. Product MQTT topics/OTA tags keep `heavy-blaster` while folder/script paths use snake_case. |
 | `firmware/station/` | `firmware/station/` | Active target Station path for Fleet Dashboard `/demo` tab `2`; one reusable image is USB-flashed/provisioned for six boards. |
@@ -124,16 +125,16 @@ Active standardized OTA channels should be owned by the corresponding firmware f
 | Firmware | Stable manifest URL | Versioned tag pattern |
 | --- | --- | --- |
 | `go2` | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-latest/go2-manifest.json` | `go2-v{version}` |
-| `go2_nixo` relay 1ch | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `go2-nixo-1ch-v{version}` |
-| `go2_nixo` relay 2ch | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `go2-nixo-2ch-v{version}` |
+| `go2_full` UART 2ch | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-full-uart-2ch-latest/go2-full-uart-2ch-manifest.json` | `go2-full-uart-2ch-v{version}` |
+| `go2_full` USB 2ch | `https://github.com/KongPedia/battlebang-esp/releases/download/go2-full-usb-2ch-latest/go2-full-usb-2ch-manifest.json` | `go2-full-usb-2ch-v{version}` |
 | `boss_target` | `https://github.com/KongPedia/battlebang-esp/releases/download/boss-target-latest/boss-target-manifest.json` | `boss-target-v{version}` |
 | `heavy_blaster` | `https://github.com/KongPedia/battlebang-esp/releases/download/heavy-blaster-latest/heavy-blaster-manifest.json` | `heavy-blaster-v{version}` |
 | `station` | `https://github.com/KongPedia/battlebang-esp/releases/download/station-latest/station-manifest.json` | `station-v{version}` |
 | `turret_fleet` | `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json` | `turret-fleet-v{version}` |
 
-Go2, Go2-Nixo, Boss Target, Heavy Blaster, Station, and Turret Fleet all use firmware-specific OTA manifest channels. `hit_target` is unused and should not be used as the reference OTA channel for new work.
-The unified `Firmware OTA Releases` workflow covers all active firmware families and publishes these channels without using repo-wide `latest`. On `main` pushes it builds only the affected firmware matrix entries; firmware-specific folders select one family, `firmware/go2_nixo/**` selects both relay variants, and common `bb_esp_*` library changes select only firmware that actually depends on that library. Manual dispatch builds the full matrix for branch smoke/release validation.
-Host-only provisioning/MQTT helper changes under `scripts/boss_target/`, `scripts/go2/`, `scripts/go2_runtime/`, `scripts/go2_nixo/`, `scripts/heavy_blaster/`, `scripts/station/`, or `scripts/turret_fleet/` do not trigger OTA release builds. Build-affecting extra scripts (`scripts/go2_config.py`, `scripts/go2_nixo_config.py`) and the shared manifest generator still trigger the relevant release job.
+Go2, Go2 Full, Boss Target, Heavy Blaster, Station, and Turret Fleet use firmware-specific OTA manifest channels. Go2 Full release builds use app `battlebang-go2-full-{uart|usb}`, hardware `esp32dev-go2-full-button-relay-2ch-v1`, and automatic `0.3.x` versions. The Go2 Full stable pointers above are identity targets but are not published during the initial migration; keep automatic checking disabled until those pointers exist. `hit_target` is unused and should not be used as the reference OTA channel for new work.
+The unified `Firmware OTA Releases` workflow covers all active firmware families without using repo-wide `latest`. On `main` pushes it builds only the affected firmware matrix entries; `firmware/go2_full/**` selects the UART2 and USB 2ch rows, and common `bb_esp_*` library changes select only firmware that actually depends on that library. Manual dispatch keeps the existing shared version input behavior.
+Host-only provisioning/MQTT helper changes under `scripts/boss_target/`, `scripts/go2/`, `scripts/go2_runtime/`, `scripts/go2_full/`, `scripts/heavy_blaster/`, `scripts/station/`, or `scripts/turret_fleet/` do not trigger OTA release builds. Build-affecting extra scripts (`scripts/go2_config.py`, `scripts/go2_full_config.py`) and the shared manifest generator still trigger the relevant release job.
 
 ## Bench hardware validation IDs
 
@@ -152,7 +153,7 @@ provisioning/MQTT config.
 
 Use the ignored `.env.<firmware>` files as the canonical local input for Wi-Fi,
 MQTT, identity, `stage_id`, OTA policy, and runtime tuning. Active standardized
-firmware must not require `local_secrets.h`; Go2/Go2-Nixo keep it only as an
+firmware must not require `local_secrets.h`; Go2/Go2 Full keep it only as an
 explicit legacy/factory opt-in so stale build-time secrets cannot silently
 override NVS provisioning.
 
@@ -161,7 +162,7 @@ Current convention:
 | Firmware | Runtime ID convention | Notes |
 | --- | --- | --- |
 | `go2` | `device_id=go2_dev_01`, `robot_id=go2_dev_01` | Flash `esp32dev_go2`, then provision with `scripts/go2/provision.py --robot-id go2_dev_01`. |
-| `go2_nixo` | `device_id=go2_dev_01`, `robot_id=go2_dev_01`, `nixo_id=nixo_go2_dev_01` | Flash the matching relay variant (`esp32dev_go2_nixo`, `_1ch`, or `_2ch`), then provision with `scripts/go2_nixo/provision.py --robot-id go2_dev_01 --nixo-id nixo_go2_dev_01`. |
+| `go2_full` | `device_id=go2_dev_01`, `robot_id=go2_dev_01`, `blaster_id=nixo_go2_dev_01` | Flash `esp32dev_go2_full_usb_2ch` or `esp32dev_go2_full_uart_2ch`, then provision with `scripts/go2_full/provision.py --robot-id go2_dev_01 --blaster-id nixo_go2_dev_01 --relay-variant relay_2ch`. NVS migrates to `go2_full` / `go2_full_hw`; MQTT routing keeps its deployed names. |
 | `boss_target` | `device_id=boss_target_dev_01`, `boss_id=boss_target_dev_01`, `target_id=boss_target_dev_01` | Current bench board was validated with this ID on `/dev/cu.usbserial-110`. |
 | `heavy_blaster` | `device_id=heavy_blaster_dev_01`, `blaster_id=heavy_blaster_dev_01` | Flash `esp32dev_heavy_blaster`, provision from `firmware/heavy_blaster/.env.heavy-blaster`, then smoke `battlebang/heavy-blasters/heavy_blaster_dev_01/command` with safe `status`/`reset` commands only. |
 | `station` | `device_id=station_01`, `station_id=station_01` through `station_06` | Flash `esp32dev_station` once per board, then provision with `scripts/station/flash_and_provision.py --station station_01=/dev/cu.usbserial-110 ...`. |

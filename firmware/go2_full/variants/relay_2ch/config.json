@@ -1,0 +1,8 @@
+{
+  "name": "relay_2ch",
+  "blaster_relay1_pin": 23,
+  "blaster_relay2_pin": 22,
+  "blaster_relay_on_level": 1,
+  "blaster_relay_off_level": 0,
+  "blaster_relay_delay1_ms": 150
+}

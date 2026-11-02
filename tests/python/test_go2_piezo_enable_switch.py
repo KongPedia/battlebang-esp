@@ -5,7 +5,8 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN = (ROOT / "firmware/go2_nixo_framed_packet_uart/main.cpp").read_text()
+MAIN = (ROOT / "firmware/go2_full/main.cpp").read_text()
+BUTTON_ADAPTER = (ROOT / "firmware/go2_full/pull_down_button/pull_down_button.cpp").read_text()
 
 
 def test_switch_is_default_off_debounced_edge_triggered_and_volatile(tmp_path):
@@ -14,9 +15,9 @@ def test_switch_is_default_off_debounced_edge_triggered_and_volatile(tmp_path):
     source = tmp_path / "switch.cpp"
     source.write_text(r"""
 #include <cassert>
-#include "firmware/go2_nixo_framed_packet_uart/piezo_enable_switch.h"
+#include "firmware/go2_full/pull_down_button/pull_down_button_core.h"
 int main() {
-  go2::PiezoEnableSwitch sw;
+  go2::PullDownButtonCore sw;
   assert(!sw.enabled());
   sw.begin(false, 0);
   assert(!sw.update(true, 10));
@@ -61,19 +62,16 @@ int main() {
 
 
 def test_toggle_gates_adc_and_discards_pending_capture_without_resetting_hp():
-    assert "pinMode(PIEZO_ENABLE_BUTTON_PIN, INPUT_PULLDOWN)" in MAIN
+    assert "pinMode(pin_, INPUT_PULLDOWN)" in BUTTON_ADAPTER
     assert "constexpr int PIEZO_ENABLE_BUTTON_PIN = 27;" in MAIN
     assert "PIEZO_DO_PIN != PIEZO_ENABLE_BUTTON_PIN" in MAIN
-    poll = MAIN.split("static void pollAnalogPiezo(uint32_t now) {", 1)[1].split(
-        "\n}", 1
-    )[0]
-    assert poll.index("!piezoEnableSwitch.enabled()") < poll.index("readPiezoSample()")
     toggle = MAIN.split("static void pollPiezoEnableButton(uint32_t now) {", 1)[
         1
     ].split("\n}", 1)[0]
-    assert "resetAnalogPiezoState();" in toggle
+    assert "if (!piezoEnableButton.poll(now)) return;" in toggle
+    assert "piezoSensor.setEnabled(piezoEnableButton.enabled(), now);" in toggle
     assert "resetLocalHitState" not in toggle
-    assert "setPiezoDetectionEnabled(piezoEnableSwitch.enabled())" in toggle
+    assert "setPiezoDetectionEnabled(piezoEnableButton.enabled())" in toggle
     assert MAIN.index("pollPiezoEnableButton(now);") < MAIN.index(
         "pollAnalogPiezo(now);"
     )
@@ -81,11 +79,11 @@ def test_toggle_gates_adc_and_discards_pending_capture_without_resetting_hp():
     assert setup.index("beginPiezoEnableButton();") < setup.index("beginAnalogPiezo();")
     assert 'doc["piezo_adc_enabled"]' in MAIN
     # Runtime config / HP recovery must not re-arm the physical opt-in switch.
-    assert MAIN.count("piezoEnableSwitch.begin(") == 1
+    assert MAIN.count("piezoEnableButton.begin(") == 1
 
 
 def test_button_firmware_has_separate_release_series():
     workflow = (ROOT / ".github/workflows/firmware-ota.yml").read_text()
     assert 'VERSION="0.3.${GITHUB_RUN_NUMBER}-main"' in workflow
     assert 'VERSION="0.2.${GITHUB_RUN_NUMBER}-main"' in workflow
-    assert 'if [[ "${{ matrix.id }}" == go2-nixo-framed-packet-* ]]; then\n            UPDATE_STABLE_LATEST="false"' in workflow
+    assert 'if [[ "${{ matrix.id }}" == go2-full-* ]]; then\n            UPDATE_STABLE_LATEST="false"' in workflow

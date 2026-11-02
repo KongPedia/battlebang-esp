@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HEADER = (ROOT / "firmware/go2_nixo/display/bar_display.h").read_text()
-SOURCE = (ROOT / "firmware/go2_nixo/display/bar_display.cpp").read_text()
+HEADER = (ROOT / "firmware/go2_full/led/bar_display.h").read_text()
+SOURCE = (ROOT / "firmware/go2_full/led/bar_display.cpp").read_text()
 
 
 def test_piezo_detection_defaults_enabled_and_exposes_a_runtime_switch() -> None:

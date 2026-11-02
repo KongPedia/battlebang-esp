@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "go2_nixo_framed_packet_uart/uart/protocol.h"
-#include "go2_nixo_framed_packet_uart/uart/runtime.h"
+#include "go2_full/uart/protocol.h"
+#include "go2_full/uart/runtime.h"
 
-using namespace battlebang::go2_nixo::uart;
+using namespace battlebang::go2_full::uart;
 
 namespace {
 
