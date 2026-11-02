@@ -1,0 +1,197 @@
+{
+  "baseline_commit": "ae3148da1c9bfa53393d59b2fe1c30d64d0364a8",
+  "behavior_file_sha256": [
+    {
+      "baseline_sha256": "4c92ec4c6880ddc68bdeb5dc78ffe760d2ce99036102c568e0b55170a35951e2",
+      "expected_target_sha256": "4e4e20d28448fc62423fb58b156fcb369b43589e56a7e7fa5a66014a55b7aec0",
+      "old_path": "firmware/go2_nixo/display/bar_display.cpp",
+      "target_path": "firmware/go2_full/led/bar_display.cpp"
+    },
+    {
+      "baseline_sha256": "8a177dd4603cfa6e42f7dab9b8fda0713dfb6466699b6069325dd05038b0d796",
+      "expected_target_sha256": "8a177dd4603cfa6e42f7dab9b8fda0713dfb6466699b6069325dd05038b0d796",
+      "old_path": "firmware/go2_nixo/display/bar_display.h",
+      "target_path": "firmware/go2_full/led/bar_display.h"
+    },
+    {
+      "baseline_sha256": "347c413dc56c8402230214978bf7df89d1d940d75a6073d02b1f78fa7a22ac5d",
+      "expected_target_sha256": "1802da727426eb723ddf57a8c420cde7368614389cc77e5c3a4e8fd97cd00c21",
+      "old_path": "firmware/go2_nixo/display/ring_display.cpp",
+      "target_path": "firmware/go2_full/led/ring_display.cpp"
+    },
+    {
+      "baseline_sha256": "51629d44c7cc5efeb5d2f9df5080892ad6e51ca92249cecf93062026c746aebf",
+      "expected_target_sha256": "98898dcf9d9da028cdf7ff0c4574fc40463a65a00454f87ba40795e6f5b552e5",
+      "old_path": "firmware/go2_nixo/mqtt/hit_mqtt_client.cpp",
+      "target_path": "firmware/go2_full/mqtt/hit_mqtt_client.cpp"
+    },
+    {
+      "baseline_sha256": "99fda4a5ef4c1b237ceada24aa6e9cabdafdaf811a7fddbe4f3ce6d132fd1205",
+      "expected_target_sha256": "e6e7f3a9314c1ff1eafd51aca4875022c282c14ccb1161d6db6481832fc07881",
+      "old_path": "firmware/go2_nixo/mqtt/hit_mqtt_client.h",
+      "target_path": "firmware/go2_full/mqtt/hit_mqtt_client.h"
+    },
+    {
+      "baseline_sha256": "ecaff442f2aec55e7ce1691e6041d53bbf3cc1aa2069d433a314ccc887578664",
+      "expected_target_sha256": "ecaff442f2aec55e7ce1691e6041d53bbf3cc1aa2069d433a314ccc887578664",
+      "old_path": "firmware/go2_nixo/mqtt/uart_friendly_wifi_client.h",
+      "target_path": "firmware/go2_full/mqtt/uart_friendly_wifi_client.h"
+    },
+    {
+      "baseline_sha256": "544687ae375e5e74e0d20e853be3e9928325ece25cac5beea6ef58f0849edda1",
+      "expected_target_sha256": "a9403dbff3c4b2a49fee59de5107cd3de437c24ec838ca6d64d0516dcdb36213",
+      "old_path": "firmware/go2_nixo/nixo/nixo_fire_client.cpp",
+      "target_path": "firmware/go2_full/blaster/blaster_fire_client.cpp"
+    },
+    {
+      "baseline_sha256": "bbb21ba6afff72a18b621bb3a4548d2720c7ad9bdc668e5b9cf1cf3681235543",
+      "expected_target_sha256": "724fe4e5f9e6a70ce2dac0eee722a7c56fc42d5fb46257876c41c7ff9deb2412",
+      "old_path": "firmware/go2_nixo/nixo/nixo_fire_client.h",
+      "target_path": "firmware/go2_full/blaster/blaster_fire_client.h"
+    },
+    {
+      "baseline_sha256": "2ea3565688883b40a93cdf8d9023a88163b73a2b1832e408e18fb3d3d214720e",
+      "expected_target_sha256": "cc6a634f01e3c8259d8b37752cd4c7b184ffed05f591ca7488c28d2aedaba359",
+      "old_path": "firmware/go2_nixo_framed_packet_uart/uart/protocol.cpp",
+      "target_path": "firmware/go2_full/uart/protocol.cpp"
+    },
+    {
+      "baseline_sha256": "d7e43fbfdb93572e3c918edfcd46b187eba35f318bd6272edfe3752ff4272538",
+      "expected_target_sha256": "3604f704b9e2718503197d3bbc4fa6100f278a32ba543a7072dd194f290d86d8",
+      "old_path": "firmware/go2_nixo_framed_packet_uart/uart/protocol.h",
+      "target_path": "firmware/go2_full/uart/protocol.h"
+    },
+    {
+      "baseline_sha256": "5ff20131310a70dc03d18c7536d11ab68f023da356496ce63956b9ac34bf62af",
+      "expected_target_sha256": "dc2b5022ee195a164553ed737fdf62d301f88232319b819d114fd98d5d30f7c4",
+      "old_path": "firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp",
+      "target_path": "firmware/go2_full/uart/runtime.cpp"
+    },
+    {
+      "baseline_sha256": "baf4ddd8b3ef0e55acba1907db158fde6091f00c05b1d08f022a803bf73a6247",
+      "expected_target_sha256": "b03d5c98edc1332ef6d6e5e34aae0fa6ac9a884414932f02655bcd3cc81d6e68",
+      "old_path": "firmware/go2_nixo_framed_packet_uart/uart/runtime.h",
+      "target_path": "firmware/go2_full/uart/runtime.h"
+    },
+    {
+      "baseline_sha256": "83383d602a195388425e549f58e05fead5c75df93d8b779c3778687b5460a45a",
+      "expected_target_sha256": "83383d602a195388425e549f58e05fead5c75df93d8b779c3778687b5460a45a",
+      "old_path": "tests/fixtures/go2_nixo_uart/golden_vectors.json",
+      "target_path": "tests/fixtures/go2_nixo_uart/golden_vectors.json"
+    }
+  ],
+  "intentional_removals": [
+    "firmware/go2_nixo/variants/relay_1ch/config.json"
+  ],
+  "protected_platformio_env_sha256": {
+    "esp32dev_boss_target": "aa72ee93517bb586cc3a49db05352b2a80de903a7fc713288a370def28817e29",
+    "esp32dev_go2": "e8d6bbe03aaa85a7eecc4fdb4093cfa885f5e32a3a377c2a7d3525662c717263",
+    "esp32dev_heavy_blaster": "31f0fed051949d5aa8e41e27502ee9814df9d13ebc5636d4b9fa4827e312fe80",
+    "esp32dev_hit_target": "d3e5df3c95d9b937e9dad5da2c5a965ac21b008f8d2ff4565507960a4109eeef",
+    "esp32dev_nixo": "6297318e2613cedef4f696806a4120eb67543a0d8e23a7f82628c92b7e12a63c",
+    "esp32dev_nixo_1ch": "19adc5000ba0771538c2b92883cf87b98527cdad201c05fe3443ab0970e13c13",
+    "esp32dev_nixo_2ch": "cb3007f0a92d9f4aaa17954329c07465197ced51e5131fc8301ee2c47329d491",
+    "esp32dev_station": "393a140c6541b6465604a0bd873b74a5f2ee9d8b22092bee2c5b8b09263575ab",
+    "esp32dev_turret": "3b1b47c35df1b644ffee63f4be7c17265c1eb65f9d35b1624b0968774ad1430f",
+    "esp32dev_turret_1": "97c80dd99bc2220ee4b83667ca1c7cbcd3baaa989e727223b32dcdcec2164172",
+    "esp32dev_turret_2": "38f86fff01f9a9c3401607315624569c8323dac7993ea1e96ae04ea80c75554d",
+    "esp32dev_turret_3": "5394e892c2a7ef851e7f105d181730bb49f536fbb3ded7b907736be82b5a61a2",
+    "esp32dev_turret_4": "b1c2b36904e426870fa8993fb0e0c7f5ce088a0695af4da5abc49bd128804c16",
+    "esp32dev_turret_5": "556f7f6b999a693c8d419ae0adf8da1c818b1dd2baf935ec34323502c712ed87",
+    "esp32dev_turret_6": "4b00f1925a80aeef8af455098adfa81384ee2bb0a8e8708c7fdace420d042a10",
+    "esp32dev_turret_fleet": "9fca90b963a102e4d959f2a01b5050b28d8784b802404c352a81b84f1a69568c",
+    "native": "c56437883a51470d0e94b6f8e67b6fa79820e9d2c6e93172fd15f105acc08bf5"
+  },
+  "protected_tree_sha256": {
+    "firmware/boss_target": "33cef6e13376fa12f2fc31f6840ac9ee2e9b5970f41e8f0aea5976c08d311626",
+    "firmware/go2": "03e91b6d3ccbaf62d879dcbba2843ff2b7343833ad130b38ebb0aa8e9dc3578f",
+    "firmware/heavy_blaster": "45f346e0290687fc15cebcc474de25cac7e05fb665e4c4be2a3621bb8d8fea0e",
+    "firmware/station": "cc885a009328abc16a38f7bfdebe4799be34106f8269a5d60d32c7373fbe553a",
+    "firmware/turret_fleet": "1421fbe707d3f4dd0dada492e9d4fdc7d9ec4c6a3f0e43fb0e6f5472e42f17f7",
+    "lib": "37a6e2f5af69f3a58aa8265db735bfa035e1c0bf40b41cf3bced938bdabd54cd"
+  },
+  "protected_workflow_job_sha256": {
+    "boss-target": "39cdf29b18647aea800101381e6f4e72aa6a08deed6968beb8c67f1fd6a53cd1",
+    "go2": "a56624e559eb1d01dc71c5dd32de26ffe06be904546d460d4e08f86cec325bd6",
+    "heavy-blaster": "14c13e2447762d4aba6fae485f9c43fc80631b957ac5748f64977f7cf3ff869d",
+    "station": "6ab8e5c593cc7371691347b57c4b02bd353e591596ece182eca330f4531976bb",
+    "turret-fleet": "d7bb3108edb137481ff532f9983dc6095a48183ee49a65bafae145fd3faa9346"
+  },
+  "intentional_refactors": [
+    {
+      "old_path": "firmware/go2_nixo/build_config.h",
+      "target_path": "firmware/go2_full/build_config.h",
+      "baseline_sha256": "df43e3d43d8edc3238c75f645a6b3e096e732a265c50f62f1b3749fea0ca178e",
+      "reason": "Canonical BLASTER build macros and fixed two-channel defaults",
+      "evidence_tests": [
+        "tests/python/test_go2_full_contract.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo/hardware_profile.json",
+      "target_path": "firmware/go2_full/hardware_profile.json",
+      "baseline_sha256": "787fed4ba1ac1a345ca6527b3a11c8a3c1f61b70531b30883bbb1b060c528cd8",
+      "reason": "Canonical blaster profile keys and fixed two-channel relay values",
+      "evidence_tests": [
+        "tests/python/test_go2_full_contract.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo/config/runtime_config.cpp",
+      "target_path": "firmware/go2_full/config/runtime_config.cpp",
+      "baseline_sha256": "26d669aff8232e13bf39226e70f85af5de19ff07b414af2634eedeef7d612bcf",
+      "reason": "Transactional canonical NVS migration and blaster JSON schema",
+      "evidence_tests": [
+        "tests/python/test_go2_full_nvs_migration.py",
+        "tests/python/test_go2_full_nvs_production.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo/config/runtime_config.h",
+      "target_path": "firmware/go2_full/config/runtime_config.h",
+      "baseline_sha256": "a5e7027744e5895bd36d96b3a28cd6e30cbf9d1b5c3bdf02906f8176f7e08bd5",
+      "reason": "Canonical BlasterRuntimeConfig API",
+      "evidence_tests": [
+        "tests/python/test_go2_full_nvs_migration.py",
+        "tests/python/test_go2_hp_bar_contract.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo/variants/relay_2ch/config.json",
+      "target_path": "firmware/go2_full/variants/relay_2ch/config.json",
+      "baseline_sha256": "fc934c3467a21397919c7cfbd969a09a7817aac1e033ef98968114183bc527e6",
+      "reason": "Canonical blaster keys; electrical behavior remains GPIO22/GPIO23 active-high",
+      "evidence_tests": [
+        "tests/python/test_go2_full_contract.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo_framed_packet_uart/main.cpp",
+      "target_path": "firmware/go2_full/main.cpp",
+      "baseline_sha256": "b582ad284ac930a1a6dcf5c98e7e56403952e40b5a412cf379cdb42aa6edb944",
+      "reason": "Module extraction while preserving packet and ADC behavior",
+      "evidence_tests": [
+        "tests/python/test_go2_piezo_adc_characterization.py",
+        "tests/python/test_go2_full_protocol.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo_framed_packet_uart/piezo_enable_switch.h",
+      "target_path": "firmware/go2_full/pull_down_button/pull_down_button_core.h",
+      "baseline_sha256": "81c1b0892abe07174e41ee6d15775b9e5c42adfe3b5ba265292a47729187051a",
+      "reason": "Pull-down button module extraction",
+      "evidence_tests": [
+        "tests/python/test_go2_piezo_enable_switch.py"
+      ]
+    },
+    {
+      "old_path": "firmware/go2_nixo/display/ring_display.h",
+      "target_path": "firmware/go2_full/led/ring_display.h",
+      "baseline_sha256": "2c00d36d465f87ad3f7cafe86ae92142a4338f575123df330e0d3c790df5b12c",
+      "reason": "Canonical BLASTER timing macros in the extracted LED module",
+      "evidence_tests": [
+        "tests/python/test_go2_hp_bar_contract.py"
+      ]
+    }
+  ]
+}

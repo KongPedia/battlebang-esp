@@ -12,14 +12,13 @@ on:
       - "platformio.ini"
       - "firmware/boss_target/**"
       - "firmware/go2/**"
-      - "firmware/go2_nixo/**"
-      - "firmware/go2_nixo_framed_packet_uart/**"
+      - "firmware/go2_full/**"
       - "firmware/heavy_blaster/**"
       - "firmware/station/**"
       - "firmware/turret_fleet/**"
       - "scripts/firmware/make_release_manifest.py"
       - "scripts/go2_config.py"
-      - "scripts/go2_nixo_config.py"
+      - "scripts/go2_full_config.py"
       - "lib/bb_esp_core/**"
       - "lib/bb_esp_hw/**"
       - "lib/bb_esp_net/**"
@@ -120,100 +119,36 @@ jobs:
                   "paths": [r"^firmware/go2/", r"^scripts/go2_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
-                  "id": "go2-nixo-1ch",
-                  "env": "esp32dev_go2_nixo_1ch",
-                  "app": "battlebang-go2-nixo",
-                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
-                  "channel": "go2-nixo-1ch",
-                  "artifact_prefix": "battlebang-go2-nixo-1ch",
-                  "manifest_name": "go2-nixo-1ch-manifest.json",
-                  "version_header": "firmware/go2_nixo/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-1ch-v",
-                  "stable_tag": "go2-nixo-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+                  "id": "go2-full-uart-2ch",
+                  "env": "esp32dev_go2_full_uart_2ch",
+                  "app": "battlebang-go2-full-uart",
+                  "hardware": "esp32dev-go2-full-button-relay-2ch-v1",
+                  "channel": "go2-full-uart-2ch",
+                  "artifact_prefix": "battlebang-go2-full-uart-2ch",
+                  "manifest_name": "go2-full-uart-2ch-manifest.json",
+                  "version_header": "firmware/go2_full/app/version_autogen.h",
+                  "version_macro": "BB_GO2_FULL_VERSION",
+                  "build_macro": "BB_GO2_FULL_BUILD",
+                  "git_macro": "BB_GO2_FULL_GIT_SHA",
+                  "version_tag_prefix": "go2-full-uart-2ch-v",
+                  "stable_tag": "go2-full-uart-2ch-latest",
+                  "paths": [r"^firmware/go2_full/", r"^scripts/go2_full_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
-                  "id": "go2-nixo-2ch",
-                  "env": "esp32dev_go2_nixo_2ch",
-                  "app": "battlebang-go2-nixo",
-                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
-                  "channel": "go2-nixo-2ch",
-                  "artifact_prefix": "battlebang-go2-nixo-2ch",
-                  "manifest_name": "go2-nixo-2ch-manifest.json",
-                  "version_header": "firmware/go2_nixo/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-2ch-v",
-                  "stable_tag": "go2-nixo-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-uart-1ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_uart_1ch",
-                  "app": "battlebang-go2-nixo-framed-packet-uart",
-                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
-                  "channel": "go2-nixo-framed-packet-uart-1ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-uart-1ch",
-                  "manifest_name": "go2-nixo-framed-packet-uart-1ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-uart-1ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-uart-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-uart-2ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_uart_2ch",
-                  "app": "battlebang-go2-nixo-framed-packet-uart",
-                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
-                  "channel": "go2-nixo-framed-packet-uart-2ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-uart-2ch",
-                  "manifest_name": "go2-nixo-framed-packet-uart-2ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-uart-2ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-uart-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-usb-1ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_usb_1ch",
-                  "app": "battlebang-go2-nixo-framed-packet-usb",
-                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
-                  "channel": "go2-nixo-framed-packet-usb-1ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-usb-1ch",
-                  "manifest_name": "go2-nixo-framed-packet-usb-1ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-usb-1ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-usb-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-usb-2ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_usb_2ch",
-                  "app": "battlebang-go2-nixo-framed-packet-usb",
-                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
-                  "channel": "go2-nixo-framed-packet-usb-2ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-usb-2ch",
-                  "manifest_name": "go2-nixo-framed-packet-usb-2ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-usb-2ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-usb-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+                  "id": "go2-full-usb-2ch",
+                  "env": "esp32dev_go2_full_usb_2ch",
+                  "app": "battlebang-go2-full-usb",
+                  "hardware": "esp32dev-go2-full-button-relay-2ch-v1",
+                  "channel": "go2-full-usb-2ch",
+                  "artifact_prefix": "battlebang-go2-full-usb-2ch",
+                  "manifest_name": "go2-full-usb-2ch-manifest.json",
+                  "version_header": "firmware/go2_full/app/version_autogen.h",
+                  "version_macro": "BB_GO2_FULL_VERSION",
+                  "build_macro": "BB_GO2_FULL_BUILD",
+                  "git_macro": "BB_GO2_FULL_GIT_SHA",
+                  "version_tag_prefix": "go2-full-usb-2ch-v",
+                  "stable_tag": "go2-full-usb-2ch-latest",
+                  "paths": [r"^firmware/go2_full/", r"^scripts/go2_full_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "heavy-blaster",
@@ -351,13 +286,22 @@ jobs:
             CREATE_RELEASE="${{ inputs.create_release }}"
             UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"
           else
-            VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            if [[ "${{ matrix.id }}" == go2-full-* ]]; then
+              VERSION="0.3.${GITHUB_RUN_NUMBER}-main"
+            else
+              VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            fi
             BUILD="$((1000 + GITHUB_RUN_NUMBER))"
             FIRMWARE_BASE_URL=""
             PUBLIC_REPO="${GITHUB_REPOSITORY}"
             TARGET_BRANCH="${GITHUB_REF_NAME}"
             CREATE_RELEASE="true"
             UPDATE_STABLE_LATEST="true"
+          fi
+
+          # Keep Go2 Full stable pointers disabled until explicit button-hardware migration is reviewed.
+          if [[ "${{ matrix.id }}" == go2-full-* ]]; then
+            UPDATE_STABLE_LATEST="false"
           fi
 
           if ! [[ "${BUILD}" =~ ^[0-9]+$ ]]; then

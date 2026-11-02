@@ -275,11 +275,11 @@ Relay GPIO attach/off behavior is shared hardware safety code and should live in
 lib/bb_esp_hw/src/bb_esp_hw/relay_pin_utils.h
 ```
 
-Relay profiles remain firmware-specific data, for example under:
+Relay profiles remain firmware-specific data. Go2 Full supports only its fixed
+2ch profile:
 
 ```text
-firmware/go2_nixo/variants/relay_1ch/config.json
-firmware/go2_nixo/variants/relay_2ch/config.json
+firmware/go2_full/variants/relay_2ch/config.json
 ```
 
 This keeps common code small while preserving product-specific relay order, polarity, and safety timing.
@@ -323,7 +323,7 @@ Rules:
 Template-standardization targets:
 
 - `firmware/go2/` — already moved
-- `firmware/go2_nixo/` — already moved
+- `firmware/go2_full/` — consolidated active path; relay hardware is fixed at 2ch
 - `firmware/boss_target/` — already moved
 - `firmware/heavy_blaster/` — already moved
 - `firmware/turret_fleet/` — already moved

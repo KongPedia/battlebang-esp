@@ -66,7 +66,7 @@ python3 -m py_compile scripts/turret_fleet/*.py scripts/hit_target/*.py tests/py
 ## OTA policy
 
 - GitHub Actions builds active firmware through one matrix workflow and publishes firmware-specific release channels.
-- Do not use repo-wide `/releases/latest/download/...` for device polling in this multi-firmware repo. Use firmware-specific stable tags such as `boss-target-latest`, `turret-fleet-latest`, `go2-latest`, `go2-nixo-1ch-latest`, `go2-nixo-2ch-latest`, and `heavy-blaster-latest`.
+- Do not use repo-wide `/releases/latest/download/...` for device polling in this multi-firmware repo. Use firmware-specific stable tags such as `boss-target-latest`, `turret-fleet-latest`, `go2-latest`, `go2-full-uart-2ch-latest`, `go2-full-usb-2ch-latest`, and `heavy-blaster-latest`. Go2 Full stable pointers stay disabled until the migration review explicitly enables publication.
 - Versioned tags (`{firmware}-v{version}`) remain audit points. Stable tags are only polling pointers and must not overwrite another firmware family's manifest asset.
 - Automatic polling applies only when enabled by runtime config. With `ota.command_center_controlled=true`, the polled manifest build must exactly match `ota.desired_build`.
 - Direct MQTT `/ota` manifest messages are treated as Command Center-approved jobs and still pass app/hardware/build/hash/safe-state checks.
