@@ -143,7 +143,7 @@ approved_usb "$vid" "$pid" "$driver" || die "unsupported USB VID/PID/driver: $vi
 
 if [[ -z $esptool ]]; then
   [[ $(uname -s) == Linux && $(uname -m) == aarch64 ]] || die "automatic uploader supports Linux AArch64 only; pass --esptool"
-  for command in tar chmod mkdir mv; do
+  for command in tar gzip chmod mkdir mv; do
     command -v "$command" >/dev/null 2>&1 || die "required OS command not found: $command"
   done
   [[ ${HOME:-} == /* ]] || die "HOME must be an absolute directory"

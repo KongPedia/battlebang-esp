@@ -49,6 +49,7 @@ def runtime(tmp_path: Path, release: Path) -> tuple[dict[str, str], Path]:
         "uname",
         "readlink",
         "tar",
+        "gzip",
         "chmod",
         "mkdir",
         "mv",
