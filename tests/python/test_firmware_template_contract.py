@@ -277,7 +277,7 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "scripts/go2_config.py",
         "scripts/go2_full_config.py",
         "lib/bb_esp_ota/**",
-        "needs: changes",
+        "needs: [changes, usb-upload-tests]",
         "matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}",
         '"selected=" + ",".join(job["id"] for job in selected)',
     ):

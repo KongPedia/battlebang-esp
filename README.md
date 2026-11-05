@@ -14,7 +14,21 @@ ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에
 | `esp32dev_hit_target` | `src/hit_target/main.cpp` | Retired standalone circular hit-target firmware | Legacy/runtime config retained but not active path |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Legacy turret variants | Legacy |
 
-ESP32 uploads are full-flash images. Pick the correct PlatformIO environment before uploading; uploading one env replaces whatever firmware is currently flashed on that board.
+Firmware images are application-specific. Initial provisioning and layout changes
+are separate from routine application-only updates; uploading a different app
+does not automatically provision its NVS identity.
+
+## Jetson에서 Go2 Full USB 펌웨어 업데이트
+
+이미 설정된 Go2 Full USB 2ch는 [릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를
+사용합니다. 기본 명령은 `./bin/upload_esp.sh`이며 버전, 승인된 단일 CP2102/CH340 USB 문자 장치,
+공식 esptool v5.6.0 Linux AArch64 실행 파일을 자동으로 결정합니다. `--version`, `--port`, `--esptool`로
+각 값을 덮어쓸 수 있고 `--resolve-only`는 시리얼 접속 없이 선택 결과만 출력합니다.
+
+Jetson에서 PlatformIO·host Python·가상환경을 만들거나 빌드하지 않고 버전별 immutable 릴리즈의 앱 영역만
+115200 baud로 교체합니다. 새 CI 릴리즈는 아직 게시되지 않았고 기존 `0.3.38-main`에는 필요한 자산이 없어
+현재 실제 릴리즈 배포는 차단되어 있습니다.
+아래 PlatformIO 명령은 개발/초기 설정용이며 새 현장 업데이트 경로의 의존성이 아닙니다.
 
 ## Active Go2 firmware layout
 
