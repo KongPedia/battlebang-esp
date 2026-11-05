@@ -87,9 +87,28 @@ d2662a740a2179cc3fa28713df13b7106e1f8108700bc62a86b13564b6d01ab7
 
 ## 현재 릴리즈 상태
 
-새 업로드 포인터와 파티션 검증 자산을 발행하는 CI 변경은 아직 공개 릴리즈에 반영되지 않았습니다.
-기존 `0.3.38-main`에는 필요한 새 자산이 없으므로 이 업로더로 배포할 수 없습니다.
-새 CI가 만든 버전별 릴리즈가 게시될 때까지 실제 릴리즈 배포는 차단된 상태입니다.
+[Actions run 42011454580](https://github.com/KongPedia/battlebang-esp/actions/runs/42011454580)이 성공했고,
+source commit `a147ee1a714a1cdae23f5f746c948d2d1135a387`에서 USB 전용 prerelease를 게시했습니다.
+
+- 릴리즈: [`go2-full-usb-2ch-v0.3.39-usb-upload`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.39-usb-upload)
+- version/build: `0.3.39-usb-upload` / `1039`
+- 앱: 2,339,440 bytes, SHA-256 `86f705503bfd1f678831bf5f98b82b0e744aa746477f47025b5d04a5f6cb9db4`
+- 파티션 기준: 4,096 bytes, SHA-256 `c798c1173b1d0175c33f06340268885c4385ff5129206d90bda416ad99ea8ddd`
+- USB pointer: [`usb-version.txt`](https://github.com/KongPedia/battlebang-esp/releases/download/go2-full-usb-2ch-upload-latest/usb-version.txt), 내용 `0.3.39-usb-upload\n`
+
+공개 앱 다운로드의 SHA-256은 인증 없는 HTTPS로 확인했습니다. 버전별 앱·파티션·checksum은 CI artifact와
+같고 immutable입니다. USB prerelease와 upload pointer만 게시했으며 OTA polling tag는 변경하지 않았습니다.
+
+기존 `0.3.38-main`에는 새 파티션 검증 자산이 없으므로 이 업로더로 배포할 수 없습니다.
+
+업로더 진입점은 아직 `main`에 병합되지 않았습니다. 깨끗한 checkout에서 최초 한 번 브랜치를 받습니다.
+
+```bash
+git fetch origin feat/esp-release-usb-upload
+git switch --create feat/esp-release-usb-upload --track origin/feat/esp-release-usb-upload
+```
+
+이후 일반 Shell에서 `./bin/upload_esp.sh`를 실행합니다. host Python/venv/PlatformIO는 필요하지 않습니다.
 
 이 문서 갱신에서는 장치 명령, 업로드, 재시작, 물리 동작 검증을 수행하지 않았습니다.
 

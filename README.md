@@ -26,8 +26,17 @@ does not automatically provision its NVS identity.
 각 값을 덮어쓸 수 있고 `--resolve-only`는 시리얼 접속 없이 선택 결과만 출력합니다.
 
 Jetson에서 PlatformIO·host Python·가상환경을 만들거나 빌드하지 않고 버전별 immutable 릴리즈의 앱 영역만
-115200 baud로 교체합니다. 새 CI 릴리즈는 아직 게시되지 않았고 기존 `0.3.38-main`에는 필요한 자산이 없어
-현재 실제 릴리즈 배포는 차단되어 있습니다.
+115200 baud로 교체합니다. 현재 USB 릴리즈는
+[`0.3.39-usb-upload`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.39-usb-upload)입니다.
+
+이 진입점은 아직 `main`에 병합되지 않았습니다. 깨끗한 checkout에서 최초 한 번 현재 배포 브랜치를 받습니다.
+
+```bash
+git fetch origin feat/esp-release-usb-upload
+git switch --create feat/esp-release-usb-upload --track origin/feat/esp-release-usb-upload
+```
+
+이후 일반 Shell에서 `./bin/upload_esp.sh`를 실행합니다. host venv/PlatformIO는 필요하지 않습니다.
 아래 PlatformIO 명령은 개발/초기 설정용이며 새 현장 업데이트 경로의 의존성이 아닙니다.
 
 ## Active Go2 firmware layout
