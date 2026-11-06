@@ -1,5 +1,10 @@
 # Go2 Full USB: 빌드 없이 릴리즈 업로드
 
+> **현재 공개 후보는 사용 중단:** `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로
+> 부팅에 실패했습니다. USB latest 포인터도 이 버전을 가리키므로 수정본 실기기 검증 전까지 업로드하지 마세요.
+> 수정 브랜치는 Go2 Full을 기존 Arduino 2/IDF4 플랫폼에 고정하고, 4 KiB 초과 함수 프레임은 빌드 오류로 처리하며,
+> 출력하지 않는 USB 부팅 상태 JSON 생성을 생략합니다. NVS·프로토콜·115200 baud는 변경하지 않습니다.
+
 ## 지원 범위
 
 - 이미 provision된 Go2 Full USB 2ch / classic ESP32 / 4 MiB / Arduino `huge_app` 장치만 지원합니다.

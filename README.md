@@ -20,6 +20,10 @@ does not automatically provision its NVS identity.
 
 ## Jetson에서 Go2 Full USB 펌웨어 업데이트
 
+> **현장 검증 중단:** 공개 후보 `0.3.39-usb-upload`는 02번에서 부팅 중 `loopTask`
+> 스택 오류로 재부팅을 반복했습니다. 현재 USB latest 포인터도 이 후보이므로 그대로 업로드하지 마세요.
+> 이 브랜치는 검증된 Arduino 2/IDF4 빌드 환경과 스택 프레임 제한을 복구하며, 수정 릴리즈의 실기기 재검증이 필요합니다.
+
 이미 설정된 Go2 Full USB 2ch는 [릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를
 사용합니다. 기본 명령은 `./bin/upload_esp.sh`이며 버전, 승인된 단일 CP2102/CH340 USB 문자 장치,
 공식 esptool v5.6.0 Linux AArch64 실행 파일을 자동으로 결정합니다. `--version`, `--port`, `--esptool`로

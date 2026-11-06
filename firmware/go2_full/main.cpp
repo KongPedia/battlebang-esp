@@ -1891,7 +1891,10 @@ void setup() {
                 runtimeConfig.common.mqttPort,
                 hitMqtt.eventTopic(),
                 hitMqtt.ringCommandTopic());
+#if !BB_GO2_FULL_JETSON_USB_SERIAL
+  // USB packet builds discard text output; do not construct its large status JSON.
   printStatusJson("usb", "boot");
+#endif
   BB_DEBUG_SERIAL.printf("[NIXO] transport=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
                 BLASTER_TRANSPORT,
                 runtimeConfig.blaster.blasterId.c_str(),
