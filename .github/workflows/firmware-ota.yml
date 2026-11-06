@@ -22,6 +22,7 @@ on:
       - "tests/python/test_usb_release_artifacts.py"
       - "tests/python/test_usb_release_upload.py"
       - "tests/python/test_go2_full_boot_stack_safety.py"
+      - "tests/python/test_go2_full_usb_pairing.py"
       - "scripts/go2_config.py"
       - "scripts/go2_full_config.py"
       - "lib/bb_esp_core/**"
@@ -78,7 +79,7 @@ jobs:
       - name: Test release USB uploader without hardware
         run: |
           python -m pip install pytest==8.3.5
-          python -m pytest tests/python/test_usb_release_artifacts.py tests/python/test_usb_release_upload.py tests/python/test_go2_full_boot_stack_safety.py -q
+          python -m pytest tests/python/test_usb_release_artifacts.py tests/python/test_usb_release_upload.py tests/python/test_go2_full_boot_stack_safety.py tests/python/test_go2_full_usb_pairing.py -q
 
   changes:
     runs-on: ubuntu-latest

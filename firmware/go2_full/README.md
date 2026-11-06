@@ -104,6 +104,13 @@ HP damage/reset/snapshot, hit events, HP damage guard, match HP maximum config,
 link metrics, acknowledgements, and diagnostics. The wire namespace and packet
 bytes remain compatible with the PR #59 Go2/Blaster protocol.
 
+The wired peer is selected by its physical port, not by matching the host's
+robot ID to the ESP's stored MQTT identity. A valid capabilities request selects
+the current host epoch; malformed packets and commands from another epoch are
+still rejected. The Jetson client must also accept the connected ESP's reported
+device ID rather than require a preconfigured pairing. NVS/MQTT IDs are not
+rewritten or automatically reassigned when an ESP changes Jetsons.
+
 The physical button gate affects only piezo ADC hit detection. It does not alter
 packet HP damage, relay/fire commands, MQTT, identity, or stored NVS settings.
 OTA is deferred while the Blaster relay is firing and resumes only in a safe state.

@@ -20,28 +20,36 @@ does not automatically provision its NVS identity.
 
 ## Jetson에서 Go2 Full USB 펌웨어 업데이트
 
-> **현장 검증 중단:** 공개 후보 `0.3.39-usb-upload`는 02번에서 부팅 중 `loopTask`
-> 스택 오류로 재부팅을 반복했습니다. 현재 USB latest 포인터도 이 후보이므로 그대로 업로드하지 마세요.
-> 이 브랜치는 검증된 Arduino 2/IDF4 빌드 환경과 스택 프레임 제한을 복구하며, 수정 릴리즈의 실기기 재검증이 필요합니다.
+> **현재 권장 릴리즈:** USB discovery 포인터는 공개 정식 릴리즈 `0.3.40`을 가리킵니다.
+> 이전 `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로 재부팅한 immutable audit 기록이므로 사용하지 마세요.
 
-이미 설정된 Go2 Full USB 2ch는 [릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를
-사용합니다. 기본 명령은 `./bin/upload_esp.sh`이며 버전, 승인된 단일 CP2102/CH340 USB 문자 장치,
-공식 esptool v5.6.0 Linux AArch64 실행 파일을 자동으로 결정합니다. `--version`, `--port`, `--esptool`로
-각 값을 덮어쓸 수 있고 `--resolve-only`는 시리얼 접속 없이 선택 결과만 출력합니다.
+이미 설정된 Go2 Full USB 2ch는 [릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를 사용합니다.
+runtime이 이미 중지된 상태에서 다음 명령만 실행합니다. 로컬 `battlebang-esp` clone이나 BattleBang repo,
+Git, Docker, Python, venv, PlatformIO가 필요하지 않습니다.
+
+```bash
+(
+  set -e
+  uploader=$(mktemp)
+  trap 'rm -f "$uploader"' EXIT
+  curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    -o "$uploader" \
+    https://raw.githubusercontent.com/KongPedia/battlebang-esp/go2-full-usb-2ch-v0.3.40/bin/upload_esp.sh
+  printf '%s  %s\n' 9515e77b7a21f015ab118602e3c50bb883a02820bb0eef962f57d39820c9343a "$uploader" \
+    | sha256sum -c -
+  bash "$uploader"
+)
+```
+
+URL은 uploader 코드를 `0.3.40`에 고정합니다. uploader는 기본적으로 USB discovery 포인터의 최신 펌웨어를
+받으며, 정식 `0.3.40`을 명시하려면 마지막 줄을 `bash "$uploader" --version 0.3.40`으로 바꿉니다.
 
 Jetson에서 PlatformIO·host Python·가상환경을 만들거나 빌드하지 않고 버전별 immutable 릴리즈의 앱 영역만
 115200 baud로 교체합니다. 현재 USB 릴리즈는
-[`0.3.39-usb-upload`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.39-usb-upload)입니다.
+[`0.3.40`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.40)입니다.
 
-이 진입점은 아직 `main`에 병합되지 않았습니다. 깨끗한 checkout에서 최초 한 번 현재 배포 브랜치를 받습니다.
-
-```bash
-git fetch origin feat/esp-release-usb-upload
-git switch --create feat/esp-release-usb-upload --track origin/feat/esp-release-usb-upload
-```
-
-이후 일반 Shell에서 `./bin/upload_esp.sh`를 실행합니다. host venv/PlatformIO는 필요하지 않습니다.
-아래 PlatformIO 명령은 개발/초기 설정용이며 새 현장 업데이트 경로의 의존성이 아닙니다.
+이 절차는 firmware upload만 수행하며 runtime이나 BattleBang 애플리케이션을 변경하지 않습니다.
+아래 PlatformIO 명령은 개발/초기 설정용이며 현장 업데이트 경로의 의존성이 아닙니다.
 
 ## Active Go2 firmware layout
 

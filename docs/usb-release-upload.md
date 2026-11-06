@@ -1,38 +1,66 @@
 # Go2 Full USB: 빌드 없이 릴리즈 업로드
 
-> **현재 공개 후보는 사용 중단:** `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로
-> 부팅에 실패했습니다. USB latest 포인터도 이 버전을 가리키므로 수정본 실기기 검증 전까지 업로드하지 마세요.
-> 수정 브랜치는 Go2 Full을 기존 Arduino 2/IDF4 플랫폼에 고정하고, 4 KiB 초과 함수 프레임은 빌드 오류로 처리하며,
-> 출력하지 않는 USB 부팅 상태 JSON 생성을 생략합니다. NVS·프로토콜·115200 baud는 변경하지 않습니다.
+> **현재 권장 릴리즈:** USB discovery 포인터는 공개 정식 릴리즈 `0.3.40`을 가리킵니다.
+> 이전 `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로 부팅에 실패한 immutable audit 기록입니다.
+> 해당 버전은 사용하지 마세요.
 
 ## 지원 범위
 
 - 이미 provision된 Go2 Full USB 2ch / classic ESP32 / 4 MiB / Arduino `huge_app` 장치만 지원합니다.
 - 업로드와 런타임 baud는 **115200 고정**입니다.
 - 앱 `0x10000..0x30FFFF`만 교체합니다. NVS·부트로더·파티션표·otadata·파일시스템을 쓰거나 지우지 않습니다.
-- 첫 설치, 펌웨어 종류·파티션 변경, Secure Boot, Flash Encryption은 별도 정비입니다.
+- 새 blank ESP의 첫 설치에는 부트로더·파티션·NVS identity provisioning이 별도로 필요합니다. 이 app-only
+  업로더는 새 장치를 초기화하거나 ID를 설정하지 않습니다. 이미 설정된 장치의 ID/NVS 설정은 일반 업데이트에서 유지됩니다.
+- 펌웨어 종류·파티션 변경, Secure Boot, Flash Encryption은 별도 정비입니다.
+- 공개 `0.3.40`에는 기존 USB 고정 ID 검사가 남아 있습니다. 아래의 브랜치 변경과 구분합니다.
+
+### USB 고정 ID 연결 해제 — 아직 릴리즈하지 않은 브랜치 변경
+
+이 브랜치는 유효한 USB 핸드셰이크를 ESP에 저장된 Go2 ID와 비교해서 거절하지 않습니다.
+Jetson 수신부도 ESP의 고정 ID를 연결 승인 조건으로 사용하지 않는 변경이 함께 필요합니다.
+양쪽 수정본을 적용하면 논리 ID 대신 연결된 물리 포트와 현재 세션을 기준으로 통신합니다.
+패킷 형식·CRC·프로토콜 버전·세션 epoch·명령 순서·기능·발사 안전 검사는 유지합니다.
+
+Jetson의 CC·게임용 `robot_id`나 ESP NVS의 MQTT identity를 바꾸거나 자동으로 재등록하지 않습니다.
+MQTT를 직접 사용하는 구성에서는 기존 MQTT 라우팅 설정을 별도로 확인해야 합니다.
+이 변경은 소프트웨어 테스트/CI 범위이며 새 릴리즈 게시·실물 플래시는 하지 않습니다.
 
 ## 실행
 
-기본 실행은 버전·포트·업로더를 자동으로 결정합니다.
+runtime이 이미 중지된 상태에서 다음 repo-free 명령을 실행합니다. 로컬 `battlebang-esp` clone이나 BattleBang repo,
+Git, Docker, Python, venv, PlatformIO가 필요하지 않습니다.
 
 ```bash
-./bin/upload_esp.sh
+(
+  set -e
+  uploader=$(mktemp)
+  trap 'rm -f "$uploader"' EXIT
+  curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    -o "$uploader" \
+    https://raw.githubusercontent.com/KongPedia/battlebang-esp/go2-full-usb-2ch-v0.3.40/bin/upload_esp.sh
+  printf '%s  %s\n' 9515e77b7a21f015ab118602e3c50bb883a02820bb0eef962f57d39820c9343a "$uploader" \
+    | sha256sum -c -
+  bash "$uploader"
+)
 ```
 
-필요한 값만 명시적으로 덮어쓸 수 있습니다.
+URL은 uploader 코드를 `0.3.40`에 고정합니다. uploader는 기본적으로 USB discovery 포인터의 최신 펌웨어를
+받습니다. 정식 `0.3.40`을 명시하려면 마지막 줄을 `bash "$uploader" --version 0.3.40`으로 바꿉니다.
+소스 수정·검토용 clone은 별도 contributor workflow이며 operator upload에는 필요하지 않습니다.
+
+필요한 값만 명시적으로 덮어쓰려면 위 copy block의 마지막 줄을 다음처럼 바꿉니다.
 
 ```bash
-./bin/upload_esp.sh \
+bash "$uploader" \
   --version <게시된-USB-릴리즈-버전> \
   --port /dev/serial/by-id/<실제-USB-장치> \
   --esptool /absolute/path/to/esptool
 ```
 
-시리얼 접속 없이 선택 결과만 준비·확인하려면 다음 명령을 사용합니다.
+시리얼 접속 없이 선택 결과만 준비·확인하려면 같은 마지막 줄에 `--resolve-only`를 붙입니다.
 
 ```bash
-./bin/upload_esp.sh --resolve-only
+bash "$uploader" --resolve-only
 ```
 
 `--resolve-only`도 릴리즈 포인터와 업로더를 내려받고 udev 정보를 읽을 수 있지만 ESP 시리얼에는 접근하지 않습니다.
@@ -57,7 +85,7 @@
 - 추출한 실행 파일의 SHA-256을 설치 전과 매 실행마다 확인합니다.
 - 실행 확인은 `esptool -h`로 수행합니다. `--version`을 사용하지 않습니다.
 - ELF 조사 결과 필요한 glibc symbol floor는 `GLIBC_2.17`이며 `libpython` 동적 의존성은 없습니다.
-  표준 Ubuntu 22.04 AArch64 ABI와 호환되는 조건이지만, 실제 Jetson/JetPack에서의 실행은 아직 검증하지 않았습니다.
+  Jetson02에서는 `PATH=/nonexistent`로 시작해 실행을 확인했습니다. 다른 Jetson/JetPack 조합은 별도 확인이 필요합니다.
 
 자동 다운로드에 사용하는 공식 아카이브 SHA-256:
 
@@ -85,37 +113,33 @@ d2662a740a2179cc3fa28713df13b7106e1f8108700bc62a86b13564b6d01ab7
 `UPLOAD_OK`는 esptool의 앱 쓰기와 기본 검증 성공만 뜻합니다. 실행 버전, identity, HP, peer readiness,
 릴레이 상태, 발사·주행 등 물리 동작은 증명하지 않습니다.
 
+이 절차는 upload-only이며 runtime이나 BattleBang 애플리케이션을 변경하지 않습니다.
+
 ## 속도
 
-현재 공개 앱 2,339,440 bytes의 zlib9 압축 추정은 1,381,078 bytes입니다. 115200/8N1에서 압축 데이터
-전송만 최소 약 **119.9초**이며 실제 총 시간은 더 깁니다. 10초 완료를 약속하지 않습니다.
+동일 source의 `0.3.40-usb-upload` / build `1040` 후보는 Jetson02에서 115200 baud로 **109초**에 업로드됐습니다.
+정식 `0.3.40` / build `1041` BIN 자체를 다시 flash한 측정은 아니므로 이 시간은 참고값이며 SLA가 아닙니다.
 
 ## 현재 릴리즈 상태
 
-[Actions run 42011454580](https://github.com/KongPedia/battlebang-esp/actions/runs/42011454580)이 성공했고,
-source commit `a147ee1a714a1cdae23f5f746c948d2d1135a387`에서 USB 전용 prerelease를 게시했습니다.
+[Actions run 42178252153](https://github.com/KongPedia/battlebang-esp/actions/runs/42178252153)의 9개 job이 모두 성공했고,
+source commit `f81ff50c92a7fd882424d01c4aa77b4a16fb9dab`에서 공개 정식 릴리스를 게시했습니다.
 
-- 릴리즈: [`go2-full-usb-2ch-v0.3.39-usb-upload`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.39-usb-upload)
-- version/build: `0.3.39-usb-upload` / `1039`
-- 앱: 2,339,440 bytes, SHA-256 `86f705503bfd1f678831bf5f98b82b0e744aa746477f47025b5d04a5f6cb9db4`
+- 릴리즈: [`go2-full-usb-2ch-v0.3.40`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.40)
+- version/build: `0.3.40` / `1041`
+- 앱: 1,816,112 bytes, SHA-256 `bace4b9aaf306caf06bb7f718dbd90f9c34baf718acaff001fb03eb40e792391`
 - 파티션 기준: 4,096 bytes, SHA-256 `c798c1173b1d0175c33f06340268885c4385ff5129206d90bda416ad99ea8ddd`
-- USB pointer: [`usb-version.txt`](https://github.com/KongPedia/battlebang-esp/releases/download/go2-full-usb-2ch-upload-latest/usb-version.txt), 내용 `0.3.39-usb-upload\n`
+- USB pointer: [`usb-version.txt`](https://github.com/KongPedia/battlebang-esp/releases/download/go2-full-usb-2ch-upload-latest/usb-version.txt), 내용 `0.3.40\n`
 
-공개 앱 다운로드의 SHA-256은 인증 없는 HTTPS로 확인했습니다. 버전별 앱·파티션·checksum은 CI artifact와
-같고 immutable입니다. USB prerelease와 upload pointer만 게시했으며 OTA polling tag는 변경하지 않았습니다.
+인증 없는 공개 다운로드의 앱·파티션은 CI artifact와 크기·SHA-256이 같습니다. manifest는 공개 URL만
+재생성했고 앱 identity/build/hash는 유지했습니다. USB discovery 포인터만 `0.3.40`으로 갱신했으며 OTA stable
+포인터는 변경하지 않았습니다. 버전별 릴리즈 자산은 immutable입니다.
 
 기존 `0.3.38-main`에는 새 파티션 검증 자산이 없으므로 이 업로더로 배포할 수 없습니다.
 
-업로더 진입점은 아직 `main`에 병합되지 않았습니다. 깨끗한 checkout에서 최초 한 번 브랜치를 받습니다.
-
-```bash
-git fetch origin feat/esp-release-usb-upload
-git switch --create feat/esp-release-usb-upload --track origin/feat/esp-release-usb-upload
-```
-
-이후 일반 Shell에서 `./bin/upload_esp.sh`를 실행합니다. host Python/venv/PlatformIO는 필요하지 않습니다.
-
-이 문서 갱신에서는 장치 명령, 업로드, 재시작, 물리 동작 검증을 수행하지 않았습니다.
+동일 source의 build `1040` 후보를 Jetson02에 업로드한 뒤 별도 명령 없이 35초간 280 frame을 passive 관찰했고,
+identity `nixo_go2_02`, HP `14/14`, fire `Idle`, CRC/overflow/retry `0`을 확인했습니다. 정식 build `1041`
+BIN의 재flash, 물리 발사, 경로 주행은 검증하지 않았습니다.
 
 ## 개발/CI 검증
 

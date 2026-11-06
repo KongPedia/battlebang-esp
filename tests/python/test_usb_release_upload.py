@@ -184,6 +184,32 @@ def timeout_calls(runtime: tuple[dict[str, str], Path]) -> list[str]:
     return path.read_text().splitlines() if path.exists() else []
 
 
+def test_downloaded_uploader_runs_without_a_repository_or_application_tools(runtime, tmp_path):
+    standalone_dir = tmp_path / "standalone"
+    standalone_dir.mkdir()
+    downloaded = standalone_dir / "upload_esp.sh"
+    shutil.copy2(SCRIPT, downloaded)
+    env, esptool = runtime
+    for command in ("git", "docker", "python", "python3", "pio"):
+        assert shutil.which(command, path=env["PATH"]) is None
+
+    result = subprocess.run(
+        ["/bin/bash", str(downloaded), "--port", "/dev/null", "--esptool", str(esptool)],
+        cwd=standalone_dir,
+        env={**os.environ, **env},
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"UPLOAD_OK: version={VERSION}" in result.stdout
+    assert len(calls(runtime)) == 2
+    assert "read-flash 0x8000 0x1000" in calls(runtime)[0]
+    assert "write-flash --compress 0x10000" in calls(runtime)[1]
+    assert list(standalone_dir.iterdir()) == [downloaded]
+
+
 def test_happy_path_reads_layout_then_writes_only_application(runtime):
     result = run_upload(runtime, env_update={"ESPTOOL_BAUD": "921600"})
 

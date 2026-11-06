@@ -1103,14 +1103,6 @@ static AckResult applyPacketHpDamage(uint16_t amount) {
   return applied == 0 ? AckResult::NoopAlreadySafe : AckResult::Applied;
 }
 
-static bool packetRobotIdentityMatches(const Frame& frame) {
-  if (frame.type != MessageType::CapabilitiesRequest || frame.payload_length < 5) return false;
-  const uint8_t idLength = frame.payload[0];
-  if (idLength == 0 || frame.payload_length != static_cast<uint8_t>(idLength + 5)) return false;
-  const String& robotId = runtimeConfig.hit.robotId;
-  return robotId.length() == idLength && memcmp(frame.payload + 1, robotId.c_str(), idLength) == 0;
-}
-
 static bool packetCommandNeedsAuthority(MessageType type) {
   return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage ||
          type == MessageType::HpDamageGuard || type == MessageType::HpMaxConfig;
@@ -1171,10 +1163,7 @@ static void handleJetsonFrame(const Frame& frame) {
   }
   switch (frame.type) {
     case MessageType::CapabilitiesRequest:
-      if (!packetRobotIdentityMatches(frame)) {
-        nackJetsonPacket(frame, NackError::IdentityMismatch);
-        return;
-      }
+      // The wired port selects the peer; stored MQTT robot IDs do not pair it.
       if (jetsonAuthorizedHostEpoch != frame.sender_epoch) {
         resetJetsonHostCommandSequence();
         hpDamageGuard.clear();
