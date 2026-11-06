@@ -341,6 +341,15 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert "repo-wide `latest`" in firmware_readme
 
 
+def test_firmware_build_preserves_matching_debug_symbols() -> None:
+    workflow = read(".github/workflows/firmware-ota.yml")
+    assert "- name: Upload firmware debug symbols" in workflow
+    symbols = workflow.split("- name: Upload firmware debug symbols", 1)[1].split("\n      - name:", 1)[0]
+    assert "${{ matrix.id }}-symbols-${{ steps.version.outputs.version }}" in symbols
+    assert ".pio/build/${{ matrix.env }}/firmware.elf" in symbols
+    assert "if-no-files-found: error" in symbols
+
+
 def test_active_docs_no_longer_point_to_old_src_go2_path() -> None:
     active_docs = [
         "README.md",

@@ -388,6 +388,13 @@ jobs:
           name: ${{ matrix.id }}-firmware-${{ steps.version.outputs.version }}
           path: dist/*
 
+      - name: Upload firmware debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}-symbols-${{ steps.version.outputs.version }}
+          path: .pio/build/${{ matrix.env }}/firmware.elf
+          if-no-files-found: error
+
       - name: Create GitHub Release for tag
         if: steps.version.outputs.create_release == 'true'
         env:
