@@ -20,7 +20,8 @@ does not automatically provision its NVS identity.
 
 ## Jetson에서 Go2 Full USB 펌웨어 업데이트
 
-> **현재 권장 릴리즈:** USB discovery 포인터는 공개 정식 릴리즈 `0.3.40`을 가리킵니다.
+> **기본 선택:** 버전을 생략하면 USB discovery 포인터가 가리키는 릴리스를 받습니다.
+> 2026-11-09 확인 기준 기본값은 `0.3.40`이며, main의 Go2 Full USB 릴리스가 성공하면 새 버전으로 자동 갱신됩니다.
 > 이전 `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로 재부팅한 immutable audit 기록이므로 사용하지 마세요.
 
 이미 설정된 Go2 Full USB 2ch는 [릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를 사용합니다.
@@ -41,12 +42,14 @@ Git, Docker, Python, venv, PlatformIO가 필요하지 않습니다.
 )
 ```
 
-URL은 uploader 코드를 `0.3.40`에 고정합니다. uploader는 기본적으로 USB discovery 포인터의 최신 펌웨어를
-받으며, 정식 `0.3.40`을 명시하려면 마지막 줄을 `bash "$uploader" --version 0.3.40`으로 바꿉니다.
+URL과 SHA-256은 검증된 uploader **코드**를 `0.3.40`에 고정합니다. 펌웨어 버전을 생략하면 이 uploader가
+USB discovery 포인터의 최신 기본 펌웨어를 받습니다. 특정 immutable 릴리스를 받으려면 마지막 줄을
+`bash "$uploader" --version 0.3.41`처럼 바꿉니다.
 
 Jetson에서 PlatformIO·host Python·가상환경을 만들거나 빌드하지 않고 버전별 immutable 릴리즈의 앱 영역만
-115200 baud로 교체합니다. 현재 USB 릴리즈는
-[`0.3.40`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.40)입니다.
+115200 baud로 교체합니다. `0.3.41`도 [명시 선택 가능한 게시 릴리즈](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.41)이지만,
+게시 여부·기본 선택 여부·실물 기능 검증 여부는 서로 다른 상태입니다. 자세한 현재 상태와 검증 범위는
+[릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를 확인하세요.
 
 이 절차는 firmware upload만 수행하며 runtime이나 BattleBang 애플리케이션을 변경하지 않습니다.
 아래 PlatformIO 명령은 개발/초기 설정용이며 현장 업데이트 경로의 의존성이 아닙니다.

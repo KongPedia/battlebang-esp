@@ -46,7 +46,6 @@ def runtime(tmp_path: Path, release: Path) -> tuple[dict[str, str], Path]:
         "rm",
         "wc",
         "od",
-        "uname",
         "readlink",
         "tar",
         "gzip",
@@ -58,6 +57,10 @@ def runtime(tmp_path: Path, release: Path) -> tuple[dict[str, str], Path]:
         assert source
         (tools / command).symlink_to(source)
 
+    (tools / "uname").write_text(
+        '#!/bin/bash\nif [[ $1 == -s ]]; then echo "${FAKE_OS:-Linux}"; '
+        'else echo "${FAKE_ARCH:-x86_64}"; fi\n'
+    )
     (tools / "curl").write_text(
         """#!/bin/bash
 set -euo pipefail
@@ -526,3 +529,59 @@ esac
             text=True,
         )
         assert again.returncode == 0, again.stderr
+
+
+@pytest.mark.parametrize("system", ["Darwin", "FreeBSD"])
+@pytest.mark.parametrize("explicit_tool", [False, True])
+def test_unsupported_os_fails_before_linux_tools_or_external_access(
+    runtime, tmp_path, system, explicit_tool
+):
+    env, esptool = runtime
+    tools = Path(env["PATH"])
+    (tools / "sha256sum").unlink()
+    access = tmp_path / "platform-access"
+    for command in (tools / "curl", tools / "udevadm", esptool):
+        command.write_text(f'#!/bin/bash\nprintf touched >> "{access}"\nexit 97\n')
+    args = ["--esptool", str(esptool)] if explicit_tool else []
+    result = subprocess.run(
+        ["/bin/bash", str(SCRIPT), "--resolve-only", *args],
+        env=os.environ | env | {"FAKE_OS": system},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode != 0
+    assert f"unsupported OS: {system}" in result.stderr
+    assert not access.exists()
+    assert not Path(env["FAKE_TIMEOUT_CALLS"]).exists()
+
+
+def test_linux_x86_without_tool_fails_before_linux_tools_or_download(runtime):
+    env, _ = runtime
+    (Path(env["PATH"]) / "sha256sum").unlink()
+    result = subprocess.run(
+        ["/bin/bash", str(SCRIPT), "--resolve-only"],
+        env=os.environ | env,
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode != 0
+    assert "Linux x86_64" in result.stderr
+    assert "--esptool" in result.stderr
+    assert not Path(env["FAKE_TIMEOUT_CALLS"]).exists()
+    assert calls(runtime) == []
+
+
+@pytest.mark.parametrize("arch", ["aarch64", "x86_64"])
+def test_linux_explicit_tool_resolves_on_supported_architectures(runtime, arch):
+    result = run_resolve(runtime, env_update={"FAKE_ARCH": arch})
+    assert result.returncode == 0, result.stderr
+    assert f"version={VERSION}" in result.stdout
+    assert calls(runtime) == []
+
+
+def test_help_does_not_require_linux_tools():
+    result = subprocess.run(
+        ["/bin/bash", str(SCRIPT), "--help"],
+        env=os.environ | {"PATH": "/usr/bin:/bin"},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0
+    assert "Usage:" in result.stderr

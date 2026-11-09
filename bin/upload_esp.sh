@@ -14,6 +14,7 @@ usage() {
   cat >&2 <<'EOF'
 Usage: upload_esp.sh [--version <version>] [--port <character-device>] [--esptool <path>] [--resolve-only]
 Defaults: latest USB-only release, single approved USB port, verified standalone uploader.
+Linux AArch64: automatic uploader; Linux x86_64: provide --esptool. Darwin is unsupported.
 --resolve-only prepares and prints selection without accessing serial.
 EOF
 }
@@ -49,6 +50,15 @@ while (($#)); do
       ;;
   esac
 done
+
+# Reject unsupported hosts before downloads, Linux tools, or USB inventory.
+command -v uname >/dev/null 2>&1 || die "required OS command not found: uname"
+host_os=$(uname -s) || die "cannot determine OS"
+host_arch=$(uname -m) || die "cannot determine architecture"
+[[ $host_os == Linux ]] || die "unsupported OS: $host_os (Linux required; Darwin is unsupported)"
+if [[ -z $esptool && $host_arch != aarch64 ]]; then
+  die "automatic uploader supports Linux AArch64 only; Linux $host_arch requires --esptool /absolute/path/to/esptool"
+fi
 
 for command in curl sha256sum timeout mktemp rm wc date od udevadm readlink; do
   command -v "$command" >/dev/null 2>&1 || die "required OS command not found: $command"
@@ -142,7 +152,6 @@ done < "$tmp_dir/udev-port"
 approved_usb "$vid" "$pid" "$driver" || die "unsupported USB VID/PID/driver: $vid:$pid:$driver"
 
 if [[ -z $esptool ]]; then
-  [[ $(uname -s) == Linux && $(uname -m) == aarch64 ]] || die "automatic uploader supports Linux AArch64 only; pass --esptool"
   for command in tar gzip chmod mkdir mv; do
     command -v "$command" >/dev/null 2>&1 || die "required OS command not found: $command"
   done

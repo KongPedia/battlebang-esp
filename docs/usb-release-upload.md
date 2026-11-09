@@ -1,6 +1,7 @@
 # Go2 Full USB: 빌드 없이 릴리즈 업로드
 
-> **현재 권장 릴리즈:** USB discovery 포인터는 공개 정식 릴리즈 `0.3.40`을 가리킵니다.
+> **기본 선택:** 버전을 생략하면 USB discovery 포인터가 가리키는 릴리스를 받습니다.
+> 2026-11-09 확인 기준 기본값은 `0.3.40`이며, main의 Go2 Full USB 릴리스가 성공하면 새 버전으로 자동 갱신됩니다.
 > 이전 `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로 부팅에 실패한 immutable audit 기록입니다.
 > 해당 버전은 사용하지 마세요.
 
@@ -12,18 +13,19 @@
 - 새 blank ESP의 첫 설치에는 부트로더·파티션·NVS identity provisioning이 별도로 필요합니다. 이 app-only
   업로더는 새 장치를 초기화하거나 ID를 설정하지 않습니다. 이미 설정된 장치의 ID/NVS 설정은 일반 업데이트에서 유지됩니다.
 - 펌웨어 종류·파티션 변경, Secure Boot, Flash Encryption은 별도 정비입니다.
-- 공개 `0.3.40`에는 기존 USB 고정 ID 검사가 남아 있습니다. 아래의 브랜치 변경과 구분합니다.
+- 공개 `0.3.40`에는 기존 wired 고정 ID 검사가 남아 있습니다. `0.3.41`과 구분합니다.
 
-### USB 고정 ID 연결 해제 — 아직 릴리즈하지 않은 브랜치 변경
+### Wired 고정 ID 연결 해제 — `0.3.41` 게시
 
-이 브랜치는 유효한 USB 핸드셰이크를 ESP에 저장된 Go2 ID와 비교해서 거절하지 않습니다.
-Jetson 수신부도 ESP의 고정 ID를 연결 승인 조건으로 사용하지 않는 변경이 함께 필요합니다.
+[`0.3.41`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.41)은 유효한 wired 핸드셰이크를
+ESP에 저장된 Go2 ID와 비교해서 거절하지 않습니다. 공용 handler 변경이므로 USB와 UART2 빌드 양쪽에 적용됩니다.
+Jetson 수신부도 ESP의 고정 ID를 연결 승인 조건으로 사용하지 않는 별도 BattleBang 변경이 함께 필요합니다.
 양쪽 수정본을 적용하면 논리 ID 대신 연결된 물리 포트와 현재 세션을 기준으로 통신합니다.
 패킷 형식·CRC·프로토콜 버전·세션 epoch·명령 순서·기능·발사 안전 검사는 유지합니다.
 
 Jetson의 CC·게임용 `robot_id`나 ESP NVS의 MQTT identity를 바꾸거나 자동으로 재등록하지 않습니다.
 MQTT를 직접 사용하는 구성에서는 기존 MQTT 라우팅 설정을 별도로 확인해야 합니다.
-이 변경은 소프트웨어 테스트/CI 범위이며 새 릴리즈 게시·실물 플래시는 하지 않습니다.
+`0.3.41` 게시와 ESP 쓰기 성공은 확인됐지만, Jetson 호스트 변경을 포함한 end-to-end 통신과 부팅 후 기능은 별도 검증입니다.
 
 ## 실행
 
@@ -44,8 +46,9 @@ Git, Docker, Python, venv, PlatformIO가 필요하지 않습니다.
 )
 ```
 
-URL은 uploader 코드를 `0.3.40`에 고정합니다. uploader는 기본적으로 USB discovery 포인터의 최신 펌웨어를
-받습니다. 정식 `0.3.40`을 명시하려면 마지막 줄을 `bash "$uploader" --version 0.3.40`으로 바꿉니다.
+URL과 SHA-256은 검증된 uploader **코드**를 `0.3.40`에 고정합니다. 펌웨어 버전을 생략하면 이 uploader가
+USB discovery 포인터의 최신 기본 펌웨어를 받습니다. 특정 immutable 릴리스를 받으려면 마지막 줄을
+`bash "$uploader" --version 0.3.41`처럼 바꿉니다. uploader 코드 버전과 선택할 펌웨어 버전은 별개입니다.
 소스 수정·검토용 clone은 별도 contributor workflow이며 operator upload에는 필요하지 않습니다.
 
 필요한 값만 명시적으로 덮어쓰려면 위 copy block의 마지막 줄을 다음처럼 바꿉니다.
@@ -68,7 +71,9 @@ bash "$uploader" --resolve-only
 ## 자동 선택 규칙
 
 - 버전을 생략하면 OTA 채널과 분리된 `go2-full-usb-2ch-upload-latest/usb-version.txt`를 읽습니다.
+  main의 관련 테스트·빌드·릴리스가 성공하면 이 포인터가 새 기본 버전으로 자동 갱신됩니다.
   repo-wide `latest`나 Go2 Full OTA stable 포인터를 사용하지 않습니다.
+- `--version`을 지정하면 discovery 포인터와 무관하게 해당 versioned release를 받습니다.
 - 포트를 생략하면 승인된 USB 문자 장치가 정확히 하나일 때만 선택합니다.
   - CP2102: `10c4:ea60`, 드라이버 `cp210x`
   - CH340: `1a86:7523`, 드라이버 `ch341`
@@ -79,6 +84,11 @@ bash "$uploader" --resolve-only
 
 `--esptool`을 생략한 Linux AArch64 호스트는 공식 esptool v5.6.0 아카이브를 최초 한 번 내려받아
 `~/.local/share/battlebang-esp/esptool-v5.6.0/esptool`에 캐시합니다.
+
+- Linux AArch64: 자동 다운로드 또는 명시한 `--esptool`을 지원합니다.
+- Linux x86_64: 자동 다운로드를 지원하지 않으며, 호환되는 esptool v5 실행 파일을 `--esptool`로 지정해야 합니다.
+- Darwin 및 그 밖의 OS: 지원하지 않습니다. 현재 위 copy block은 `0.3.40` uploader 코드에 고정되어 있으므로,
+  이후 브랜치의 개선된 OS 오류 문구가 포함됐다고 간주하면 안 됩니다.
 
 - 아카이브 SHA-256을 고정합니다.
 - 아카이브 전체가 아니라 `esptool` 실행 파일만 추출합니다.
@@ -122,8 +132,17 @@ d2662a740a2179cc3fa28713df13b7106e1f8108700bc62a86b13564b6d01ab7
 
 ## 현재 릴리즈 상태
 
-[Actions run 42178252153](https://github.com/KongPedia/battlebang-esp/actions/runs/42178252153)의 9개 job이 모두 성공했고,
-source commit `f81ff50c92a7fd882424d01c4aa77b4a16fb9dab`에서 공개 정식 릴리스를 게시했습니다.
+2026-11-09에 공개 GitHub Releases와 USB discovery 자산을 다시 확인했습니다.
+
+| 구분 | 확인 상태 |
+| --- | --- |
+| 버전 생략 시 기본값 | USB discovery `usb-version.txt`가 `0.3.40`을 가리킴 |
+| 명시 선택 가능한 게시 버전 | `0.3.41` / build `1042`; wired ID 일치 검사 제거 포함 |
+| Go2 Full OTA stable | `go2-full-usb-2ch-latest` 릴리스 없음; USB discovery와 별도 |
+| Jetson10 `0.3.41` 증거 | `UPLOAD_OK`, 1,816,032 bytes와 공개 SHA-256 일치; 쓰기 검증만 해당 |
+
+기본값 `0.3.40`은 [Actions run 42178252153](https://github.com/KongPedia/battlebang-esp/actions/runs/42178252153)의
+source commit `f81ff50c92a7fd882424d01c4aa77b4a16fb9dab`에서 게시됐습니다.
 
 - 릴리즈: [`go2-full-usb-2ch-v0.3.40`](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.40)
 - version/build: `0.3.40` / `1041`
@@ -131,9 +150,14 @@ source commit `f81ff50c92a7fd882424d01c4aa77b4a16fb9dab`에서 공개 정식 릴
 - 파티션 기준: 4,096 bytes, SHA-256 `c798c1173b1d0175c33f06340268885c4385ff5129206d90bda416ad99ea8ddd`
 - USB pointer: [`usb-version.txt`](https://github.com/KongPedia/battlebang-esp/releases/download/go2-full-usb-2ch-upload-latest/usb-version.txt), 내용 `0.3.40\n`
 
-인증 없는 공개 다운로드의 앱·파티션은 CI artifact와 크기·SHA-256이 같습니다. manifest는 공개 URL만
-재생성했고 앱 identity/build/hash는 유지했습니다. USB discovery 포인터만 `0.3.40`으로 갱신했으며 OTA stable
-포인터는 변경하지 않았습니다. 버전별 릴리즈 자산은 immutable입니다.
+명시 선택 가능한 `0.3.41` 릴리스는 source commit `6033f67ad6046ba4ac4e97d01c196743e565824e`,
+build `1042`, 앱 1,816,032 bytes, SHA-256
+`c6fdeeee341b7780c65f82594fbcd6b970feb6815d8f6adc63a912e8e15328f7`입니다. 파티션 기준은 `0.3.40`과 같은
+4,096 bytes / SHA-256 `c798c1173b1d0175c33f06340268885c4385ff5129206d90bda416ad99ea8ddd`입니다.
+
+보고된 Jetson10 `0.3.41 UPLOAD_OK`의 크기와 SHA-256은 이 공개 자산과 일치합니다. 이는 app 쓰기 검증이며
+booted version·HP·peer readiness·릴레이·발사·주행 또는 모든 Jetson 호환을 증명하지 않습니다.
+버전별 릴리즈 자산은 immutable이며, 게시된 버전이 자동으로 현재 기본값이나 실물 검증 완료 상태가 되는 것은 아닙니다.
 
 기존 `0.3.38-main`에는 새 파티션 검증 자산이 없으므로 이 업로더로 배포할 수 없습니다.
 
