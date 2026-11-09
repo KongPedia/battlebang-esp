@@ -1103,14 +1103,6 @@ static AckResult applyPacketHpDamage(uint16_t amount) {
   return applied == 0 ? AckResult::NoopAlreadySafe : AckResult::Applied;
 }
 
-static bool packetRobotIdentityMatches(const Frame& frame) {
-  if (frame.type != MessageType::CapabilitiesRequest || frame.payload_length < 5) return false;
-  const uint8_t idLength = frame.payload[0];
-  if (idLength == 0 || frame.payload_length != static_cast<uint8_t>(idLength + 5)) return false;
-  const String& robotId = runtimeConfig.hit.robotId;
-  return robotId.length() == idLength && memcmp(frame.payload + 1, robotId.c_str(), idLength) == 0;
-}
-
 static bool packetCommandNeedsAuthority(MessageType type) {
   return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage ||
          type == MessageType::HpDamageGuard || type == MessageType::HpMaxConfig;
@@ -1171,10 +1163,7 @@ static void handleJetsonFrame(const Frame& frame) {
   }
   switch (frame.type) {
     case MessageType::CapabilitiesRequest:
-      if (!packetRobotIdentityMatches(frame)) {
-        nackJetsonPacket(frame, NackError::IdentityMismatch);
-        return;
-      }
+      // The wired port selects the peer; stored MQTT robot IDs do not pair it.
       if (jetsonAuthorizedHostEpoch != frame.sender_epoch) {
         resetJetsonHostCommandSequence();
         hpDamageGuard.clear();
@@ -1891,7 +1880,10 @@ void setup() {
                 runtimeConfig.common.mqttPort,
                 hitMqtt.eventTopic(),
                 hitMqtt.ringCommandTopic());
+#if !BB_GO2_FULL_JETSON_USB_SERIAL
+  // USB packet builds discard text output; do not construct its large status JSON.
   printStatusJson("usb", "boot");
+#endif
   BB_DEBUG_SERIAL.printf("[NIXO] transport=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
                 BLASTER_TRANSPORT,
                 runtimeConfig.blaster.blasterId.c_str(),

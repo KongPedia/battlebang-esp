@@ -71,7 +71,6 @@ def test_go2_full_has_one_packet_only_firmware_main() -> None:
     assert "jetsonCommandLine" not in framed_main
     assert 'doc["jetson_uart_protocol"] = "framed"' in framed_main
     assert "jetsonAuthorizedHostEpoch" in framed_main
-    assert "packetRobotIdentityMatches" in framed_main
     assert "packetCommandNeedsAuthority" in framed_main
     assert 'doc["jetson_uart_rx_frames"]' in framed_main
     assert 'doc["jetson_uart_rx_discarded_bytes"]' in framed_main
