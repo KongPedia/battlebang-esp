@@ -1,0 +1,1936 @@
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <Esp.h>
+#include <Preferences.h>
+#include <WiFi.h>
+#include <bb_esp_ota/http_ota.h>
+#include <bb_esp_ota/ota_manifest.h>
+#include <bb_esp_ota/reboot_marker.h>
+#include "BluetoothSerial.h"
+
+#include "go2_full/app/firmware_info.h"
+#include "go2_full/mqtt/hit_mqtt_client.h"
+#include "go2_full/build_config.h"
+#include "go2_full/blaster/blaster_fire_client.h"
+#include "go2_full/led/bar_display.h"
+#include "go2_full/led/ring_display.h"
+#include "go2_full/debug_serial.h"
+#include "go2_full/uart/protocol.h"
+#include "go2_full/uart/runtime.h"
+#include "go2_full/piezo/piezo_sensor.h"
+#include "go2_full/pull_down_button/pull_down_button.h"
+
+using namespace go2;
+
+// Integrated Go2 Full hit/LED + Blaster firmware:
+// - This ESP samples three piezo AO channels (ADC), accepts local hits immediately, owns
+//   hp_remaining/down state, and renders the HP bar without waiting for
+//   Command Center per-hit ring_display round trips.
+// - Command Center ingests hit_event/status metadata for dashboard/world state.
+// - Blaster fire uses Jetson UART as the default path; MQTT remains a secondary command path.
+//   The original ring LED is reserved for Blaster ready/firing/inhibited state, never HP state.
+// - GPIO27 is the local ADC-enable toggle button, not the former piezo D0 debug input.
+
+BluetoothSerial SerialBT;
+#if BB_GO2_FULL_JETSON_USB_SERIAL
+HardwareSerial& JetsonSerial = Serial;
+#else
+HardwareSerial& JetsonSerial = Serial2;
+#endif
+
+BarDisplay barDisplay;
+RingDisplay ringDisplay;
+HitMqttClient hitMqtt;
+BlasterFireClient blasterFire;
+RuntimeConfig runtimeConfig;
+
+uint32_t hitSequence = 0;
+
+battlebang::go2_full::uart::LocalHitState localHitState{MAX_HITS, MAX_HITS, 0, false, 0};
+int lastAcceptedHitTargetId = 3;
+bool lastAcceptedHitEnteredCritical = false;
+uint16_t lastAcceptedHitStrength = 0;
+uint32_t lastAcceptedHitTimestampMs = 0;
+String usbCommandLine;
+String btCommandLine;
+String pendingMqttConfigJson;
+String pendingMqttOtaJson;
+bool pendingMqttConfig = false;
+bool pendingMqttOta = false;
+bool pendingHpResetEvent = true;
+bool postOtaReboot = false;
+uint32_t lastDeviceStatusMs = 0;
+uint32_t lastAutoOtaCheckMs = 0;
+bool lastMqttConnected = false;
+bool hasSeenMqttConnection = false;
+bool jetsonFireHoldActive = false;
+bool jetsonFireReleaseRequired = false;
+uint32_t jetsonFireHoldDeadlineMs = 0;
+bool hasPublishedStatusSnapshot = false;
+bool hasSentJetsonHpStatus = false;
+uint32_t jetsonBootMs = 0;
+uint16_t lastPublishedHpRemaining = 0;
+uint16_t lastPublishedMaxHits = 0;
+uint16_t lastPublishedAcceptedHitCount = 0;
+bool lastPublishedDown = false;
+uint16_t lastJetsonHpRemaining = 0;
+uint16_t lastJetsonMaxHits = 0;
+uint16_t lastJetsonAcceptedHitCount = 0;
+bool lastJetsonDead = false;
+bool lastPublishedBlasterFiring = false;
+bool lastPublishedFireInhibited = false;
+bool lastPublishedJetsonHoldActive = false;
+bool lastPublishedJetsonReleaseRequired = false;
+const char* lastPublishedBlasterState = "";
+String lastPublishedBlasterActiveSource;
+String lastPublishedBlasterLastFireSource;
+uint32_t fireNetworkQuietUntilMs = 0;
+uint32_t localHpRevision = 0;
+uint64_t hpMaxConfigGeneration = 0;
+bool hpMaxConfigLocked = true;
+using battlebang::go2_full::uart::AckResult;
+using battlebang::go2_full::uart::CommandSource;
+using battlebang::go2_full::uart::composeAck;
+using battlebang::go2_full::uart::canApplyGenericMaxHits;
+using battlebang::go2_full::uart::composeDeviceStatus;
+using battlebang::go2_full::uart::composeDiagEchoReply;
+using battlebang::go2_full::uart::composeFireStatus;
+using battlebang::go2_full::uart::composeHpSnapshot;
+using battlebang::go2_full::uart::composeLinkMetrics;
+using battlebang::go2_full::uart::composeNack;
+using battlebang::go2_full::uart::Frame;
+using battlebang::go2_full::uart::FrameFlags;
+using battlebang::go2_full::uart::FireReason;
+using battlebang::go2_full::uart::FireSnapshot;
+using battlebang::go2_full::uart::FireState;
+using battlebang::go2_full::uart::DedupeResult;
+using battlebang::go2_full::uart::FrameTxQueue;
+using battlebang::go2_full::uart::HpSnapshot;
+using battlebang::go2_full::uart::HpDamageGuardLease;
+using battlebang::go2_full::uart::HpMaxConfigOperation;
+using battlebang::go2_full::uart::PersistentHpMaxConfig;
+using battlebang::go2_full::uart::InboundDedupe;
+using battlebang::go2_full::uart::IncrementalParser;
+using battlebang::go2_full::uart::isNewerSequence;
+using battlebang::go2_full::uart::isPayloadValid;
+using battlebang::go2_full::uart::MessageType;
+using battlebang::go2_full::uart::NackError;
+using battlebang::go2_full::uart::ReliableFrameTracker;
+using battlebang::go2_full::uart::LinkState;
+
+IncrementalParser jetsonPacketParser;
+FrameTxQueue jetsonPacketTx;
+InboundDedupe jetsonInboundDedupe;
+ReliableFrameTracker jetsonReliableTx;
+HpDamageGuardLease hpDamageGuard;
+uint8_t jetsonLastRxBytes[16] = {};
+size_t jetsonLastRxLength = 0;
+size_t jetsonLastRxChunkLength = 0;
+uint16_t jetsonPacketTxSequence = 0;
+uint32_t jetsonPacketSenderEpoch = 1;
+uint32_t jetsonAuthorizedHostEpoch = 0;
+bool jetsonHostCommandSequenceSeen = false;
+uint16_t jetsonLastHostCommandSequence = 0;
+uint32_t lastJetsonPacketStatusMs = 0;
+CommandSource jetsonLastFireCommandSource = CommandSource::Unknown;
+FireReason jetsonLastFireReason = FireReason::None;
+uint32_t jetsonReliableAdmissionErrors = 0;
+
+constexpr size_t COMMAND_LINE_MAX = 2048;
+constexpr uint32_t DEVICE_STATUS_PERIOD_MS = 5000;
+constexpr uint32_t JETSON_FIRE_HOLD_TIMEOUT_MS = 300;
+constexpr uint32_t FIRE_NETWORK_QUIET_MS = 250;
+constexpr uint32_t JETSON_BOOT_RESET_DELAY_MS = 5000;
+constexpr const char* BLASTER_TRANSPORT =
+    BB_GO2_FULL_JETSON_USB_SERIAL ? "jetson_usb_serial+mqtt" : "jetson_uart+mqtt";
+constexpr const char* OTA_REBOOT_NAMESPACE = "bb_go2_full";
+constexpr const char* OTA_REBOOT_KEY = "ota_reboot";
+constexpr const char* HP_MAX_CONFIG_NAMESPACE = "hp_max_cfg";
+constexpr const char* HP_MAX_CONFIG_KEY = "state";
+
+constexpr int PIEZO_ENABLE_BUTTON_PIN = 27;
+PiezoSensor piezoSensor;
+PullDownButton piezoEnableButton;
+
+static void onBarDisplayUpdate(const BarDisplayUpdate& update);
+static void publishDeviceStatusIfConnected(const char* reason);
+static bool publishHpResetEventIfConnected(const char* reason);
+
+static PiezoSensorConfig currentPiezoSensorConfig() {
+  PiezoSensorConfig config;
+  config.leftPin = PIEZO_LEFT_AO_PIN;
+  config.rightPin = PIEZO_RIGHT_AO_PIN;
+  config.frontPin = PIEZO_FRONT_AO_PIN;
+  config.debugDoPin = PIEZO_DO_PIN >= 0 && PIEZO_DO_PIN != PIEZO_ENABLE_BUTTON_PIN
+                          ? PIEZO_DO_PIN
+                          : -1;
+  config.channelEnableMask = runtimeConfig.hit.piezoChannelEnableMask;
+  config.thresholdRaw = runtimeConfig.hit.piezoAoThresholdRaw;
+  config.rearmRaw = runtimeConfig.hit.piezoAoRearmRaw;
+  config.captureWindowMs = runtimeConfig.hit.piezoAoCaptureWindowMs;
+  config.rearmStableMs = runtimeConfig.hit.piezoAoRearmStableMs;
+  config.hitCooldownMs = runtimeConfig.hit.hitCooldownMs;
+  config.debugPeriodMs = runtimeConfig.hit.piezoAoDebugPeriodMs;
+  return config;
+}
+
+static void resetPiezoSensor() {
+  piezoSensor.setEnabled(piezoEnableButton.enabled(), millis());
+}
+
+static void resetLocalHitState() {
+  if (hpMaxConfigGeneration == 0) {
+    localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  }
+  localHitState.hpRemaining = localHitState.maxHits;
+  localHitState.acceptedHitCount = 0;
+  localHitState.down = false;
+  localHitState.lastHitSequence = 0;
+  lastAcceptedHitTargetId = 3;
+  lastAcceptedHitEnteredCritical = false;
+  blasterFire.setFireInhibited(false);
+  ++localHpRevision;
+  barDisplay.resetLocalHpState(localHitState.maxHits);
+}
+
+static float localHpFillRatio() {
+  if (localHitState.maxHits == 0) return 1.0f;
+  return constrain(static_cast<float>(localHitState.hpRemaining) / static_cast<float>(localHitState.maxHits), 0.0f, 1.0f);
+}
+
+static void syncLocalHitStateWithRuntimeConfig() {
+  if (hpMaxConfigGeneration != 0) {
+    barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+    blasterFire.setFireInhibited(localHitState.down);
+    return;
+  }
+  uint16_t nextMaxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  if (localHitState.maxHits == nextMaxHits) {
+    barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+    blasterFire.setFireInhibited(localHitState.down);
+    return;
+  }
+
+  localHitState.maxHits = nextMaxHits;
+  if (localHitState.acceptedHitCount == 0) {
+    localHitState.hpRemaining = nextMaxHits;
+  } else {
+    localHitState.hpRemaining = localHitState.acceptedHitCount >= nextMaxHits
+                                    ? 0
+                                    : nextMaxHits - localHitState.acceptedHitCount;
+  }
+  localHitState.down = localHitState.hpRemaining == 0;
+  ++localHpRevision;
+  lastAcceptedHitEnteredCritical = false;
+  hasSentJetsonHpStatus = false;
+  jetsonBootMs = millis() - JETSON_BOOT_RESET_DELAY_MS;
+  blasterFire.setFireInhibited(localHitState.down);
+  barDisplay.setLocalHpState(localHitState.hpRemaining, localHitState.maxHits, localHitState.down, 0, millis());
+}
+
+static bool applyLocalHit(uint32_t sequence, uint32_t now) {
+  if (hpMaxConfigGeneration == 0) {
+    localHitState.maxHits = runtimeConfig.hit.maxHits > 0 ? runtimeConfig.hit.maxHits : MAX_HITS;
+  }
+  if (localHitState.hpRemaining > localHitState.maxHits) localHitState.hpRemaining = localHitState.maxHits;
+  const uint16_t previousHpRemaining = localHitState.hpRemaining;
+  lastAcceptedHitEnteredCritical = false;
+  if (!localHitState.down && localHitState.hpRemaining > 0) {
+    localHitState.hpRemaining--;
+    localHitState.acceptedHitCount++;
+    localHitState.down = localHitState.hpRemaining == 0;
+    lastAcceptedHitEnteredCritical =
+      static_cast<uint32_t>(previousHpRemaining) * 10 > static_cast<uint32_t>(localHitState.maxHits) * 3 &&
+      static_cast<uint32_t>(localHitState.hpRemaining) * 10 <= static_cast<uint32_t>(localHitState.maxHits) * 3;
+  }
+  localHitState.lastHitSequence = sequence;
+  blasterFire.setFireInhibited(localHitState.down);
+  ++localHpRevision;
+  barDisplay.setLocalHpState(localHitState.hpRemaining,
+                             localHitState.maxHits,
+                             localHitState.down,
+                             runtimeConfig.hit.hitFlashMs,
+                             now);
+  return localHitState.down;
+}
+
+static void beginPiezoEnableButton() {
+  piezoEnableButton.begin(PIEZO_ENABLE_BUTTON_PIN, millis());
+  barDisplay.setPiezoDetectionEnabled(false);
+}
+
+static void pollPiezoEnableButton(uint32_t now) {
+  if (!piezoEnableButton.poll(now)) return;
+  // Discard pending peaks and channel qualification on BOTH edges. Enabling
+  // still requires the existing quiet/rearm dwell, never the switch transient.
+  piezoSensor.setEnabled(piezoEnableButton.enabled(), now);
+  barDisplay.setPiezoDetectionEnabled(piezoEnableButton.enabled());
+  BB_DEBUG_SERIAL.printf("[PIEZO ADC] enabled=%s button_pin=%d\n",
+                         piezoEnableButton.enabled() ? "true" : "false",
+                         PIEZO_ENABLE_BUTTON_PIN);
+  publishDeviceStatusIfConnected("piezo_adc_toggle");
+}
+
+static void beginAnalogPiezo() {
+  piezoSensor.begin(currentPiezoSensorConfig(), piezoEnableButton.enabled(), millis());
+}
+
+static void publishAdcHitEvent(int targetId, int peakRaw, int thresholdRaw, uint32_t eventTsMs) {
+  if (!piezoEnableButton.enabled()) return;
+  if (!barDisplay.startupReady(eventTsMs)) {
+    BB_DEBUG_SERIAL.printf("[PIEZO AO] ignored during startup loading target=%d peak=%d threshold=%d ts_ms=%lu\n",
+                  targetId,
+                  peakRaw,
+                  thresholdRaw,
+                  (unsigned long)eventTsMs);
+    return;
+  }
+  if (hpDamageGuard.active(millis())) {
+    BB_DEBUG_SERIAL.printf(
+        "[PIEZO AO] ignored by HP damage guard target=%d peak=%d threshold=%d ts_ms=%lu\n",
+        targetId,
+        peakRaw,
+        thresholdRaw,
+        (unsigned long)eventTsMs);
+    return;
+  }
+  if (localHitState.down || localHitState.hpRemaining == 0) {
+    BB_DEBUG_SERIAL.printf("[PIEZO AO] ignored after down target=%d peak=%d threshold=%d hp=%u/%u ts_ms=%lu mqtt_connected=%s queue=%u\n",
+                  targetId,
+                  peakRaw,
+                  thresholdRaw,
+                  localHitState.hpRemaining,
+                  localHitState.maxHits,
+                  (unsigned long)eventTsMs,
+                  hitMqtt.connected() ? "true" : "false",
+                  hitMqtt.offlineQueueCount());
+    if (SerialBT.hasClient()) {
+      SerialBT.printf("[PIEZO AO] ignored after down peak=%d threshold=%d hp=%u/%u\n",
+                      peakRaw,
+                      thresholdRaw,
+                      localHitState.hpRemaining,
+                      localHitState.maxHits);
+    }
+    publishDeviceStatusIfConnected("local_hit_ignored_down");
+    return;
+  }
+
+  uint32_t sequence = ++hitSequence;
+  lastAcceptedHitTargetId = targetId;
+  lastAcceptedHitStrength = static_cast<uint16_t>(constrain(peakRaw, 0, 65535));
+  lastAcceptedHitTimestampMs = eventTsMs;
+  const bool downNow = applyLocalHit(sequence, millis());
+
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] local hit_event seq=%lu target=%d peak=%d threshold=%d hp=%u/%u down=%s ts_ms=%lu mqtt_connected=%s queue=%u\n",
+                (unsigned long)sequence,
+                targetId,
+                peakRaw,
+                thresholdRaw,
+                localHitState.hpRemaining,
+                localHitState.maxHits,
+                downNow ? "true" : "false",
+                (unsigned long)eventTsMs,
+                hitMqtt.connected() ? "true" : "false",
+                hitMqtt.offlineQueueCount());
+
+  if (SerialBT.hasClient()) {
+    SerialBT.printf("[PIEZO AO] local hit seq=%lu peak=%d threshold=%d hp=%u/%u down=%s\n",
+                    (unsigned long)sequence,
+                    peakRaw,
+                    thresholdRaw,
+                    localHitState.hpRemaining,
+                    localHitState.maxHits,
+                    downNow ? "true" : "false");
+  }
+
+  if (hitMqtt.offlineQueueCount() > 0) {
+    hitMqtt.queueHitEvent(targetId,
+                          sequence,
+                          eventTsMs,
+                          peakRaw,
+                          thresholdRaw,
+                          localHitState.acceptedHitCount,
+                          localHitState.hpRemaining,
+                          localHitState.maxHits,
+                          localHitState.down);
+    publishDeviceStatusIfConnected(localHitState.down ? "local_hit_down" : "local_hit");
+    return;
+  }
+  if (!hitMqtt.publishHitEvent(targetId,
+                               sequence,
+                               eventTsMs,
+                               false,
+                               0,
+                               0,
+                               peakRaw,
+                               thresholdRaw,
+                               localHitState.acceptedHitCount,
+                               localHitState.hpRemaining,
+                               localHitState.maxHits,
+                               localHitState.down)) {
+    hitMqtt.queueHitEvent(targetId,
+                          sequence,
+                          eventTsMs,
+                          peakRaw,
+                          thresholdRaw,
+                          localHitState.acceptedHitCount,
+                          localHitState.hpRemaining,
+                          localHitState.maxHits,
+                          localHitState.down);
+  }
+  publishDeviceStatusIfConnected(localHitState.down ? "local_hit_down" : "local_hit");
+}
+
+static void pollAnalogPiezo(uint32_t now) {
+  PiezoHitCandidate candidate;
+  if (!piezoSensor.poll(now, candidate)) return;
+  publishAdcHitEvent(candidate.targetId,
+                     candidate.peakRaw,
+                     candidate.thresholdRaw,
+                     candidate.eventTsMs);
+}
+
+static char normalizeCommandChar(char c) {
+  if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  return c;
+}
+
+static bool isIgnoredCommandChar(char c) {
+  return c == '\r' || c == '\n' || c == ' ' || c == '\t';
+}
+
+
+battlebang::esp::app::FirmwareIdentity firmwareIdentity() {
+  battlebang::esp::app::FirmwareIdentity id;
+  id.app = BB_GO2_FULL_APP_NAME;
+  id.hardware = BB_GO2_FULL_HARDWARE;
+  id.version = BB_GO2_FULL_VERSION;
+  id.build = BB_GO2_FULL_BUILD;
+  id.gitSha = BB_GO2_FULL_GIT_SHA;
+  id.releaseRepo = BB_GO2_FULL_RELEASE_REPO;
+  id.latestManifestUrl = BB_GO2_FULL_LATEST_MANIFEST_URL;
+  return id;
+}
+
+String configuredOtaPollUrl() {
+  if (runtimeConfig.common.otaLocalMirrorUrl.length() > 0) return runtimeConfig.common.otaLocalMirrorUrl;
+  return runtimeConfig.common.otaPublicManifestUrl.length() > 0
+             ? runtimeConfig.common.otaPublicManifestUrl
+             : String(BB_GO2_FULL_LATEST_MANIFEST_URL);
+}
+
+bool commandCenterApprovesPolledOta(const battlebang::esp::ota::OtaManifest& manifest, String& reason) {
+  if (runtimeConfig.common.otaChannel.length() > 0 && manifest.channel.length() > 0 &&
+      manifest.channel != runtimeConfig.common.otaChannel) {
+    reason = String("channel mismatch expected=") + runtimeConfig.common.otaChannel + " got=" + manifest.channel;
+    return false;
+  }
+  if (!runtimeConfig.common.otaCommandCenterControlled) {
+    reason = "command-center approval not required by config";
+    return true;
+  }
+  if (runtimeConfig.common.otaDesiredBuild == 0) {
+    reason = "command-center desired_build is 0";
+    return false;
+  }
+  if (manifest.build != runtimeConfig.common.otaDesiredBuild) {
+    reason = String("manifest build ") + String(manifest.build) +
+             " does not match command-center desired_build " + String(runtimeConfig.common.otaDesiredBuild);
+    return false;
+  }
+  reason = "command-center desired_build approved";
+  return true;
+}
+
+String copyPayloadToString(const byte* payload, unsigned int length) {
+  String out;
+  out.reserve(length + 1);
+  for (unsigned int i = 0; i < length; ++i) out += static_cast<char>(payload[i]);
+  return out;
+}
+
+void onMqttConfigMessage(const char*, const byte* payload, unsigned int length) {
+  if (length > COMMAND_LINE_MAX) {
+    BB_DEBUG_SERIAL.println("[MQTT] config payload too large; dropped");
+    return;
+  }
+  pendingMqttConfigJson = copyPayloadToString(payload, length);
+  pendingMqttConfig = true;
+}
+
+void onMqttOtaMessage(const char*, const byte* payload, unsigned int length) {
+  if (length > COMMAND_LINE_MAX) {
+    BB_DEBUG_SERIAL.println("[MQTT] OTA manifest payload too large; dropped");
+    return;
+  }
+  pendingMqttOtaJson = copyPayloadToString(payload, length);
+  pendingMqttOta = true;
+}
+
+static void resetAll(const char* source = "serial") {
+  resetPiezoSensor();
+  hitMqtt.clearOfflineQueue();
+  blasterFire.stopFire("reset");
+  resetLocalHitState();
+  jetsonLastFireReason = FireReason::Reset;
+  barDisplay.clearRemoteDisplay();
+  barDisplay.markDirty();
+  ringDisplay.clearCooldown();
+  ringDisplay.markDirty();
+  BB_DEBUG_SERIAL.printf("[RESET] source=%s ADC/local HP/display state cleared\n", source);
+  if (SerialBT.hasClient()) SerialBT.println("[RESET] ADC/local HP/display state cleared");
+  publishHpResetEventIfConnected(source);
+  publishDeviceStatusIfConnected("reset");
+}
+
+static bool sourceCanFire(const char* source) {
+  if (source == nullptr) return false;
+  return strcmp(source, "jetson") == 0 || strcmp(source, "usb") == 0;
+}
+
+static void markNetworkQuietForFire(uint32_t now, uint32_t quietMs = FIRE_NETWORK_QUIET_MS) {
+  const uint32_t until = now + quietMs;
+  if ((int32_t)(until - fireNetworkQuietUntilMs) > 0) fireNetworkQuietUntilMs = until;
+}
+
+static void markNetworkQuietForFireStop(uint32_t now) {
+  const uint32_t relaySettleMs = BLASTER_RELAY2_ENABLED_VALUE ? runtimeConfig.blaster.relayDelay1Ms : 0;
+  markNetworkQuietForFire(now, relaySettleMs + FIRE_NETWORK_QUIET_MS);
+}
+
+static bool shouldDeferNetworkForFire(uint32_t now) {
+  if (jetsonFireHoldActive || jetsonFireReleaseRequired) return true;
+  return (int32_t)(fireNetworkQuietUntilMs - now) > 0;
+}
+
+static void stopBlasterFireCommand(const char* source) {
+  markNetworkQuietForFireStop(millis());
+  jetsonFireHoldActive = false;
+  jetsonFireReleaseRequired = false;
+  blasterFire.stopFire(source);
+  BB_DEBUG_SERIAL.printf("[CMD] fire stopped source=%s\n", source);
+  if (SerialBT.hasClient()) {
+    SerialBT.printf("[CMD] fire stopped source=%s\n", source);
+  }
+}
+
+static const char* defaultFireSourceForTransport(const char* source) {
+  return strcmp(source, "jetson") == 0 ? "jetson_uart" : source;
+}
+
+static String parseFireSource(String line, const char* source) {
+  line.trim();
+  int split = line.indexOf(' ');
+  if (split < 0) return String(defaultFireSourceForTransport(source));
+  String fireSource = line.substring(split + 1);
+  fireSource.trim();
+  if (fireSource.startsWith("source=")) fireSource = fireSource.substring(7);
+  fireSource.trim();
+  return fireSource.length() > 0 ? fireSource : String(defaultFireSourceForTransport(source));
+}
+
+static void handleCommandChar(char c, const char* source, const char* fireSourceOverride = nullptr) {
+  c = normalizeCommandChar(c);
+  if (c == CMD_RESET_HIT_DISPLAY || c == 'r') {
+    resetAll(source);
+    return;
+  }
+  if (c == 'x' || c == '0') {
+    stopBlasterFireCommand(source);
+    return;
+  }
+  if (c == '1' || c == 'f') {
+    if (!sourceCanFire(source)) {
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s reason=jetson_uart_required\n", source);
+      if (SerialBT.hasClient() && strcmp(source, "bt") == 0) {
+        SerialBT.println("[FIRE] ignored reason=jetson_uart_required");
+      }
+      return;
+    }
+    const char* fireSource = (fireSourceOverride != nullptr && fireSourceOverride[0] != '\0')
+                                 ? fireSourceOverride
+                                 : defaultFireSourceForTransport(source);
+    if (strcmp(source, "usb") == 0) {
+      const bool accepted = blasterFire.startFire(runtimeConfig.blaster.fireDefaultDurationMs, fireSource, false);
+      BB_DEBUG_SERIAL.printf("[CMD] USB fire %s source=%s duration_ms=%lu\n",
+                    accepted ? "started" : "ignored",
+                    fireSource,
+                    (unsigned long)runtimeConfig.blaster.fireDefaultDurationMs);
+      return;
+    }
+    const uint32_t now = millis();
+    const bool wasFiring = blasterFire.isFiring();
+    bool accepted = false;
+    if (jetsonFireReleaseRequired) {
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required\n", source, fireSource);
+      return;
+    }
+    if (wasFiring && !jetsonFireHoldActive) {
+      jetsonFireReleaseRequired = true;
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s fire_source=%s reason=non_jetson_fire_active\n", source, fireSource);
+      return;
+    }
+    if (jetsonFireHoldActive && !wasFiring) {
+      jetsonFireReleaseRequired = true;
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
+      BB_DEBUG_SERIAL.printf("[FIRE] ignored source=%s fire_source=%s reason=release_required_after_duration\n", source, fireSource);
+      return;
+    }
+    if (wasFiring) {
+      blasterFire.noteFireSource(fireSource);
+      accepted = true;
+    } else {
+      accepted = blasterFire.startFire(runtimeConfig.blaster.fireMaxDurationMs, fireSource, true);
+    }
+    if (accepted) {
+      jetsonFireHoldActive = true;
+      jetsonFireReleaseRequired = false;
+      jetsonFireHoldDeadlineMs = now + JETSON_FIRE_HOLD_TIMEOUT_MS;
+      markNetworkQuietForFire(now, JETSON_FIRE_HOLD_TIMEOUT_MS + FIRE_NETWORK_QUIET_MS);
+    }
+    BB_DEBUG_SERIAL.printf("[CMD] fire %s source=%s fire_source=%s hold_timeout_ms=%lu\n",
+                  accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
+                  source,
+                  fireSource,
+                  (unsigned long)JETSON_FIRE_HOLD_TIMEOUT_MS);
+    if (SerialBT.hasClient()) {
+      SerialBT.printf("[CMD] fire %s source=%s\n",
+                      accepted ? (wasFiring ? "keepalive" : "started") : "ignored",
+                      source);
+    }
+  }
+}
+
+static void replyToSource(const char* source, const String& line) {
+  BB_DEBUG_SERIAL.println(line);
+  if (String(source) == "bt" && SerialBT.hasClient()) SerialBT.println(line);
+}
+
+static bool parsePositiveInt(const String& text, int& value) {
+  if (text.length() == 0) return false;
+  for (size_t i = 0; i < text.length(); ++i) {
+    if (!isDigit(text[i])) return false;
+  }
+  const long parsed = text.toInt();
+  if (parsed <= 0 || parsed > 32767) return false;
+  value = static_cast<int>(parsed);
+  return true;
+}
+
+static void addHitTuningStatus(JsonObject doc) {
+  const PiezoDiagnostics piezoDiagnostics = piezoSensor.diagnostics();
+  doc["piezo_adc_enabled"] = piezoEnableButton.enabled();
+  doc["piezo_enable_button_pin"] = PIEZO_ENABLE_BUTTON_PIN;
+  doc["piezo_enable_button_pressed"] = piezoEnableButton.pressed();
+  doc["hit_cooldown_ms"] = runtimeConfig.hit.hitCooldownMs;
+  doc["offline_queue_capacity"] = runtimeConfig.hit.offlineQueueCapacity;
+  doc["offline_queue_flush_interval_ms"] = runtimeConfig.hit.offlineQueueFlushIntervalMs;
+  doc["led_brightness"] = runtimeConfig.hit.ledBrightness;
+  doc["ring_brightness"] = runtimeConfig.hit.ringBrightness;
+  doc["piezo_left_pin"] = PIEZO_LEFT_AO_PIN;
+  doc["piezo_right_pin"] = PIEZO_RIGHT_AO_PIN;
+  doc["piezo_front_pin"] = PIEZO_FRONT_AO_PIN;
+  doc["piezo_ao_pin"] = PIEZO_LEFT_AO_PIN;
+  doc["piezo_ao_threshold_raw"] = runtimeConfig.hit.piezoAoThresholdRaw;
+  doc["piezo_ao_rearm_raw"] = runtimeConfig.hit.piezoAoRearmRaw;
+  doc["piezo_ao_capture_window_ms"] = runtimeConfig.hit.piezoAoCaptureWindowMs;
+  doc["piezo_ao_debug_period_ms"] = runtimeConfig.hit.piezoAoDebugPeriodMs;
+  doc["piezo_ao_rearm_stable_ms"] = runtimeConfig.hit.piezoAoRearmStableMs;
+  doc["piezo_channel_enable_mask"] = runtimeConfig.hit.piezoChannelEnableMask;
+  doc["hp_bar_group_count"] = runtimeConfig.hit.hpBarGroupCount;
+  doc["hp_bar_color_order"] = runtimeConfig.hit.hpBarColorOrder;
+  JsonObject channels = doc.createNestedObject("piezo_channels");
+  JsonObject left = channels.createNestedObject("left");
+  left["pin"] = PIEZO_LEFT_AO_PIN;
+  left["enabled"] = piezoDiagnostics.left.enabled;
+  left["qualified"] = piezoDiagnostics.left.qualified;
+  left["raw"] = piezoDiagnostics.left.raw;
+  JsonObject right = channels.createNestedObject("right");
+  right["pin"] = PIEZO_RIGHT_AO_PIN;
+  right["enabled"] = piezoDiagnostics.right.enabled;
+  right["qualified"] = piezoDiagnostics.right.qualified;
+  right["raw"] = piezoDiagnostics.right.raw;
+  JsonObject front = channels.createNestedObject("front");
+  front["pin"] = PIEZO_FRONT_AO_PIN;
+  front["enabled"] = piezoDiagnostics.front.enabled;
+  front["qualified"] = piezoDiagnostics.front.qualified;
+  front["raw"] = piezoDiagnostics.front.raw;
+  doc["max_hits"] = runtimeConfig.hit.maxHits;
+  doc["hit_flash_ms"] = runtimeConfig.hit.hitFlashMs;
+}
+
+static void addLocalHitStatus(JsonObject doc) {
+  doc["accepted_hit_count"] = localHitState.acceptedHitCount;
+  doc["hp_remaining"] = localHitState.hpRemaining;
+  doc["max_hits"] = localHitState.maxHits;
+  doc["down"] = localHitState.down;
+  doc["ring_fill_ratio"] = localHpFillRatio();
+  doc["last_hit_sequence"] = localHitState.lastHitSequence;
+
+  JsonObject combat = doc.createNestedObject("combat");
+  combat["accepted_hit_count"] = localHitState.acceptedHitCount;
+  combat["hp"] = localHitState.hpRemaining;
+  combat["hp_current"] = localHitState.hpRemaining;
+  combat["max_hp"] = localHitState.maxHits;
+  combat["hp_max"] = localHitState.maxHits;
+  combat["down"] = localHitState.down;
+  combat["ring_fill_ratio"] = localHpFillRatio();
+  combat["last_hit_sequence"] = localHitState.lastHitSequence;
+
+  JsonObject hp = doc.createNestedObject("hp");
+  hp["robot_id"] = runtimeConfig.hit.robotId;
+  hp["current"] = localHitState.hpRemaining;
+  hp["max"] = localHitState.maxHits;
+  hp["down"] = localHitState.down;
+  hp["accepted_hit_count"] = localHitState.acceptedHitCount;
+  hp["ring_fill_ratio"] = localHpFillRatio();
+  hp["last_hit_sequence"] = localHitState.lastHitSequence;
+}
+
+static void addBlasterTuningStatus(JsonObject doc) {
+  doc["nixo_fire_default_duration_ms"] = runtimeConfig.blaster.fireDefaultDurationMs;
+  doc["nixo_fire_min_duration_ms"] = runtimeConfig.blaster.fireMinDurationMs;
+  doc["nixo_fire_max_duration_ms"] = runtimeConfig.blaster.fireMaxDurationMs;
+  doc["nixo_fire_cooldown_ms"] = runtimeConfig.blaster.fireCooldownMs;
+  doc["nixo_prefire_delay_ms"] = runtimeConfig.blaster.prefireDelayMs;
+  doc["nixo_relay_delay1_ms"] = runtimeConfig.blaster.relayDelay1Ms;
+  doc["nixo_relay1_pin"] = BLASTER_RELAY1_PIN_VALUE;
+  doc["nixo_relay2_pin"] = BLASTER_RELAY2_PIN_VALUE;
+  doc["nixo_relay_on_level"] = BLASTER_RELAY_ON_LEVEL_VALUE;
+  doc["nixo_relay_off_level"] = BLASTER_RELAY_OFF_LEVEL_VALUE;
+  doc["nixo_relay1_readback"] = digitalRead(BLASTER_RELAY1_PIN_VALUE);
+  doc["nixo_relay2_readback"] = BLASTER_RELAY2_ENABLED_VALUE ? digitalRead(BLASTER_RELAY2_PIN_VALUE) : -1;
+  doc["nixo_state"] = blasterFire.fireStateName();
+  doc["nixo_fire_source"] = blasterFire.activeFireSource();
+  doc["nixo_last_fire_source"] = blasterFire.lastFireSource();
+  doc["jetson_fire_hold_active"] = jetsonFireHoldActive;
+  doc["jetson_fire_release_required"] = jetsonFireReleaseRequired;
+  doc["jetson_fire_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
+
+  JsonObject blaster = doc.createNestedObject("nixo");
+  blaster["id"] = runtimeConfig.blaster.blasterId;
+  blaster["state"] = blasterFire.fireStateName();
+  blaster["firing"] = blasterFire.isFiring();
+  blaster["active_source"] = blasterFire.activeFireSource();
+  blaster["last_source"] = blasterFire.lastFireSource();
+  blaster["fire_inhibited"] = blasterFire.fireInhibited();
+  blaster["cooldown_remaining_ms"] = blasterFire.cooldownRemainingMs(millis());
+  blaster["transport"] = BLASTER_TRANSPORT;
+  blaster["mqtt_connected"] = blasterFire.connected();
+  blaster["command_topic"] = blasterFire.commandTopic();
+  blaster["relay1_pin"] = BLASTER_RELAY1_PIN_VALUE;
+  blaster["relay2_pin"] = BLASTER_RELAY2_PIN_VALUE;
+  blaster["relay_on_level"] = BLASTER_RELAY_ON_LEVEL_VALUE;
+  blaster["relay_off_level"] = BLASTER_RELAY_OFF_LEVEL_VALUE;
+  blaster["relay1_readback"] = digitalRead(BLASTER_RELAY1_PIN_VALUE);
+  blaster["relay2_readback"] = BLASTER_RELAY2_ENABLED_VALUE ? digitalRead(BLASTER_RELAY2_PIN_VALUE) : -1;
+  blaster["jetson_hold_active"] = jetsonFireHoldActive;
+  blaster["jetson_release_required"] = jetsonFireReleaseRequired;
+  blaster["jetson_hold_timeout_ms"] = JETSON_FIRE_HOLD_TIMEOUT_MS;
+}
+
+static void printStatusJson(const char* source, const char* reason) {
+  DynamicJsonDocument doc(5120);
+  doc["event"] = "status";
+  doc["reason"] = reason;
+  doc["firmware"] = FIRMWARE_NAME;
+  doc["firmware_role"] = FIRMWARE_ROLE;
+  doc["configured"] = runtimeConfig.common.configured;
+  doc["device_id"] = runtimeConfig.common.deviceId;
+  doc["robot_id"] = runtimeConfig.hit.robotId;
+  doc["nixo_id"] = runtimeConfig.blaster.blasterId;
+  doc["hp_remaining"] = localHitState.hpRemaining;
+  doc["max_hits"] = localHitState.maxHits;
+  doc["down"] = localHitState.down;
+  doc["group"] = runtimeConfig.common.group;
+  doc["stage_id"] = runtimeConfig.common.stageId;
+  doc["location"] = runtimeConfig.common.location;
+  doc["mqtt_configured"] = hitMqtt.configured();
+  doc["mqtt_connected"] = hitMqtt.connected();
+  doc["nixo_transport"] = BLASTER_TRANSPORT;
+  doc["nixo_mqtt_configured"] = blasterFire.configured();
+  doc["nixo_mqtt_connected"] = blasterFire.connected();
+  doc["jetson_uart_protocol"] = "framed";
+  doc["jetson_uart_rx_pin"] = UART_RX_PIN;
+  doc["jetson_uart_tx_pin"] = UART_TX_PIN;
+  doc["jetson_uart_baud"] = UART_BAUD;
+  doc["jetson_uart_rx_readback"] = digitalRead(UART_RX_PIN);
+  doc["jetson_uart_tx_readback"] = digitalRead(UART_TX_PIN);
+  const auto& uartCounters = jetsonPacketParser.counters();
+  doc["jetson_uart_rx_frames"] = uartCounters.frames;
+  doc["jetson_uart_rx_discarded_bytes"] = uartCounters.discarded_bytes;
+  doc["jetson_uart_rx_crc_errors"] = uartCounters.crc_errors;
+  doc["jetson_uart_tx_overflow_errors"] = jetsonPacketTx.overflowErrors();
+  doc["jetson_uart_reliable_admission_errors"] = jetsonReliableAdmissionErrors;
+  doc["jetson_uart_reliable_active"] = jetsonReliableTx.activeCount();
+  char uartRxHex[sizeof(jetsonLastRxBytes) * 2 + 1] = {};
+  for (size_t i = 0; i < jetsonLastRxLength; ++i) {
+    snprintf(uartRxHex + i * 2, 3, "%02x", jetsonLastRxBytes[i]);
+  }
+  doc["jetson_uart_rx_last_chunk_bytes"] = jetsonLastRxChunkLength;
+  doc["jetson_uart_rx_last_hex"] = uartRxHex;
+  doc["mqtt_auth_configured"] =
+      runtimeConfig.common.mqttUsername.length() > 0 || runtimeConfig.common.mqttPassword.length() > 0;
+  doc["mqtt_host"] = runtimeConfig.common.mqttHost;
+  doc["mqtt_port"] = runtimeConfig.common.mqttPort;
+  doc["mqtt_root"] = runtimeConfig.common.mqttRoot;
+  doc["event_topic"] = hitMqtt.eventTopic();
+  doc["hp_bar_topic"] = hitMqtt.ringCommandTopic();
+  doc["nixo_command_topic"] = blasterFire.commandTopic();
+  doc["device_status_topic"] = hitMqtt.deviceStatusTopic();
+  doc["device_config_topic"] = hitMqtt.deviceConfigTopic();
+  doc["device_ota_topic"] = hitMqtt.deviceOtaTopic();
+  doc["ota_supported"] = true;
+  doc["ota_command_center_controlled"] = runtimeConfig.common.otaCommandCenterControlled;
+  doc["ota_auto_check_enabled"] = runtimeConfig.common.otaAutoCheckEnabled;
+  doc["ota_desired_build"] = runtimeConfig.common.otaDesiredBuild;
+  doc["ota_channel"] = runtimeConfig.common.otaChannel;
+  doc["ota_manifest_url"] = configuredOtaPollUrl();
+  doc["post_ota_reboot"] = postOtaReboot;
+  doc["offline_queue"] = hitMqtt.offlineQueueCount();
+  doc["firing"] = blasterFire.isFiring();
+  doc["fire_inhibited"] = blasterFire.fireInhibited();
+  doc["cooldown_remaining_ms"] = blasterFire.cooldownRemainingMs(millis());
+  doc["hit_sequence"] = hitSequence;
+  addHitTuningStatus(doc.as<JsonObject>());
+  addLocalHitStatus(doc.as<JsonObject>());
+  addBlasterTuningStatus(doc.as<JsonObject>());
+  doc["uptime_ms"] = millis();
+  String out;
+  serializeJson(doc, out);
+  replyToSource(source, out);
+}
+
+static void rememberPublishedStatusSnapshot() {
+  hasPublishedStatusSnapshot = true;
+  lastPublishedHpRemaining = localHitState.hpRemaining;
+  lastPublishedMaxHits = localHitState.maxHits;
+  lastPublishedAcceptedHitCount = localHitState.acceptedHitCount;
+  lastPublishedDown = localHitState.down;
+  lastPublishedBlasterFiring = blasterFire.isFiring();
+  lastPublishedFireInhibited = blasterFire.fireInhibited();
+  lastPublishedJetsonHoldActive = jetsonFireHoldActive;
+  lastPublishedJetsonReleaseRequired = jetsonFireReleaseRequired;
+  lastPublishedBlasterState = blasterFire.fireStateName();
+  lastPublishedBlasterActiveSource = blasterFire.activeFireSource();
+  lastPublishedBlasterLastFireSource = blasterFire.lastFireSource();
+}
+
+static bool statusStateChanged() {
+  if (!hasPublishedStatusSnapshot) return true;
+  return lastPublishedHpRemaining != localHitState.hpRemaining ||
+         lastPublishedMaxHits != localHitState.maxHits ||
+         lastPublishedAcceptedHitCount != localHitState.acceptedHitCount ||
+         lastPublishedDown != localHitState.down ||
+         lastPublishedBlasterFiring != blasterFire.isFiring() ||
+         lastPublishedFireInhibited != blasterFire.fireInhibited() ||
+         lastPublishedJetsonHoldActive != jetsonFireHoldActive ||
+         lastPublishedJetsonReleaseRequired != jetsonFireReleaseRequired ||
+         strcmp(lastPublishedBlasterState, blasterFire.fireStateName()) != 0 ||
+         lastPublishedBlasterActiveSource != blasterFire.activeFireSource() ||
+         lastPublishedBlasterLastFireSource != blasterFire.lastFireSource();
+}
+
+static bool localHitStateDead() {
+  return localHitState.down || localHitState.hpRemaining == 0;
+}
+
+static void rememberJetsonHpStatusSnapshot() {
+  hasSentJetsonHpStatus = true;
+  lastJetsonHpRemaining = localHitState.hpRemaining;
+  lastJetsonMaxHits = localHitState.maxHits;
+  lastJetsonAcceptedHitCount = localHitState.acceptedHitCount;
+  lastJetsonDead = localHitStateDead();
+}
+
+static bool jetsonHpStatusChanged() {
+  if (!hasSentJetsonHpStatus) return true;
+  return lastJetsonHpRemaining != localHitState.hpRemaining ||
+         lastJetsonMaxHits != localHitState.maxHits ||
+         lastJetsonAcceptedHitCount != localHitState.acceptedHitCount ||
+         lastJetsonDead != localHitStateDead();
+}
+
+
+static uint16_t readPacketBe16(const uint8_t* data) {
+  return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | data[1]);
+}
+
+static void writePacketBe16(uint8_t* data, uint16_t value) {
+  data[0] = static_cast<uint8_t>(value >> 8);
+  data[1] = static_cast<uint8_t>(value);
+}
+
+static void writePacketBe32(uint8_t* data, uint32_t value) {
+  data[0] = static_cast<uint8_t>(value >> 24);
+  data[1] = static_cast<uint8_t>(value >> 16);
+  data[2] = static_cast<uint8_t>(value >> 8);
+  data[3] = static_cast<uint8_t>(value);
+}
+
+static uint64_t readPacketBe64(const uint8_t* data) {
+  uint64_t value = 0;
+  for (uint8_t i = 0; i < 8; ++i) value = (value << 8) | data[i];
+  return value;
+}
+
+static bool savePersistentHpMaxConfig(uint16_t maxHits, uint64_t generation, bool locked) {
+  PersistentHpMaxConfig config;
+  config.max_hits = maxHits;
+  config.generation = generation;
+  config.locked = locked;
+  uint8_t blob[battlebang::go2_full::uart::kPersistentHpMaxConfigBytes] = {};
+  if (!battlebang::go2_full::uart::encodePersistentHpMaxConfig(config, blob, sizeof(blob))) return false;
+  Preferences prefs;
+  if (!prefs.begin(HP_MAX_CONFIG_NAMESPACE, false)) return false;
+  const bool saved = prefs.putBytes(HP_MAX_CONFIG_KEY, blob, sizeof(blob)) == sizeof(blob);
+  prefs.end();
+  return saved;
+}
+
+static bool loadPersistentHpMaxConfig(PersistentHpMaxConfig& config) {
+  Preferences prefs;
+  if (!prefs.begin(HP_MAX_CONFIG_NAMESPACE, true)) return false;
+  const size_t length = prefs.getBytesLength(HP_MAX_CONFIG_KEY);
+  uint8_t blob[battlebang::go2_full::uart::kPersistentHpMaxConfigBytes] = {};
+  const bool loaded = length == sizeof(blob) && prefs.getBytes(HP_MAX_CONFIG_KEY, blob, sizeof(blob)) == sizeof(blob) &&
+                      battlebang::go2_full::uart::decodePersistentHpMaxConfig(blob, sizeof(blob), config);
+  prefs.end();
+  return loaded;
+}
+
+static bool clearPersistentHpMaxConfig() {
+  Preferences prefs;
+  if (!prefs.begin(HP_MAX_CONFIG_NAMESPACE, false)) return false;
+  const bool cleared = prefs.clear();
+  prefs.end();
+  return cleared;
+}
+
+static uint32_t jetsonPacketCapabilities() {
+  uint32_t caps = battlebang::go2_full::uart::CapabilityFireControl |
+                  battlebang::go2_full::uart::CapabilityHpSnapshot |
+                  battlebang::go2_full::uart::CapabilityHitEvent |
+                  battlebang::go2_full::uart::CapabilityHpDamage |
+                  battlebang::go2_full::uart::CapabilityHpDamageGuard |
+                  battlebang::go2_full::uart::CapabilityHpMaxConfig |
+                  battlebang::go2_full::uart::CapabilityLinkMetrics |
+                  battlebang::go2_full::uart::CapabilityDiagEcho;
+  if (BLASTER_RELAY2_ENABLED_VALUE) caps |= battlebang::go2_full::uart::CapabilityRelay2Ch;
+  return caps;
+}
+
+static uint16_t nextJetsonPacketSequence() {
+  const uint16_t sequence = jetsonPacketTxSequence;
+  jetsonPacketTxSequence = battlebang::go2_full::uart::nextSequence(jetsonPacketTxSequence);
+  return sequence;
+}
+
+static bool queueJetsonPacket(Frame& frame, bool reliable = false) {
+  if (frame.sender_epoch == 0) frame.sender_epoch = jetsonPacketSenderEpoch;
+  if (reliable && !jetsonReliableTx.track(frame, millis())) {
+    ++jetsonReliableAdmissionErrors;
+    return false;
+  }
+  return jetsonPacketTx.enqueue(frame);
+}
+
+static HpSnapshot currentHpPacketSnapshot() {
+  HpSnapshot hp;
+  hp.revision = localHpRevision;
+  hp.remaining = localHitState.hpRemaining;
+  hp.maximum = localHitState.maxHits;
+  hp.accepted_hits = localHitState.acceptedHitCount;
+  hp.down = localHitStateDead();
+  hp.last_hit_sequence = localHitState.lastHitSequence;
+  return hp;
+}
+
+static FireState currentFirePacketState(uint32_t now) {
+  if (blasterFire.fireInhibited()) return FireState::Inhibited;
+  if (jetsonFireReleaseRequired) return FireState::ReleaseRequired;
+  const char* state = blasterFire.fireStateName();
+  if (strcmp(state, "prefire_delay") == 0) return FireState::Prefire;
+  if (strcmp(state, "flywheel_spinup") == 0) return FireState::Spinup;
+  if (strcmp(state, "firing") == 0) return FireState::Firing;
+  if (strcmp(state, "flywheel_spindown") == 0) return FireState::Spindown;
+  if (blasterFire.cooldownRemainingMs(now) > 0) return FireState::Cooldown;
+  if (strcmp(state, "ready") == 0) return FireState::Idle;
+  return FireState::Fault;
+}
+
+static CommandSource currentFirePacketSource() {
+  const char* source = blasterFire.activeFireSource();
+  if (source == nullptr || source[0] == '\0') source = blasterFire.lastFireSource();
+  if (source != nullptr && strstr(source, "mqtt") != nullptr) return CommandSource::EspMqtt;
+  if (source != nullptr && strstr(source, "jetson") != nullptr) return jetsonLastFireCommandSource;
+  return CommandSource::Unknown;
+}
+
+static FireSnapshot currentFirePacketSnapshot(uint32_t now) {
+  FireSnapshot fire;
+  fire.state = currentFirePacketState(now);
+  fire.inhibited = blasterFire.fireInhibited();
+  fire.source = currentFirePacketSource();
+  fire.remaining_ms = blasterFire.isFiring() && (int32_t)(jetsonFireHoldDeadlineMs - now) > 0
+                          ? static_cast<uint16_t>(min(static_cast<uint32_t>(jetsonFireHoldDeadlineMs - now),
+                                                      static_cast<uint32_t>(0xFFFF)))
+                          : 0;
+  if (fire.inhibited) {
+    fire.reason = FireReason::HpDown;
+  } else if (fire.state == FireState::ReleaseRequired) {
+    fire.reason = FireReason::ReleaseRequired;
+  } else if (fire.state == FireState::Prefire || fire.state == FireState::Spinup || fire.state == FireState::Firing) {
+    fire.reason = FireReason::None;
+  } else {
+    fire.reason = jetsonLastFireReason;
+  }
+  return fire;
+}
+
+static void queueJetsonDeviceStatusPacket() {
+  Frame frame;
+  composeDeviceStatus(runtimeConfig.blaster.blasterId.c_str(),
+                      jetsonPacketCapabilities(),
+                      jetsonPacketSenderEpoch,
+                      nextJetsonPacketSequence(),
+                      frame);
+  queueJetsonPacket(frame);
+}
+
+static void queueJetsonHpSnapshotPacket() {
+  Frame frame;
+  composeHpSnapshot(currentHpPacketSnapshot(), jetsonPacketSenderEpoch, nextJetsonPacketSequence(), frame);
+  queueJetsonPacket(frame);
+}
+
+static void queueJetsonLinkMetricsPacket() {
+  const auto& counters = jetsonPacketParser.counters();
+  Frame frame;
+  composeLinkMetrics(
+      millis(),
+      static_cast<uint16_t>(min(counters.crc_errors, static_cast<uint32_t>(0xFFFF))),
+      static_cast<uint16_t>(min(counters.overflow_errors + jetsonPacketTx.overflowErrors() +
+                                    jetsonReliableAdmissionErrors,
+                                static_cast<uint32_t>(0xFFFF))),
+      static_cast<uint16_t>(min(jetsonReliableTx.retryCount(), static_cast<uint32_t>(0xFFFF))),
+      LinkState::Healthy,
+      jetsonPacketSenderEpoch,
+      nextJetsonPacketSequence(),
+      frame);
+  queueJetsonPacket(frame);
+}
+
+static void queueJetsonHitEventPacket() {
+  Frame frame;
+  frame.type = MessageType::HitEvent;
+  frame.flags = FrameFlags::AckRequired;
+  frame.sequence = nextJetsonPacketSequence();
+  frame.sender_epoch = jetsonPacketSenderEpoch;
+  frame.payload_length = 18;
+  writePacketBe32(frame.payload + 0, hitSequence);
+  writePacketBe32(frame.payload + 4, localHpRevision);
+  frame.payload[8] = static_cast<uint8_t>(lastAcceptedHitTargetId);
+  writePacketBe16(frame.payload + 9, lastAcceptedHitStrength);
+  writePacketBe32(frame.payload + 11, lastAcceptedHitTimestampMs);
+  writePacketBe16(frame.payload + 15, localHitState.hpRemaining);
+  frame.payload[17] = localHitStateDead() ? 1 : 0;
+  queueJetsonPacket(frame, true);
+}
+
+static void queueJetsonFireStatusPacket(uint16_t sequence) {
+  Frame frame;
+  composeFireStatus(currentFirePacketSnapshot(millis()), jetsonPacketSenderEpoch, sequence, frame);
+  queueJetsonPacket(frame);
+}
+
+static void ackJetsonPacket(const Frame& request, AckResult result) {
+  Frame response;
+  composeAck(request, result, response, jetsonPacketSenderEpoch);
+  queueJetsonPacket(response);
+}
+
+static void nackJetsonPacket(const Frame& request, NackError error) {
+  Frame response;
+  composeNack(request, error, response, jetsonPacketSenderEpoch);
+  queueJetsonPacket(response);
+}
+
+static bool replayOrRejectDuplicate(const Frame& request) {
+  if (request.flags != FrameFlags::AckRequired) return false;
+  Frame cached;
+  const DedupeResult result = jetsonInboundDedupe.check(request, cached, millis());
+  if (result == DedupeResult::Duplicate) {
+    queueJetsonPacket(cached);
+    return true;
+  }
+  if (result == DedupeResult::Conflict) {
+    nackJetsonPacket(request, NackError::SequenceConflict);
+    return true;
+  }
+  return false;
+}
+
+static void rememberReliableRequest(const Frame& request, const Frame& response) {
+  if (request.flags == FrameFlags::AckRequired) jetsonInboundDedupe.remember(request, response, millis());
+}
+
+static uint16_t clampJetsonLeaseMs(uint16_t requested) {
+  if (requested < 50) return 50;
+  if (requested > JETSON_FIRE_HOLD_TIMEOUT_MS) return JETSON_FIRE_HOLD_TIMEOUT_MS;
+  return requested;
+}
+
+static uint16_t readHpDamageAmount(const Frame& frame) {
+  return readPacketBe16(frame.payload);
+}
+
+static AckResult applyPacketHpDamage(uint16_t amount) {
+  if (amount == 0 || localHitStateDead() || hpDamageGuard.active(millis())) return AckResult::NoopAlreadySafe;
+  uint16_t applied = 0;
+  while (applied < amount && localHitState.hpRemaining > 0 && !localHitState.down) {
+    lastAcceptedHitTargetId = 3;
+    lastAcceptedHitStrength = 0;
+    lastAcceptedHitTimestampMs = millis();
+    applyLocalHit(++hitSequence, millis());
+    ++applied;
+  }
+  return applied == 0 ? AckResult::NoopAlreadySafe : AckResult::Applied;
+}
+
+static bool packetCommandNeedsAuthority(MessageType type) {
+  return type == MessageType::FireHold || type == MessageType::HpReset || type == MessageType::HpDamage ||
+         type == MessageType::HpDamageGuard || type == MessageType::HpMaxConfig;
+}
+
+static void applyPreparedMaxHp(uint16_t maxHits, uint64_t generation) {
+  hpMaxConfigGeneration = generation;
+  hpMaxConfigLocked = false;
+  battlebang::go2_full::uart::applyPreparedMaxHpState(localHitState, maxHits);
+  lastAcceptedHitEnteredCritical = false;
+  ++localHpRevision;
+  hasSentJetsonHpStatus = false;
+  blasterFire.setFireInhibited(localHitState.down);
+  barDisplay.resetLocalHpState(maxHits);
+  barDisplay.markDirty();
+}
+
+static void resetJetsonHostCommandSequence() {
+  jetsonHostCommandSequenceSeen = false;
+  jetsonLastHostCommandSequence = 0;
+}
+
+static void rememberJetsonHostCommandSequence(const Frame& frame) {
+  if (frame.sender_epoch != jetsonAuthorizedHostEpoch) return;
+  if (!jetsonHostCommandSequenceSeen || isNewerSequence(frame.sequence, jetsonLastHostCommandSequence)) {
+    jetsonHostCommandSequenceSeen = true;
+    jetsonLastHostCommandSequence = frame.sequence;
+  }
+}
+
+static bool staleJetsonActiveCommand(const Frame& frame) {
+  return packetCommandNeedsAuthority(frame.type) && jetsonHostCommandSequenceSeen &&
+         frame.sender_epoch == jetsonAuthorizedHostEpoch &&
+         !isNewerSequence(frame.sequence, jetsonLastHostCommandSequence);
+}
+
+static void handleJetsonFrame(const Frame& frame) {
+  if (!battlebang::go2_full::uart::hasValidFlagsForType(frame)) {
+    nackJetsonPacket(frame, NackError::InvalidFlags);
+    return;
+  }
+  if (!isPayloadValid(frame) || frame.sender_epoch == 0) {
+    nackJetsonPacket(frame, NackError::InvalidPayload);
+    return;
+  }
+  if (frame.type == MessageType::Ack || frame.type == MessageType::Nack) {
+    if (frame.sender_epoch == jetsonAuthorizedHostEpoch) jetsonReliableTx.handleAckFrame(frame);
+    return;
+  }
+  if (packetCommandNeedsAuthority(frame.type) && frame.sender_epoch != jetsonAuthorizedHostEpoch) {
+    nackJetsonPacket(frame, NackError::NotReady);
+    return;
+  }
+  if (replayOrRejectDuplicate(frame)) return;
+  if (staleJetsonActiveCommand(frame)) {
+    nackJetsonPacket(frame, NackError::NotReady);
+    return;
+  }
+  switch (frame.type) {
+    case MessageType::CapabilitiesRequest:
+      // The wired port selects the peer; stored MQTT robot IDs do not pair it.
+      if (jetsonAuthorizedHostEpoch != frame.sender_epoch) {
+        resetJetsonHostCommandSequence();
+        hpDamageGuard.clear();
+      }
+      jetsonAuthorizedHostEpoch = frame.sender_epoch;
+      queueJetsonDeviceStatusPacket();
+      queueJetsonHpSnapshotPacket();
+      return;
+    case MessageType::FireHold: {
+      rememberJetsonHostCommandSequence(frame);
+      jetsonLastFireCommandSource = static_cast<CommandSource>(frame.payload[0]);
+      jetsonLastFireReason = FireReason::None;
+      char fireSource[24];
+      snprintf(fireSource, sizeof(fireSource), "jetson_uart:%u", frame.payload[0]);
+      const uint16_t leaseMs = clampJetsonLeaseMs(readPacketBe16(frame.payload + 1));
+      handleCommandChar('f', "jetson", fireSource);
+      if (jetsonFireHoldActive) {
+        jetsonFireHoldDeadlineMs = millis() + leaseMs;
+        markNetworkQuietForFire(millis(), leaseMs + FIRE_NETWORK_QUIET_MS);
+      }
+      queueJetsonFireStatusPacket(frame.sequence);
+      return;
+    }
+    case MessageType::FireStop: {
+      rememberJetsonHostCommandSequence(frame);
+      jetsonLastFireReason = static_cast<FireReason>(frame.payload[0]);
+      stopBlasterFireCommand("jetson_uart");
+      Frame response;
+      composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonFireStatusPacket(frame.sequence);
+      return;
+    }
+    case MessageType::HpReset: {
+      rememberJetsonHostCommandSequence(frame);
+      resetAll("jetson_uart");
+      Frame response;
+      composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::HpDamage: {
+      rememberJetsonHostCommandSequence(frame);
+      const AckResult result = applyPacketHpDamage(readHpDamageAmount(frame));
+      Frame response;
+      composeAck(frame, result, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::HpDamageGuard: {
+      rememberJetsonHostCommandSequence(frame);
+      const bool enabled = frame.payload[0] != 0;
+      const bool resetHp = frame.payload[1] != 0;
+      const uint16_t leaseMs = readPacketBe16(frame.payload + 2);
+      const AckResult result = hpDamageGuard.apply(enabled, leaseMs, millis());
+      if (enabled && resetHp) resetAll("jetson_uart_guard");
+      Frame response;
+      composeAck(frame, result, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      if (resetHp) queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::HpMaxConfig: {
+      const uint16_t maxHits = readPacketBe16(frame.payload);
+      const uint64_t generation = readPacketBe64(frame.payload + 2);
+      const HpMaxConfigOperation operation = static_cast<HpMaxConfigOperation>(frame.payload[10]);
+      if (operation == HpMaxConfigOperation::PrepareSet) {
+        if (generation < hpMaxConfigGeneration) {
+          nackJetsonPacket(frame, NackError::OutOfOrder);
+          return;
+        }
+        if (generation == hpMaxConfigGeneration && hpMaxConfigLocked) {
+          nackJetsonPacket(frame, NackError::Inhibited);
+          return;
+        }
+        if (!savePersistentHpMaxConfig(maxHits, generation, false)) {
+          nackJetsonPacket(frame, NackError::InternalError);
+          return;
+        }
+        rememberJetsonHostCommandSequence(frame);
+        applyPreparedMaxHp(maxHits, generation);
+        Frame response;
+        composeAck(frame, AckResult::Applied, response, jetsonPacketSenderEpoch);
+        queueJetsonPacket(response);
+        rememberReliableRequest(frame, response);
+        queueJetsonHpSnapshotPacket();
+        return;
+      }
+      if (generation != hpMaxConfigGeneration) {
+        nackJetsonPacket(frame, NackError::OutOfOrder);
+        return;
+      }
+      if (maxHits != localHitState.maxHits) {
+        nackJetsonPacket(frame, NackError::InvalidPayload);
+        return;
+      }
+      if (localHitState.down || localHitState.hpRemaining != localHitState.maxHits) {
+        nackJetsonPacket(frame, NackError::Busy);
+        return;
+      }
+      const AckResult result = hpMaxConfigLocked ? AckResult::NoopAlreadySafe : AckResult::Applied;
+      if (!savePersistentHpMaxConfig(maxHits, generation, true)) {
+        nackJetsonPacket(frame, NackError::InternalError);
+        return;
+      }
+      rememberJetsonHostCommandSequence(frame);
+      hpMaxConfigLocked = true;
+      Frame response;
+      composeAck(frame, result, response, jetsonPacketSenderEpoch);
+      queueJetsonPacket(response);
+      rememberReliableRequest(frame, response);
+      queueJetsonHpSnapshotPacket();
+      return;
+    }
+    case MessageType::DiagEcho: {
+      Frame response;
+      if (composeDiagEchoReply(frame, response)) {
+        response.sender_epoch = jetsonPacketSenderEpoch;
+        queueJetsonPacket(response);
+        rememberReliableRequest(frame, response);
+      }
+      return;
+    }
+    default:
+      nackJetsonPacket(frame, NackError::UnsupportedType);
+      return;
+  }
+}
+
+static void pollJetsonUart() {
+  uint8_t data[64];
+  while (JetsonSerial.available() > 0) {
+    const size_t readCount = JetsonSerial.readBytes(data, min(static_cast<size_t>(JetsonSerial.available()), sizeof(data)));
+    jetsonLastRxChunkLength = readCount;
+    jetsonLastRxLength = min(readCount, sizeof(jetsonLastRxBytes));
+    memcpy(jetsonLastRxBytes, data, jetsonLastRxLength);
+    jetsonPacketParser.feed(data, readCount, millis(), handleJetsonFrame);
+  }
+  jetsonReliableTx.retryDue(millis(), jetsonPacketTx);
+  while (jetsonPacketTx.pendingBytes() > 0) {
+    size_t length = 0;
+    const uint8_t* bytes = jetsonPacketTx.peek(length);
+    if (bytes == nullptr || length == 0) return;
+    const int writable = JetsonSerial.availableForWrite();
+    if (writable <= 0) return;
+    const size_t chunk = min(length, static_cast<size_t>(writable));
+    const size_t written = JetsonSerial.write(bytes, chunk);
+    if (written == 0) return;
+    jetsonPacketTx.consume(written);
+  }
+}
+
+static void sendJetsonHpStatus(const char* reason) {
+  if (strcmp(reason, "hit") == 0) queueJetsonHitEventPacket();
+  queueJetsonHpSnapshotPacket();
+  rememberJetsonHpStatusSnapshot();
+}
+
+static void publishJetsonHpStatus() {
+  if (!hasSentJetsonHpStatus) {
+    if (millis() - jetsonBootMs < JETSON_BOOT_RESET_DELAY_MS) return;
+    sendJetsonHpStatus("reset");
+    return;
+  }
+  const bool hpDecreased = localHitState.hpRemaining < lastJetsonHpRemaining;
+  const bool hpIncreased = localHitState.hpRemaining > lastJetsonHpRemaining;
+  const bool isDead = localHitStateDead();
+  const bool becameDead = isDead && !lastJetsonDead;
+  if (becameDead) {
+    sendJetsonHpStatus("dead");
+    return;
+  }
+  if (hpDecreased) {
+    sendJetsonHpStatus("hit");
+    return;
+  }
+  if (!isDead && (hpIncreased || lastJetsonDead)) {
+    sendJetsonHpStatus("reset");
+    return;
+  }
+  if (jetsonHpStatusChanged()) {
+    rememberJetsonHpStatusSnapshot();
+  }
+}
+
+static bool publishHpResetEventIfConnected(const char* reason) {
+  if (!hitMqtt.connected()) {
+    pendingHpResetEvent = true;
+    return false;
+  }
+  const bool ok = hitMqtt.publishHpResetEvent(++hitSequence,
+                                             millis(),
+                                             reason,
+                                             localHitState.acceptedHitCount,
+                                             localHitState.hpRemaining,
+                                             localHitState.maxHits,
+                                             localHitState.down);
+  pendingHpResetEvent = !ok;
+  return ok;
+}
+
+static void publishDeviceStatusIfConnected(const char* reason) {
+  if (!hitMqtt.connected()) return;
+  DynamicJsonDocument doc(5120);
+  doc["type"] = "status";
+  doc["reason"] = reason;
+  doc["firmware_app"] = BB_GO2_FULL_APP_NAME;
+  doc["firmware_version"] = BB_GO2_FULL_VERSION;
+  doc["firmware_build"] = BB_GO2_FULL_BUILD;
+  doc["firmware_hardware"] = BB_GO2_FULL_HARDWARE;
+  doc["git_sha"] = BB_GO2_FULL_GIT_SHA;
+  doc["configured"] = runtimeConfig.common.configured;
+  doc["device_id"] = runtimeConfig.common.deviceId;
+  doc["robot_id"] = runtimeConfig.hit.robotId;
+  doc["nixo_id"] = runtimeConfig.blaster.blasterId;
+  doc["hp_remaining"] = localHitState.hpRemaining;
+  doc["max_hits"] = localHitState.maxHits;
+  doc["down"] = localHitState.down;
+  doc["group"] = runtimeConfig.common.group;
+  doc["stage_id"] = runtimeConfig.common.stageId;
+  doc["location"] = runtimeConfig.common.location;
+  doc["wifi"] = WiFi.status() == WL_CONNECTED ? "UP" : "DOWN";
+  doc["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String();
+  doc["mqtt_connected"] = hitMqtt.connected();
+  doc["nixo_transport"] = BLASTER_TRANSPORT;
+  doc["nixo_mqtt_connected"] = blasterFire.connected();
+  doc["mqtt_root"] = runtimeConfig.common.mqttRoot;
+  doc["ota_supported"] = true;
+  doc["ota_command_center_controlled"] = runtimeConfig.common.otaCommandCenterControlled;
+  doc["ota_auto_check_enabled"] = runtimeConfig.common.otaAutoCheckEnabled;
+  doc["ota_desired_build"] = runtimeConfig.common.otaDesiredBuild;
+  doc["ota_channel"] = runtimeConfig.common.otaChannel;
+  doc["ota_manifest_url"] = configuredOtaPollUrl();
+  doc["post_ota_reboot"] = postOtaReboot;
+  doc["offline_queue"] = hitMqtt.offlineQueueCount();
+  doc["firing"] = blasterFire.isFiring();
+  doc["fire_inhibited"] = blasterFire.fireInhibited();
+  doc["hit_sequence"] = hitSequence;
+  addHitTuningStatus(doc.as<JsonObject>());
+  addLocalHitStatus(doc.as<JsonObject>());
+  addBlasterTuningStatus(doc.as<JsonObject>());
+  doc["uptime_ms"] = millis();
+  String out;
+  serializeJson(doc, out);
+  if (!hitMqtt.publishDeviceStatus(out.c_str())) {
+    BB_DEBUG_SERIAL.printf("[MQTT] device status publish failed len=%u topic=%s\n",
+                  static_cast<unsigned int>(out.length()),
+                  hitMqtt.deviceStatusTopic());
+  }
+  rememberPublishedStatusSnapshot();
+}
+
+static void reapplyRuntimeConfig(const char* reason) {
+  hitMqtt.clearOfflineQueue();
+  blasterFire.stopFire("config-reapply");
+  hitMqtt.setManagementHandlers(onMqttConfigMessage, onMqttOtaMessage);
+  hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
+  blasterFire.begin(runtimeConfig);
+  barDisplay.setBrightness(runtimeConfig.hit.ledBrightness);
+  barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
+  barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
+  ringDisplay.setBrightness(runtimeConfig.hit.ringBrightness);
+  syncLocalHitStateWithRuntimeConfig();
+  beginAnalogPiezo();
+  BB_DEBUG_SERIAL.printf("[CONFIG] runtime config reapplied reason=%s configured=%s robot_id=%s nixo_id=%s broker=%s:%u event_topic=%s nixo_topic=%s\n",
+                reason,
+                runtimeConfig.common.configured ? "true" : "false",
+                runtimeConfig.hit.robotId.c_str(),
+                runtimeConfig.blaster.blasterId.c_str(),
+                runtimeConfig.common.mqttHost.c_str(),
+                runtimeConfig.common.mqttPort,
+                hitMqtt.eventTopic(),
+                blasterFire.commandTopic());
+}
+
+
+static void checkOtaManifestJson(const String& json, bool requireCommandCenterApproval, const char* source) {
+  battlebang::esp::ota::OtaManifest manifest;
+  String error;
+  if (!battlebang::esp::ota::parseManifestJson(json.c_str(), manifest, error)) {
+    BB_DEBUG_SERIAL.print("[OTA] manifest rejected: ");
+    BB_DEBUG_SERIAL.println(error);
+    publishDeviceStatusIfConnected("ota_manifest_rejected");
+    return;
+  }
+  if (requireCommandCenterApproval) {
+    String approvalReason;
+    if (!commandCenterApprovesPolledOta(manifest, approvalReason)) {
+      BB_DEBUG_SERIAL.print("[OTA] auto poll not approved: ");
+      BB_DEBUG_SERIAL.println(approvalReason);
+      publishDeviceStatusIfConnected("ota_not_approved");
+      return;
+    }
+    BB_DEBUG_SERIAL.print("[OTA] auto poll approved: ");
+    BB_DEBUG_SERIAL.println(approvalReason);
+  }
+  String reason;
+  if (!battlebang::esp::ota::shouldApplyManifest(manifest, firmwareIdentity(), reason)) {
+    BB_DEBUG_SERIAL.print("[OTA] skipped: ");
+    BB_DEBUG_SERIAL.println(reason);
+    publishDeviceStatusIfConnected("ota_skipped");
+    return;
+  }
+  if (runtimeConfig.common.otaApplyOnlyInSafeState && blasterFire.isFiring()) {
+    BB_DEBUG_SERIAL.println("[OTA] deferred: Blaster relay is firing");
+    publishDeviceStatusIfConnected("ota_deferred");
+    return;
+  }
+  BB_DEBUG_SERIAL.print("[OTA] accepted from ");
+  BB_DEBUG_SERIAL.print(source);
+  BB_DEBUG_SERIAL.print(' ');
+  BB_DEBUG_SERIAL.println(battlebang::esp::ota::manifestSummary(manifest));
+  publishDeviceStatusIfConnected("ota_downloading");
+  resetAll("ota");
+  battlebang::esp::ota::OtaResult result = battlebang::esp::ota::runHttpOta(manifest);
+  BB_DEBUG_SERIAL.print("[OTA] result ok=");
+  BB_DEBUG_SERIAL.print(result.ok ? "yes" : "no");
+  BB_DEBUG_SERIAL.print(" message=");
+  BB_DEBUG_SERIAL.println(result.message);
+  publishDeviceStatusIfConnected(result.ok ? "ota_rebooting" : "ota_failed");
+  if (result.ok) {
+    battlebang::esp::ota::writeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY, true);
+    delay(500);
+    ESP.restart();
+  }
+}
+
+static void checkOtaManifestUrlWithPolicy(const String& url, bool requireCommandCenterApproval, const char* source) {
+  if (WiFi.status() != WL_CONNECTED) {
+    BB_DEBUG_SERIAL.println("[OTA] Wi-Fi is not connected; cannot fetch manifest");
+    publishDeviceStatusIfConnected("ota_no_wifi");
+    return;
+  }
+  String body;
+  String error;
+  if (!battlebang::esp::ota::fetchHttpText(url, 4096, body, error)) {
+    BB_DEBUG_SERIAL.print("[OTA] manifest fetch failed: ");
+    BB_DEBUG_SERIAL.println(error);
+    publishDeviceStatusIfConnected("ota_manifest_fetch_failed");
+    return;
+  }
+  checkOtaManifestJson(body, requireCommandCenterApproval, source);
+}
+
+static void checkOtaManifestUrl(const String& url) {
+  checkOtaManifestUrlWithPolicy(url, false, "serial");
+}
+
+static bool configJsonRequestsMaxHits(const String& json) {
+  DynamicJsonDocument doc(COMMAND_LINE_MAX + 256);
+  if (deserializeJson(doc, json) != DeserializationError::Ok) return false;
+  JsonObjectConst root = doc.as<JsonObjectConst>();
+  if (root.containsKey("max_hits") || root.containsKey("hits_to_down")) return true;
+  JsonObjectConst hit = root["hit"].as<JsonObjectConst>();
+  return !hit.isNull() && (hit.containsKey("max_hits") || hit.containsKey("hits_to_down"));
+}
+
+static void applyAndPersistConfig(const String& json, const char* source) {
+  String error;
+  RuntimeConfig next = runtimeConfig;
+  if (!applyRuntimeConfigJson(json.c_str(), next, error)) {
+    replyToSource(source, String("{\"event\":\"config_rejected\",\"error\":\"") + error + "\"}");
+    return;
+  }
+
+  if (configJsonRequestsMaxHits(json) &&
+      !canApplyGenericMaxHits(hpMaxConfigGeneration, localHitState.maxHits, next.hit.maxHits)) {
+    replyToSource(source, "{\"event\":\"config_rejected\",\"error\":\"max_hits cannot change during an active match session\"}");
+    return;
+  }
+
+  const bool saved = saveRuntimeConfigToNvs(next);
+  if (saved) {
+    runtimeConfig = next;
+    reapplyRuntimeConfig("serial_config");
+  }
+
+  DynamicJsonDocument doc(640);
+  doc["event"] = saved ? "config_applied" : "config_save_failed";
+  doc["saved"] = saved;
+  doc["configured"] = runtimeConfig.common.configured;
+  doc["config_version"] = runtimeConfig.common.configVersion;
+  doc["robot_id"] = runtimeConfig.hit.robotId;
+  doc["nixo_id"] = runtimeConfig.blaster.blasterId;
+  String out;
+  serializeJson(doc, out);
+  replyToSource(source, out);
+}
+
+static void handleCommandLine(String line, const char* source) {
+  line.trim();
+  if (line.length() == 0) return;
+
+  String lower = line;
+  lower.toLowerCase();
+
+  if (lower == "r" || lower == "reset") {
+    resetAll(source);
+    return;
+  }
+  if (lower == "1" || lower == "f" || lower == "fire" || lower.startsWith("f ") ||
+      lower.startsWith("fire ")) {
+    String fireSource = parseFireSource(line, source);
+    handleCommandChar('f', source, fireSource.c_str());
+    return;
+  }
+  if (lower == "x" || lower == "0" || lower == "stop-fire" || lower == "fire off") {
+    stopBlasterFireCommand(source);
+    return;
+  }
+  if (lower == "s" || lower == "status" || lower == "show-status") {
+    printStatusJson(source, "serial");
+    return;
+  }
+  if (lower == "show-config") {
+    replyToSource(source, runtimeConfigToJson(runtimeConfig, false));
+    return;
+  }
+  if (lower == "led-test off" || lower.startsWith("led-test pixel ") ||
+      lower.startsWith("led-test ")) {
+    if (lower == "led-test off") {
+      barDisplay.clearDiagnostic();
+      replyToSource(source, "{\"event\":\"led_test\",\"active\":false}");
+      return;
+    }
+    const bool pixelMode = lower.startsWith("led-test pixel ");
+    String valueText = lower.substring(pixelMode ? 15 : 9);
+    valueText.trim();
+    int value = 0;
+    const bool parsed = parsePositiveInt(valueText, value);
+    const bool accepted = parsed &&
+        (pixelMode ? barDisplay.setDiagnosticPixel(value, millis())
+                   : barDisplay.setDiagnosticGroup(value, millis()));
+    if (!accepted) {
+      replyToSource(source,
+                    pixelMode
+                        ? String("{\"event\":\"led_test_rejected\",\"error\":\"pixel must be 1..") +
+                              String(HP_BAR_NUM_LEDS) + "\"}"
+                        : String("{\"event\":\"led_test_rejected\",\"error\":\"group must be 1..") +
+                              String(runtimeConfig.hit.hpBarGroupCount) + "\"}");
+      return;
+    }
+    replyToSource(source,
+                  String("{\"event\":\"led_test\",\"active\":true,\"mode\":\"") +
+                      (pixelMode ? "pixel" : "group") + "\",\"index\":" + String(value) + "}");
+    return;
+  }
+  if (lower == "check-ota") {
+    checkOtaManifestUrl(configuredOtaPollUrl());
+    return;
+  }
+  if (lower.startsWith("check-ota ")) {
+    String url = line.substring(10);
+    url.trim();
+    checkOtaManifestUrl(url);
+    return;
+  }
+  if (lower == "clear-config") {
+    const bool runtimeConfigCleared = clearRuntimeConfigNvs();
+    const bool hpMaxConfigCleared = clearPersistentHpMaxConfig();
+    const bool cleared = runtimeConfigCleared && hpMaxConfigCleared;
+    if (cleared) {
+      hpMaxConfigGeneration = 0;
+      hpMaxConfigLocked = true;
+      runtimeConfig = runtimeConfigFromNvsOrBuild();
+      reapplyRuntimeConfig("clear-config");
+    }
+    replyToSource(source, String("{\"event\":\"config_cleared\",\"cleared\":") +
+                              (cleared ? "true" : "false") + "}");
+    return;
+  }
+  if (lower.startsWith("provision ")) {
+    String payload = line.substring(10);
+    payload.trim();
+    applyAndPersistConfig(payload, source);
+    return;
+  }
+  if (lower.startsWith("config ")) {
+    String payload = line.substring(7);
+    payload.trim();
+    applyAndPersistConfig(payload, source);
+    return;
+  }
+  if (line.length() == 1) {
+    handleCommandChar(line[0], source);
+    return;
+  }
+  replyToSource(source, String("{\"event\":\"command_ignored\",\"source\":\"") + source + "\"}");
+}
+
+static bool isImmediateCommandChar(char c) {
+  c = normalizeCommandChar(c);
+  return c == CMD_RESET_HIT_DISPLAY || c == 'r' || c == '1' || c == 'f' || c == 'x' || c == '0';
+}
+
+static void pollCommandStream(Stream& stream, String& line, const char* source) {
+  while (stream.available() > 0) {
+    char c = (char)stream.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      handleCommandLine(line, source);
+      line = "";
+      continue;
+    }
+    if (line.length() == 0 && isIgnoredCommandChar(c)) continue;
+    if (line.length() == 0 && isImmediateCommandChar(c) && stream.available() == 0) {
+      handleCommandChar(c, source);
+      continue;
+    }
+    if (line.length() >= COMMAND_LINE_MAX) {
+      line = "";
+      replyToSource(source, "{\"event\":\"command_rejected\",\"error\":\"line too long\"}");
+      continue;
+    }
+    line += c;
+  }
+}
+
+static void publishPeriodicJetsonPacketStatus(uint32_t now) {
+  if (now - lastJetsonPacketStatusMs < battlebang::go2_full::uart::kStatusPeriodMs) return;
+  lastJetsonPacketStatusMs = now;
+  queueJetsonDeviceStatusPacket();
+  queueJetsonHpSnapshotPacket();
+  queueJetsonFireStatusPacket(nextJetsonPacketSequence());
+  queueJetsonLinkMetricsPacket();
+}
+
+static void pollCommands() {
+  pollJetsonUart();
+#if !BB_GO2_FULL_JETSON_USB_SERIAL
+  pollCommandStream(Serial, usbCommandLine, "usb");
+#endif
+  pollCommandStream(SerialBT, btCommandLine, "bt");
+}
+
+static void updateJetsonFireHold(uint32_t now) {
+  if (!jetsonFireHoldActive && !jetsonFireReleaseRequired) return;
+  if ((int32_t)(now - jetsonFireHoldDeadlineMs) < 0) return;
+  jetsonFireHoldActive = false;
+  jetsonFireReleaseRequired = false;
+  if (blasterFire.isFiring()) {
+    markNetworkQuietForFireStop(now);
+    jetsonLastFireReason = FireReason::HoldTimeout;
+    blasterFire.stopFire("jetson-hold-timeout");
+  }
+  queueJetsonFireStatusPacket(nextJetsonPacketSequence());
+}
+
+
+static void processPendingMqttManagement() {
+  if (pendingMqttConfig) {
+    pendingMqttConfig = false;
+    const String payload = pendingMqttConfigJson;
+    pendingMqttConfigJson = "";
+    applyAndPersistConfig(payload, "mqtt");
+    publishDeviceStatusIfConnected("mqtt_config");
+  }
+  if (pendingMqttOta) {
+    pendingMqttOta = false;
+    const String payload = pendingMqttOtaJson;
+    pendingMqttOtaJson = "";
+    checkOtaManifestJson(payload, false, "mqtt");
+  }
+}
+
+static void publishMqttReconnectStatus(uint32_t now) {
+  const bool connected = hitMqtt.connected();
+  if (connected && !lastMqttConnected) {
+    lastDeviceStatusMs = now;
+    if (pendingHpResetEvent) publishHpResetEventIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "boot");
+    publishDeviceStatusIfConnected(hasSeenMqttConnection ? "mqtt_reconnected" : "mqtt_connected");
+    hasSeenMqttConnection = true;
+  }
+  lastMqttConnected = connected;
+}
+
+static void publishPeriodicDeviceStatus(uint32_t now) {
+  if (DEVICE_STATUS_PERIOD_MS == 0) return;
+  if (now - lastDeviceStatusMs < DEVICE_STATUS_PERIOD_MS) return;
+  lastDeviceStatusMs = now;
+  publishDeviceStatusIfConnected("heartbeat");
+}
+
+static void publishStateChangeDeviceStatus(uint32_t now) {
+  if (!hitMqtt.connected() || !statusStateChanged()) return;
+  lastDeviceStatusMs = now;
+  publishDeviceStatusIfConnected("state_changed");
+}
+
+static void pollConfiguredOta(uint32_t now) {
+  if (!runtimeConfig.common.otaAutoCheckEnabled) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (runtimeConfig.common.otaCommandCenterControlled &&
+      (runtimeConfig.common.otaDesiredBuild == 0 || runtimeConfig.common.otaDesiredBuild <= BB_GO2_FULL_BUILD)) {
+    return;
+  }
+  const uint32_t intervalS = runtimeConfig.common.otaCheckIntervalS < 30 ? 30 : runtimeConfig.common.otaCheckIntervalS;
+  const unsigned long intervalMs = static_cast<unsigned long>(intervalS) * 1000UL;
+  if (lastAutoOtaCheckMs == 0) {
+    lastAutoOtaCheckMs = now;
+    return;
+  }
+  if (now - lastAutoOtaCheckMs < intervalMs) return;
+  lastAutoOtaCheckMs = now;
+  const String url = configuredOtaPollUrl();
+  if (url.length() == 0) {
+    BB_DEBUG_SERIAL.println("[OTA] auto poll skipped: no manifest URL configured");
+    publishDeviceStatusIfConnected("ota_poll_no_url");
+    return;
+  }
+  BB_DEBUG_SERIAL.print("[OTA] auto polling ");
+  BB_DEBUG_SERIAL.println(url);
+  checkOtaManifestUrlWithPolicy(url, true, "auto_poll");
+}
+
+static void onBarDisplayUpdate(const BarDisplayUpdate& update) {
+  uint32_t now = millis();
+  if (update.resetHitState) {
+    resetPiezoSensor();
+    hitMqtt.clearOfflineQueue();
+    resetLocalHitState();
+    barDisplay.clearRemoteDisplay();
+    BB_DEBUG_SERIAL.println("[RESET] MQTT ADC/local HP state reset");
+    if (SerialBT.hasClient()) SerialBT.println("[RESET] MQTT ADC/local HP state reset");
+    publishHpResetEventIfConnected("mqtt_reset");
+    publishDeviceStatusIfConnected("mqtt_reset");
+    return;
+  }
+  if (!update.debugOverride) return;
+  barDisplay.setRemoteDisplay(update.fillRatio, update.mode, update.down, update.ttlMs, now);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+
+#if !BB_GO2_FULL_JETSON_USB_SERIAL
+  JetsonSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
+#endif
+  jetsonPacketSenderEpoch = esp_random();
+  if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = static_cast<uint32_t>(ESP.getEfuseMac() ^ (ESP.getEfuseMac() >> 32));
+  if (jetsonPacketSenderEpoch == 0) jetsonPacketSenderEpoch = 1;
+  jetsonBootMs = millis();
+  SerialBT.begin(BT_NAME);
+
+  postOtaReboot = battlebang::esp::ota::consumeRebootMarker(OTA_REBOOT_NAMESPACE, OTA_REBOOT_KEY);
+  const bool previousOtaReboot = battlebang::esp::ota::consumeRebootMarker("bb_go2_nixo", OTA_REBOOT_KEY);
+  postOtaReboot = postOtaReboot || previousOtaReboot;
+  runtimeConfig = runtimeConfigFromNvsOrBuild();
+  PersistentHpMaxConfig persistentHpMaxConfig;
+  if (loadPersistentHpMaxConfig(persistentHpMaxConfig)) {
+    runtimeConfig.hit.maxHits = persistentHpMaxConfig.max_hits;
+    localHitState.maxHits = persistentHpMaxConfig.max_hits;
+    hpMaxConfigGeneration = persistentHpMaxConfig.generation;
+    hpMaxConfigLocked = persistentHpMaxConfig.locked;
+  }
+
+  barDisplay.setGroupCount(runtimeConfig.hit.hpBarGroupCount);
+  barDisplay.setColorOrder(runtimeConfig.hit.hpBarColorOrder);
+  barDisplay.begin(runtimeConfig.hit.ledBrightness);
+  ringDisplay.begin(runtimeConfig.hit.ringBrightness);
+  beginPiezoEnableButton();
+  beginAnalogPiezo();
+  hitMqtt.setManagementHandlers(onMqttConfigMessage, onMqttOtaMessage);
+  hitMqtt.begin(runtimeConfig, onBarDisplayUpdate);
+  blasterFire.begin(runtimeConfig);
+  resetLocalHitState();
+
+  barDisplay.markDirty();
+  ringDisplay.markDirty();
+  barDisplay.tick(millis());
+  ringDisplay.tick(millis());
+
+  BB_DEBUG_SERIAL.printf("[PIN] UART2 RX=%d TX=%d | HP_BAR_LED=%d count=%d groups=%d leds_per_group=%d | RING_LED=%d count=%d | PIEZO left=%d right=%d front=%d | PIEZO_DO_DEBUG=%d\n",
+                UART_RX_PIN,
+                UART_TX_PIN,
+                HP_BAR_LED_PIN,
+                HP_BAR_NUM_LEDS,
+                runtimeConfig.hit.hpBarGroupCount,
+                HP_BAR_LEDS_PER_GROUP,
+                RING_LED_PIN,
+                RING_NUM_LEDS,
+                PIEZO_LEFT_AO_PIN,
+                PIEZO_RIGHT_AO_PIN,
+                PIEZO_FRONT_AO_PIN,
+                PIEZO_DO_PIN);
+  BB_DEBUG_SERIAL.printf("[ADC] threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu rearm_stable_ms=%lu\n",
+                runtimeConfig.hit.piezoAoThresholdRaw,
+                runtimeConfig.hit.piezoAoRearmRaw,
+                (unsigned long)runtimeConfig.hit.piezoAoCaptureWindowMs,
+                (unsigned long)runtimeConfig.hit.hitCooldownMs,
+                (unsigned long)runtimeConfig.hit.piezoAoRearmStableMs);
+  BB_DEBUG_SERIAL.printf("USB/BT CMD: '%c'=reset ADC hit/display state. Jetson UART uses the framed protocol only.\n",
+                CMD_RESET_HIT_DISPLAY);
+  BB_DEBUG_SERIAL.printf("USB/BT line commands: s/status/show-status, x/0/stop-fire/fire off, show-config, led-test <1..hp_bar_group_count>, led-test pixel <1..%d>, led-test off, provision {json}, config {json}, clear-config, check-ota [manifest-url].\n", HP_BAR_NUM_LEDS);
+  BB_DEBUG_SERIAL.printf("[UART] Jetson framed UART enabled sender_epoch=%lu; USB/BT keep legacy line commands.\n", (unsigned long)jetsonPacketSenderEpoch);
+  BB_DEBUG_SERIAL.print("release_repo=");
+  BB_DEBUG_SERIAL.println(BB_GO2_FULL_RELEASE_REPO);
+  BB_DEBUG_SERIAL.print("latest_manifest=");
+  BB_DEBUG_SERIAL.println(BB_GO2_FULL_LATEST_MANIFEST_URL);
+  if (postOtaReboot) BB_DEBUG_SERIAL.println("[OTA] post-OTA reboot marker consumed");
+  BB_DEBUG_SERIAL.print("Bluetooth name: ");
+  BB_DEBUG_SERIAL.println(BT_NAME);
+  BB_DEBUG_SERIAL.printf("[CC] robot_id=%s mqtt=%s broker=%s:%u event_topic=%s ring_topic=%s\n",
+                runtimeConfig.common.deviceId.c_str(),
+                hitMqtt.configured() ? "enabled" : "disabled",
+                runtimeConfig.common.mqttHost.c_str(),
+                runtimeConfig.common.mqttPort,
+                hitMqtt.eventTopic(),
+                hitMqtt.ringCommandTopic());
+#if !BB_GO2_FULL_JETSON_USB_SERIAL
+  // USB packet builds discard text output; do not construct its large status JSON.
+  printStatusJson("usb", "boot");
+#endif
+  BB_DEBUG_SERIAL.printf("[NIXO] transport=%s nixo_id=%s command_topic=%s relay1=%d relay2=%d relay_on=%d relay_off=%d delay1_ms=%lu fire_default_ms=%lu fire_min_ms=%lu fire_max_ms=%lu cooldown_ms=%lu prefire_ms=%lu\n",
+                BLASTER_TRANSPORT,
+                runtimeConfig.blaster.blasterId.c_str(),
+                blasterFire.commandTopic(),
+                BLASTER_RELAY1_PIN_VALUE,
+                BLASTER_RELAY2_PIN_VALUE,
+                BLASTER_RELAY_ON_LEVEL_VALUE,
+                BLASTER_RELAY_OFF_LEVEL_VALUE,
+                (unsigned long)runtimeConfig.blaster.relayDelay1Ms,
+                (unsigned long)runtimeConfig.blaster.fireDefaultDurationMs,
+                (unsigned long)runtimeConfig.blaster.fireMinDurationMs,
+                (unsigned long)runtimeConfig.blaster.fireMaxDurationMs,
+                (unsigned long)runtimeConfig.blaster.fireCooldownMs,
+                (unsigned long)runtimeConfig.blaster.prefireDelayMs);
+  queueJetsonDeviceStatusPacket();
+  queueJetsonHpSnapshotPacket();
+}
+
+void loop() {
+  uint32_t now = millis();
+
+  // Local hit judgment and HP/ring rendering must keep working even when
+  // Command Center/MQTT is offline, so service local paths before network IO.
+  pollCommands();
+  pollPiezoEnableButton(now);
+  pollAnalogPiezo(now);
+  blasterFire.tickLocal(now);
+  updateJetsonFireHold(now);
+  ringDisplay.setCooldownState(blasterFire.isFiring(),
+                               blasterFire.cooldownRemainingMs(now),
+                               blasterFire.cooldownDurationMs(),
+                               blasterFire.fireInhibited());
+  barDisplay.tick(now);
+  ringDisplay.tick(now);
+
+  publishJetsonHpStatus();
+  publishPeriodicJetsonPacketStatus(now);
+  const bool deferNetworkForFire = shouldDeferNetworkForFire(now);
+  if (!deferNetworkForFire) {
+    blasterFire.tickNetwork(now);
+    hitMqtt.tick(now, barDisplay.remoteDisplayActive(), true);
+    publishMqttReconnectStatus(now);
+    processPendingMqttManagement();
+    publishStateChangeDeviceStatus(now);
+    publishPeriodicDeviceStatus(now);
+    pollConfiguredOta(now);
+  }
+
+  delay(1);
+}

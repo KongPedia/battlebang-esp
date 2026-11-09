@@ -212,8 +212,8 @@
       "source_id": "wshobson",
       "source": "plugins/systems-programming/skills/memory-safety-patterns/references/details.md",
       "upstream_sha256": "c07b8a66b6fd7afc6e957e3443cdbfa17787370d41e2ef16372eb7dd2b551a44",
-      "sha256": "003f8e708db64fa658ed126cbfb6dcb220eca3a3fb6d86a8934286c30413ba3f",
-      "modifications": "Added ESP applicability boundary; Database shares one mutable mutex and const find-based reads; socket deleter frees invalid-descriptor storage; removed throwing generic destructor rollback; corrected shared_ptr exception-safety claim. Made host socket acquisition exception-safe by owning allocated descriptor storage before socket(); scoped Rust read guard before write acquisition to prevent self-deadlock. Reduce the cross-language/desktop worked-example collection to firmware ownership, borrowed queue/callback storage, explicit failure cleanup and synchronization criteria linked to actual ScopedPreferences and FrameTxQueue code. Remove throwing/heap/POSIX, GCC cleanup, Rust and C++20/desktop skeletons rather than retaining them behind warnings; explicitly reject iterator/span bounds-safety inference and preserve NVS partial-save/timing limits. Keep original source identity/license and record this substantive specialization."
+      "sha256": "6083194df64d66b2d3df0715bbf8dfd9bd2cc36345e4ee76c4530b46356e0cde",
+      "modifications": "Added ESP applicability boundary; Database shares one mutable mutex and const find-based reads; socket deleter frees invalid-descriptor storage; removed throwing generic destructor rollback; corrected shared_ptr exception-safety claim. Made host socket acquisition exception-safe by owning allocated descriptor storage before socket(); scoped Rust read guard before write acquisition to prevent self-deadlock. Reduce the cross-language/desktop worked-example collection to firmware ownership, borrowed queue/callback storage, explicit failure cleanup and synchronization criteria linked to actual ScopedPreferences and FrameTxQueue code. Remove throwing/heap/POSIX, GCC cleanup, Rust and C++20/desktop skeletons rather than retaining them behind warnings; explicitly reject iterator/span bounds-safety inference and preserve NVS partial-save/timing limits. Keep original source identity/license and record this substantive specialization. Updated local FrameTxQueue owner links to main's consolidated firmware/go2_full/uart/; upstream revision/hash unchanged."
     },
     {
       "local": ".agents/licenses/jeffallan-LICENSE",
@@ -260,16 +260,16 @@
       "source_id": "jeffallan",
       "source": "skills/embedded-systems/references/communication-protocols.md",
       "upstream_sha256": "c11b9462c6bdc07aa82fe9a0d7c991e84c80416351328efb8006b33580e7da32",
-      "sha256": "3697ec9d7d5694d74096f9f7202d9b77b903b23b8dbd381b74b09126fdaf0caf",
-      "modifications": "Retained upstream protocol topics; removed non-ESP register-level I2C/SPI-DMA/UART/CAN implementations, including unsigned timeout wrap and fixed eight-byte reads. Added bounded error/length/ownership criteria and existing production protocol/queue pointers; no replacement driver code."
+      "sha256": "8db6b4b7febf1cbb27cab8f7057e0c62e594e251eb3be51ca3566c62829b4395",
+      "modifications": "Retained upstream protocol topics; removed non-ESP register-level I2C/SPI-DMA/UART/CAN implementations, including unsigned timeout wrap and fixed eight-byte reads. Added bounded error/length/ownership criteria and existing production protocol/queue pointers; no replacement driver code. Updated local FrameTxQueue owner links to main's consolidated firmware/go2_full/uart/; upstream revision/hash unchanged."
     },
     {
       "local": ".agents/skills/embedded-systems/references/memory-optimization.md",
       "source_id": "jeffallan",
       "source": "skills/embedded-systems/references/memory-optimization.md",
       "upstream_sha256": "573eb22555200e5446dbf0c69bbb9c31b0e1e8c8f5061fc3cdd7c96a7b8668a6",
-      "sha256": "271bd099c0ce1d3ed7a9034ac6bb4ae4795de825a67abcf0201324536f179a7d",
-      "modifications": "Retained upstream topic structure; replaced unsupported implementation recipes with concise ESP32/repository review criteria. Removed unsafe raw-flash/recursive-retry, live-stack painting/scanning and unchecked pool/ring-buffer/allocation/linker examples; points to existing bounded queue and ScopedPreferences and version-checked SDK headroom measurement."
+      "sha256": "85f3277ad28536acaf33956158362881cd3ea09be99e36f7906939c73f8a7e2d",
+      "modifications": "Retained upstream topic structure; replaced unsupported implementation recipes with concise ESP32/repository review criteria. Removed unsafe raw-flash/recursive-retry, live-stack painting/scanning and unchecked pool/ring-buffer/allocation/linker examples; points to existing bounded queue and ScopedPreferences and version-checked SDK headroom measurement. Updated local FrameTxQueue owner links to main's consolidated firmware/go2_full/uart/; upstream revision/hash unchanged."
     }
   ]
 }

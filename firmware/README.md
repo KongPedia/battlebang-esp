@@ -8,8 +8,7 @@ Current deployable product code lives under `firmware/`; reusable mechanisms are
 | Product path | Explicit env / variant | Current documentation |
 | --- | --- | --- |
 | `firmware/go2/` | `esp32dev_go2` | [Go2 hit/HP/LED, provisioning and OTA](go2/README.md) |
-| `firmware/go2_nixo/` | `esp32dev_go2_nixo[_1ch/_2ch]` | [Integrated newline UART and relay variants](go2_nixo/README.md) |
-| `firmware/go2_nixo_framed_packet_uart/` | `esp32dev_go2_nixo_framed_packet_uart[_1ch/_2ch]`, `esp32dev_go2_nixo_framed_packet_usb_1ch/_2ch` | [Framed protocol and UART/USB transport](go2_nixo_framed_packet_uart/README.md); reuses selected Go2/Nixo sources |
+| `firmware/go2_full/` | `esp32dev_go2_full_usb_2ch`, `esp32dev_go2_full_uart_2ch` | [Go2 Full hit/HP, Blaster and framed UART2/USB](go2_full/README.md); one runtime, fixed 2ch relay |
 | `firmware/boss_target/` | `esp32dev_boss_target` | [Boss Target](boss_target/README.md) |
 | `firmware/heavy_blaster/` | `esp32dev_heavy_blaster` | [Heavy Blaster](heavy_blaster/README.md) |
 | `firmware/station/` | `esp32dev_station` | [Target Station](station/README.md) |
@@ -18,7 +17,7 @@ Current deployable product code lives under `firmware/`; reusable mechanisms are
 Bracket/shorthand env notation above describes alternatives, not literal shell arguments. Use the full name from
 `platformio.ini`. The root default is still legacy `esp32dev_turret_5`; never rely on an unqualified `pio run`.
 Runtime `robot_id`, `station_id` or `turret_id` belongs in NVS, not a numbered per-device build env.
-Go2/Nixo relay pin/polarity/channel count stay in the reviewed build/hardware profile. Turret Fleet already supports
+Go2 Full relay pin/polarity/channel count stay in the reviewed build/hardware profile. Turret Fleet already supports
 reviewed NVS-backed relay profiles/per-channel polarity; preserve that existing contract and safe-OFF validation.
 Do not generalize one product's runtime or build-only hardware policy to every family.
 
@@ -46,22 +45,25 @@ No universal C++ standard, file-size gate or new RTOS task is implied by this la
 ## OTA release ownership
 
 The unified [Firmware OTA Releases workflow](../.github/workflows/firmware-ota.yml) builds/packages/publishes the active
-family/variant matrix. It is not proof of native/Python test execution or successful device boot.
+family/variant matrix after focused Python release/template, USB-uploader and Go2 Full boot/pairing gates.
+Inspect those job results separately; publication does not prove full native/host coverage or successful device boot.
 Each variant owns a stable polling pointer and versioned audit artifacts; never use repo-wide `/releases/latest/download/...`.
 
 | Firmware / variant | Stable tag / manifest | Versioned tag prefix |
 | --- | --- | --- |
 | Go2 | `go2-latest/go2-manifest.json` | `go2-v` |
-| Go2/Nixo newline 1ch | `go2-nixo-1ch-latest/go2-nixo-1ch-manifest.json` | `go2-nixo-1ch-v` |
-| Go2/Nixo newline 2ch | `go2-nixo-2ch-latest/go2-nixo-2ch-manifest.json` | `go2-nixo-2ch-v` |
-| Framed UART 1ch | `go2-nixo-framed-packet-uart-1ch-latest/go2-nixo-framed-packet-uart-1ch-manifest.json` | `go2-nixo-framed-packet-uart-1ch-v` |
-| Framed UART 2ch | `go2-nixo-framed-packet-uart-2ch-latest/go2-nixo-framed-packet-uart-2ch-manifest.json` | `go2-nixo-framed-packet-uart-2ch-v` |
-| Framed USB 1ch | `go2-nixo-framed-packet-usb-1ch-latest/go2-nixo-framed-packet-usb-1ch-manifest.json` | `go2-nixo-framed-packet-usb-1ch-v` |
-| Framed USB 2ch | `go2-nixo-framed-packet-usb-2ch-latest/go2-nixo-framed-packet-usb-2ch-manifest.json` | `go2-nixo-framed-packet-usb-2ch-v` |
+| Go2 Full UART2 2ch | `go2-full-uart-2ch-latest/go2-full-uart-2ch-manifest.json` | `go2-full-uart-2ch-v` |
+| Go2 Full USB 2ch | `go2-full-usb-2ch-latest/go2-full-usb-2ch-manifest.json` | `go2-full-usb-2ch-v` |
 | Boss Target | `boss-target-latest/boss-target-manifest.json` | `boss-target-v` |
 | Heavy Blaster | `heavy-blaster-latest/heavy-blaster-manifest.json` | `heavy-blaster-v` |
 | Station | `station-latest/station-manifest.json` | `station-v` |
 | Turret Fleet | `turret-fleet-latest/manifest.json` | `turret-fleet-v` |
+
+Go2 Full uses app `battlebang-go2-full-{uart|usb}`, hardware `esp32dev-go2-full-button-relay-2ch-v1`
+and automatic `0.3.x` versions. The workflow keeps its stable polling pointers disabled during the button-hardware
+migration; a listed pointer is not a claim it is published. Keep automatic polling disabled until the selected pointer exists.
+For field USB updates without a clone, Python or PlatformIO, follow [the release upload guide](../docs/usb-release-upload.md).
+Development builds and initial provisioning are separate from routine application-only updates.
 
 The URL prefix is `https://github.com/KongPedia/battlebang-esp/releases/download/`.
 Check the committed matrix and product identity header before release work; this table is not a remote-release availability check.

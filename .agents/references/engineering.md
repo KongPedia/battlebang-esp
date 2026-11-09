@@ -20,7 +20,7 @@ create empty `bb_esp_mqtt`, a mega common library or runtime device-type switch.
 valid. An interface is justified by a replaceable boundary/test seam, not by a folder template or the word "clean".
 Header helpers must not accidentally pull unrelated OTA/Wi-Fi `.cpp`/dependencies into every binary.
 Inspect selected env inheritance, source filters, includes, build scripts and release path filters for all consumers.
-Framed UART/USB shares Go2/Nixo sources; changing a shared file can affect more than the folder's apparent product.
+Go2 Full UART2/USB shares one runtime; changing a shared file can affect more than the folder's apparent product.
 
 ## C++ lifetime, ownership and memory
 
@@ -42,7 +42,7 @@ Framed UART/USB shares Go2/Nixo sources; changing a shared file can affect more 
 
 ## Time, callbacks and concurrency
 
-- Preserve local safety/protocol work before reconnect/networking: framed main-loop ordering and `NixoFireClient::tickLocal()`
+- Preserve local safety/protocol work before reconnect/networking: framed main-loop ordering and `BlasterFireClient::tickLocal()`
   deliberately service local work first. Do not insert blocking Wi-Fi/MQTT/HTTP/NVS/delays into a lease/relay critical path.
 - Define bounded work, ownership, expiry and safe-off on every return/error path. Existing synchronous gated OTA callbacks
   are evidence to inspect, not proof that every callback is already nonblocking or permission for a broad rewrite.
@@ -101,7 +101,7 @@ respect established local exceptions rather than recasing existing APIs or intro
 | Surface | Default for new names | Existing example |
 | --- | --- | --- |
 | Firmware/library folders and C++ files | Short `snake_case` product/capability or responsibility; let folders supply context | `config/runtime_config.h`, `uart/protocol.h`, `lib/bb_esp_ota` |
-| C++ types (classes, structs, enums) | `PascalCase`, a domain noun or precise role | `RuntimeConfig`, `Frame`, `FrameTxQueue`, `NixoFireClient` |
+| C++ types (classes, structs, enums) | `PascalCase`, a domain noun or precise role | `RuntimeConfig`, `Frame`, `FrameTxQueue`, `BlasterFireClient` |
 | C++ functions/methods and variables | Existing `lowerCamelCase`; action verbs for operations, clear state nouns/predicates | `startFire`, `decodeFrame`, `durationMs`, `isFiring`; private `fireState_` |
 | C++ namespaces | Existing short lowercase/`snake_case` domain/capability | `go2`, `battlebang::esp::ota` |
 | C++ scoped constants / macros | Existing `kPascalCase` / `UPPER_SNAKE_CASE`; retain required macro prefixes | `kYawPotPin`, `HIT_COOLDOWN_MS` |
@@ -143,7 +143,8 @@ Not every task uses every layer. Guidance-only work stops at static checks; do n
 For fixes observe expected behavior fail, not just an import/fixture error. Characterize before behavior-preserving extraction.
 Reuse `test/test_go2_nixo_uart`, `tests/run_tests.sh` and focused `tests/python` contracts as appropriate; do not assume whole
 pytest/native commands are safe or equivalent. Hardware/integration flags and operational helpers need explicit inspection.
-Shared changes cover all consuming envs/variants and release filters. The current OTA workflow is not a host-test suite.
+Shared changes cover all consuming envs/variants and release filters. The current OTA workflow runs focused Python release/template, USB-uploader and Go2 Full boot/pairing gates;
+it is not the full native/host suite or physical validation.
 
 Independent reviews report severity, file/location, triggering condition, observed evidence and smallest fix; label speculative
 concerns as questions. Check reentrancy, expiry/rollover, partial parsing/save, safe boot/reset, offline operation and rollback.

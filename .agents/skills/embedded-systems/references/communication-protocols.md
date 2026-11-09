@@ -31,8 +31,8 @@ Do not change dependencies, flags, watchdogs or firmware configuration from this
   synchronization; single-owner foreground queues are not automatically safe for ISR/task or multicore access.
 - Preserve parser length/CRC rejection, resynchronization and bounded per-tick work. Keep binary application streams
   free of debug/provisioning text.
-- Inspect the existing bounded [FrameTxQueue implementation](../../../../firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp)
-  and its [owner/API](../../../../firmware/go2_nixo_framed_packet_uart/uart/runtime.h) before adding another queue.
+- Inspect the existing bounded [FrameTxQueue implementation](../../../../firmware/go2_full/uart/runtime.cpp)
+  and its [owner/API](../../../../firmware/go2_full/uart/runtime.h) before adding another queue.
   It reports admission failure and supports partial consumption; it is not a generic synchronized ISR queue.
 
 ## CAN Bus Implementation

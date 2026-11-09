@@ -7,7 +7,7 @@ The current family index is [firmware/README.md](../firmware/README.md); the [co
 | Folder | PlatformIO env | Local config/env | Current policy |
 | --- | --- | --- | --- |
 | `../firmware/go2/` | `esp32dev_go2` | `firmware/go2/.env.go2` from example; identity/tuning stored in NVS | Active. Generic image; `go2_01`/`go2_02`/`go2_03` are runtime `robot_id` values, not build envs. |
-| `../firmware/go2_nixo/` | `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/.env.go2_nixo` from example; identity/tuning stored in NVS | Active integrated hit/LED + Nixo relay fallback. Relay helper uses common library; relay pins/polarity/channel count remain build variants. |
+| `../firmware/go2_full/` | `esp32dev_go2_full`, `esp32dev_go2_full_usb_2ch`, `esp32dev_go2_full_uart_2ch` | `firmware/go2_full/.env.go2_full` from example; identity/tuning stored in NVS | Active integrated hit/HP + 2ch Blaster relay + framed Jetson packet firmware. USB and UART2 are transport builds of the same runtime main. |
 | `../firmware/boss_target/` | `esp32dev_boss_target` | `firmware/boss_target/.env.boss_target` from `.env.boss_target.example` | Active. Already moved to `firmware/boss_target/`; common helpers stay in `bb_esp_*` libraries and gameplay remains local. |
 | `../firmware/heavy_blaster/` | `esp32dev_heavy_blaster` | `firmware/heavy_blaster/.env.heavy-blaster` from `.env.heavy-blaster.example` | Active. Already moved to `firmware/heavy_blaster/`; keep station/relay unlock domain code local. |
 | `../firmware/station/` | `esp32dev_station` | `firmware/station/.env.station` from `.env.station.example` | Active. Target Station firmware for Fleet Dashboard `/demo` tab `2`; per-board `station_id` and Wi-Fi/MQTT are NVS-provisioned. |
@@ -23,8 +23,8 @@ The current family index is [firmware/README.md](../firmware/README.md); the [co
 Active family source has moved to `firmware/`. Configured `src/` envs remain legacy/compatibility (including the root default turret env), not evidence of current deployment:
 
 - `go2`: physically moved to `firmware/go2/`; common MQTT topic helper, build-time `CommonRuntimeConfig` adapter, common runtime-config JSON helper, NVS-backed runtime-config bridge, device-level MQTT management topics, local/host provisioning helpers, real `bb_esp_ota` OTA/auto-polling, and NVS-tunable hit sensor/display values are adopted.
-- `go2_nixo`: physically moved to `firmware/go2_nixo/`; common MQTT topic helper, build-time `CommonRuntimeConfig` adapter, common runtime-config JSON helper, NVS-backed runtime-config bridge, device-level MQTT management topics, local/host provisioning helpers, relay-safe OTA deferral, real `bb_esp_ota` OTA/auto-polling, and NVS-tunable hit sensor/display plus Nixo fire timing values are adopted.
-- `go2_nixo`: common relay pin helper adopted.
+- `go2_full`: consolidates the previous integrated and framed-packet sources under `firmware/go2_full/`; it adopts the common MQTT/config/NVS/OTA helpers and common relay pin helper with canonical `blaster` settings and `go2_full` / `go2_full_hw` NVS stores; old NVS is imported once while deployed MQTT routes remain compatible.
+- `go2_full`: relay hardware is fixed at 2ch. The integrated 1ch build and single-character Jetson runtime are not active compatibility paths.
 - `boss_target`: physically moved to `firmware/boss_target/`; common NVS/Wi-Fi/topic/OTA manifest helpers are adopted through thin firmware adapters.
 - `heavy_blaster`: physically moved to `firmware/heavy_blaster/`; common NVS/Wi-Fi/topic helpers and real `bb_esp_ota` MQTT/direct/auto-poll OTA execution are adopted while station/relay unlock behavior remains local.
 - `station`: physically moved to `firmware/station/`; common NVS/Wi-Fi/topic/OTA helpers are adopted while first-hit lock and LED capture behavior remain local.
@@ -58,7 +58,7 @@ Keep `.cpp`-heavy capabilities split so including a topic helper does not compil
 Maintain these on the template/common-module model; do not repeat the completed moves:
 
 - `firmware/go2/` — already moved
-- `firmware/go2_nixo/` — already moved
+- `firmware/go2_full/` — active consolidated path
 - `firmware/boss_target/` — already moved
 - `firmware/heavy_blaster/` — already moved
 - `firmware/station/` — already moved
@@ -85,4 +85,4 @@ Current active channels documented here:
 | `boss_target` | `https://github.com/KongPedia/battlebang-esp/releases/download/boss-target-latest/boss-target-manifest.json` | `boss-target-v{version}` |
 | `turret_fleet` | `https://github.com/KongPedia/battlebang-esp/releases/download/turret-fleet-latest/manifest.json` | `turret-fleet-v{version}` |
 
-Active OTA channels now include Go2, Go2-Nixo, Boss Target, Heavy Blaster, Station, and Turret Fleet. `hit_target` is unused and should not drive future OTA policy.
+Active OTA identities include Go2, Go2 Full, Boss Target, Heavy Blaster, Station, and Turret Fleet. Go2 Full uses separate `go2-full-{uart|usb}-2ch` identities; its stable pointers remain disabled during the initial migration. `hit_target` is unused and should not drive future OTA policy.

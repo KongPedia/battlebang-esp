@@ -12,14 +12,21 @@ on:
       - "platformio.ini"
       - "firmware/boss_target/**"
       - "firmware/go2/**"
-      - "firmware/go2_nixo/**"
-      - "firmware/go2_nixo_framed_packet_uart/**"
+      - "firmware/go2_full/**"
       - "firmware/heavy_blaster/**"
       - "firmware/station/**"
       - "firmware/turret_fleet/**"
       - "scripts/firmware/make_release_manifest.py"
+      - "scripts/firmware/prepare_usb_release.py"
+      - "bin/upload_esp.sh"
+      - "tests/python/test_usb_release_artifacts.py"
+      - "tests/python/test_usb_release_upload.py"
+      - "tests/python/test_firmware_release_contract.py"
+      - "tests/python/test_firmware_template_contract.py"
+      - "tests/python/test_go2_full_boot_stack_safety.py"
+      - "tests/python/test_go2_full_usb_pairing.py"
       - "scripts/go2_config.py"
-      - "scripts/go2_nixo_config.py"
+      - "scripts/go2_full_config.py"
       - "lib/bb_esp_core/**"
       - "lib/bb_esp_hw/**"
       - "lib/bb_esp_net/**"
@@ -62,6 +69,48 @@ permissions:
   contents: write
 
 jobs:
+  release-contract-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test common firmware release contracts
+        run: |
+          python -m pip install pytest==8.3.5
+          python -m pytest tests/python/test_firmware_release_contract.py tests/python/test_firmware_template_contract.py -q
+
+  usb-upload-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test release USB uploader without hardware
+        run: |
+          python -m pip install pytest==8.3.5
+          python -m pytest tests/python/test_usb_release_artifacts.py tests/python/test_usb_release_upload.py -q
+
+  go2-full-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test Go2 Full boot and wired pairing contracts
+        run: |
+          python -m pip install pytest==8.3.5
+          python -m pytest tests/python/test_go2_full_boot_stack_safety.py tests/python/test_go2_full_usb_pairing.py -q
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -120,100 +169,36 @@ jobs:
                   "paths": [r"^firmware/go2/", r"^scripts/go2_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
-                  "id": "go2-nixo-1ch",
-                  "env": "esp32dev_go2_nixo_1ch",
-                  "app": "battlebang-go2-nixo",
-                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
-                  "channel": "go2-nixo-1ch",
-                  "artifact_prefix": "battlebang-go2-nixo-1ch",
-                  "manifest_name": "go2-nixo-1ch-manifest.json",
-                  "version_header": "firmware/go2_nixo/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-1ch-v",
-                  "stable_tag": "go2-nixo-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+                  "id": "go2-full-uart-2ch",
+                  "env": "esp32dev_go2_full_uart_2ch",
+                  "app": "battlebang-go2-full-uart",
+                  "hardware": "esp32dev-go2-full-button-relay-2ch-v1",
+                  "channel": "go2-full-uart-2ch",
+                  "artifact_prefix": "battlebang-go2-full-uart-2ch",
+                  "manifest_name": "go2-full-uart-2ch-manifest.json",
+                  "version_header": "firmware/go2_full/app/version_autogen.h",
+                  "version_macro": "BB_GO2_FULL_VERSION",
+                  "build_macro": "BB_GO2_FULL_BUILD",
+                  "git_macro": "BB_GO2_FULL_GIT_SHA",
+                  "version_tag_prefix": "go2-full-uart-2ch-v",
+                  "stable_tag": "go2-full-uart-2ch-latest",
+                  "paths": [r"^firmware/go2_full/", r"^scripts/go2_full_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
-                  "id": "go2-nixo-2ch",
-                  "env": "esp32dev_go2_nixo_2ch",
-                  "app": "battlebang-go2-nixo",
-                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
-                  "channel": "go2-nixo-2ch",
-                  "artifact_prefix": "battlebang-go2-nixo-2ch",
-                  "manifest_name": "go2-nixo-2ch-manifest.json",
-                  "version_header": "firmware/go2_nixo/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-2ch-v",
-                  "stable_tag": "go2-nixo-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-uart-1ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_uart_1ch",
-                  "app": "battlebang-go2-nixo-framed-packet-uart",
-                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
-                  "channel": "go2-nixo-framed-packet-uart-1ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-uart-1ch",
-                  "manifest_name": "go2-nixo-framed-packet-uart-1ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-uart-1ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-uart-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-uart-2ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_uart_2ch",
-                  "app": "battlebang-go2-nixo-framed-packet-uart",
-                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
-                  "channel": "go2-nixo-framed-packet-uart-2ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-uart-2ch",
-                  "manifest_name": "go2-nixo-framed-packet-uart-2ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-uart-2ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-uart-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-usb-1ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_usb_1ch",
-                  "app": "battlebang-go2-nixo-framed-packet-usb",
-                  "hardware": "esp32dev-go2-nixo-relay-1ch-v1",
-                  "channel": "go2-nixo-framed-packet-usb-1ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-usb-1ch",
-                  "manifest_name": "go2-nixo-framed-packet-usb-1ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-usb-1ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-usb-1ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
-              },
-              {
-                  "id": "go2-nixo-framed-packet-usb-2ch",
-                  "env": "esp32dev_go2_nixo_framed_packet_usb_2ch",
-                  "app": "battlebang-go2-nixo-framed-packet-usb",
-                  "hardware": "esp32dev-go2-nixo-relay-2ch-v1",
-                  "channel": "go2-nixo-framed-packet-usb-2ch",
-                  "artifact_prefix": "battlebang-go2-nixo-framed-packet-usb-2ch",
-                  "manifest_name": "go2-nixo-framed-packet-usb-2ch-manifest.json",
-                  "version_header": "firmware/go2_nixo_framed_packet_uart/app/version_autogen.h",
-                  "version_macro": "BB_GO2_NIXO_VERSION",
-                  "build_macro": "BB_GO2_NIXO_BUILD",
-                  "git_macro": "BB_GO2_NIXO_GIT_SHA",
-                  "version_tag_prefix": "go2-nixo-framed-packet-usb-2ch-v",
-                  "stable_tag": "go2-nixo-framed-packet-usb-2ch-latest",
-                  "paths": [r"^firmware/go2_nixo/", r"^firmware/go2_nixo_framed_packet_uart/", r"^scripts/go2_nixo_config\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
+                  "id": "go2-full-usb-2ch",
+                  "env": "esp32dev_go2_full_usb_2ch",
+                  "app": "battlebang-go2-full-usb",
+                  "hardware": "esp32dev-go2-full-button-relay-2ch-v1",
+                  "channel": "go2-full-usb-2ch",
+                  "artifact_prefix": "battlebang-go2-full-usb-2ch",
+                  "manifest_name": "go2-full-usb-2ch-manifest.json",
+                  "version_header": "firmware/go2_full/app/version_autogen.h",
+                  "version_macro": "BB_GO2_FULL_VERSION",
+                  "build_macro": "BB_GO2_FULL_BUILD",
+                  "git_macro": "BB_GO2_FULL_GIT_SHA",
+                  "version_tag_prefix": "go2-full-usb-2ch-v",
+                  "stable_tag": "go2-full-usb-2ch-latest",
+                  "paths": [r"^firmware/go2_full/", r"^scripts/go2_full_config\.py$", r"^scripts/firmware/prepare_usb_release\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"],
               },
               {
                   "id": "heavy-blaster",
@@ -319,14 +304,38 @@ jobs:
           PY
 
   build:
-    needs: changes
-    if: needs.changes.outputs.has_changes == 'true'
+    needs: [changes, release-contract-tests, usb-upload-tests, go2-full-tests]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.has_changes == 'true' }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: firmware-release-${{ matrix.id }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
 
     steps:
+      - name: Enforce firmware-specific test gates
+        env:
+          FIRMWARE_ID: ${{ matrix.id }}
+          RELEASE_CONTRACT_TEST_RESULT: ${{ needs.release-contract-tests.result }}
+          USB_UPLOAD_TEST_RESULT: ${{ needs.usb-upload-tests.result }}
+          GO2_FULL_TEST_RESULT: ${{ needs.go2-full-tests.result }}
+        shell: bash
+        run: |
+          if [[ "${RELEASE_CONTRACT_TEST_RESULT}" != "success" ]]; then
+            echo "Common release contract tests did not pass: ${RELEASE_CONTRACT_TEST_RESULT}" >&2
+            exit 1
+          fi
+          if [[ "${FIRMWARE_ID}" == "go2-full-usb-2ch" && "${USB_UPLOAD_TEST_RESULT}" != "success" ]]; then
+            echo "USB upload tests did not pass: ${USB_UPLOAD_TEST_RESULT}" >&2
+            exit 1
+          fi
+          if [[ "${FIRMWARE_ID}" == go2-full-* && "${GO2_FULL_TEST_RESULT}" != "success" ]]; then
+            echo "Go2 Full tests did not pass: ${GO2_FULL_TEST_RESULT}" >&2
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -351,13 +360,22 @@ jobs:
             CREATE_RELEASE="${{ inputs.create_release }}"
             UPDATE_STABLE_LATEST="${{ inputs.update_stable_latest }}"
           else
-            VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            if [[ "${{ matrix.id }}" == go2-full-* ]]; then
+              VERSION="0.3.${GITHUB_RUN_NUMBER}-main"
+            else
+              VERSION="0.2.${GITHUB_RUN_NUMBER}-main"
+            fi
             BUILD="$((1000 + GITHUB_RUN_NUMBER))"
             FIRMWARE_BASE_URL=""
             PUBLIC_REPO="${GITHUB_REPOSITORY}"
             TARGET_BRANCH="${GITHUB_REF_NAME}"
             CREATE_RELEASE="true"
             UPDATE_STABLE_LATEST="true"
+          fi
+
+          # Keep Go2 Full stable pointers disabled until explicit button-hardware migration is reviewed.
+          if [[ "${{ matrix.id }}" == go2-full-* ]]; then
+            UPDATE_STABLE_LATEST="false"
           fi
 
           if ! [[ "${BUILD}" =~ ^[0-9]+$ ]]; then
@@ -404,6 +422,12 @@ jobs:
           fi
           cp ".pio/build/${{ matrix.env }}/firmware.bin" "dist/${FIRMWARE_NAME}"
           shasum -a 256 "dist/${FIRMWARE_NAME}" > dist/sha256.txt
+          if [[ "${{ matrix.id }}" == "go2-full-usb-2ch" ]]; then
+            python scripts/firmware/prepare_usb_release.py \
+              --firmware "dist/${FIRMWARE_NAME}" \
+              --partitions ".pio/build/${{ matrix.env }}/partitions.bin"
+            shasum -a 256 "dist/${FIRMWARE_NAME%.bin}.partitions.bin" >> dist/sha256.txt
+          fi
           python scripts/firmware/make_release_manifest.py \
             --firmware "dist/${FIRMWARE_NAME}" \
             --version "${{ steps.version.outputs.version }}" \
@@ -419,6 +443,13 @@ jobs:
         with:
           name: ${{ matrix.id }}-firmware-${{ steps.version.outputs.version }}
           path: dist/*
+
+      - name: Upload firmware debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}-symbols-${{ steps.version.outputs.version }}
+          path: .pio/build/${{ matrix.env }}/firmware.elf
+          if-no-files-found: error
 
       - name: Create GitHub Release for tag
         if: steps.version.outputs.create_release == 'true'
@@ -504,6 +535,10 @@ jobs:
             fi
 
             if gh release view "${tag}" -R "${PUBLIC_REPO}" >/dev/null 2>&1; then
+              if [[ "${mutable_tag}" != "true" ]]; then
+                echo "Refusing to replace immutable release ${tag}; use a new version." >&2
+                exit 2
+              fi
               gh release upload "${tag}" dist/* -R "${PUBLIC_REPO}" --clobber
               gh release edit "${tag}" -R "${PUBLIC_REPO}" --target "${RELEASE_TARGET_SHA}" --latest=false --title "${title}" --notes "${notes}"
             else
@@ -519,6 +554,42 @@ jobs:
           upload_release "${VERSION_TAG}" "BattleBang ${{ matrix.id }} ${{ steps.version.outputs.version }}" \
             "BattleBang ${{ matrix.id }} firmware version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }} built from private source commit ${GITHUB_SHA}." \
             "false"
+          # Upload discovery only: this pointer contains no OTA polling manifest.
+          if [[ "${{ matrix.id }}" == "go2-full-usb-2ch" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            USB_UPLOAD_TAG="go2-full-usb-2ch-upload-latest"
+            USB_UPLOAD_EXISTING_SHA="$(
+              gh api "repos/${PUBLIC_REPO}/git/matching-refs/tags/${USB_UPLOAD_TAG}" \
+                --jq ".[] | select(.ref == \"refs/tags/${USB_UPLOAD_TAG}\") | .object.sha"
+            )" || { echo "Unable to read existing USB upload pointer." >&2; exit 2; }
+            USB_UPLOAD_ADVANCE=true
+            if [[ -n "${USB_UPLOAD_EXISTING_SHA}" ]]; then
+              USB_UPLOAD_COMPARE_STATUS="$(
+                gh api "repos/${PUBLIC_REPO}/compare/${USB_UPLOAD_EXISTING_SHA}...${RELEASE_TARGET_SHA}" --jq '.status'
+              )" || { echo "Unable to compare the USB upload pointer with this release." >&2; exit 2; }
+              case "${USB_UPLOAD_COMPARE_STATUS}" in
+                ahead | identical) ;;
+                behind | diverged)
+                  echo "Keeping ${USB_UPLOAD_TAG} at ${USB_UPLOAD_EXISTING_SHA}; candidate ${RELEASE_TARGET_SHA} is ${USB_UPLOAD_COMPARE_STATUS}."
+                  USB_UPLOAD_ADVANCE=false
+                  ;;
+                *)
+                  echo "Unexpected USB upload pointer comparison status: ${USB_UPLOAD_COMPARE_STATUS}" >&2
+                  exit 2
+                  ;;
+              esac
+            fi
+            if [[ "${USB_UPLOAD_ADVANCE}" == "true" ]]; then
+              printf '%s\n' "${{ steps.version.outputs.version }}" > dist/usb-version.txt
+              move_tag_to_target "${USB_UPLOAD_TAG}" "${RELEASE_TARGET_SHA}"
+              if gh release view "${USB_UPLOAD_TAG}" -R "${PUBLIC_REPO}" >/dev/null 2>&1; then
+                gh release upload "${USB_UPLOAD_TAG}" dist/usb-version.txt -R "${PUBLIC_REPO}" --clobber
+              else
+                gh release create "${USB_UPLOAD_TAG}" dist/usb-version.txt -R "${PUBLIC_REPO}" \
+                  --target "${RELEASE_TARGET_SHA}" --latest=false \
+                  --title "Go2 Full USB upload version" --notes "USB upload discovery only; no OTA polling manifest."
+              fi
+            fi
+          fi
           if [[ "${UPDATE_STABLE_LATEST}" == "true" ]]; then
             upload_release "${STABLE_TAG}" "BattleBang ${{ matrix.id }} latest (${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }})" \
               "Stable ${{ matrix.channel }} OTA manifest for version ${{ steps.version.outputs.version }} build ${{ steps.version.outputs.build }}. Devices poll /releases/download/${STABLE_TAG}/${{ matrix.manifest_name }}; firmware URLs inside the manifest still point at versioned release assets." \

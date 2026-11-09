@@ -10,10 +10,10 @@ KEPT_FIRMWARE = {
         "target": "firmware/go2/",
         "env_hint": "esp32dev_go2",
     },
-    "go2_nixo": {
-        "src": "firmware/go2_nixo",
-        "target": "firmware/go2_nixo/",
-        "env_hint": "esp32dev_go2_nixo",
+    "go2_full": {
+        "src": "firmware/go2_full",
+        "target": "firmware/go2_full/",
+        "env_hint": "esp32dev_go2_full",
     },
     "boss_target": {
         "src": "firmware/boss_target",
@@ -65,14 +65,14 @@ def test_template_scope_pins_kept_and_retired_firmware_lists() -> None:
 
     for forbidden in (
         "esp32dev_go2_go2_",
-        "esp32dev_go2_nixo_go2_",
-        "esp32dev_go2_nixo_1ch_go2_",
-        "esp32dev_go2_nixo_2ch_go2_",
+        "esp32dev_go2_full_go2_",
+        "esp32dev_go2_full_1ch_go2_",
+        "esp32dev_go2_full_2ch_go2_",
         "custom_robot_id",
     ):
         assert forbidden not in platformio
 
-    assert 'KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"]' in migration
+    assert 'KEPT_FIRMWARE = ["go2", "go2_full", "boss_target", "heavy_blaster", "station", "turret_fleet"]' in migration
     assert 'RETIRED_FIRMWARE = ["hit_target", "feeder", "nIxo", "turret"]' in migration
 
     for name, data in KEPT_FIRMWARE.items():
@@ -102,8 +102,7 @@ def test_firmware_root_has_migrated_families_so_far() -> None:
     }
     assert firmware_dirs == {
         "go2",
-        "go2_nixo",
-        "go2_nixo_framed_packet_uart",
+        "go2_full",
         "boss_target",
         "heavy_blaster",
         "station",
@@ -112,12 +111,12 @@ def test_firmware_root_has_migrated_families_so_far() -> None:
 
     docs = read("firmware/README.md") + read("firmware/MIGRATION_PLAN.md")
     assert "Go2 physical migration is complete" in docs
-    assert "Go2-Nixo physical migration is complete" in docs
+    assert "Go2 Full consolidation is complete" in docs
     assert "Boss Target physical migration is complete" in docs
     assert "Heavy Blaster physical migration is complete" in docs
     assert "Turret Fleet physical migration is complete" in docs
     assert "one firmware at a time" in docs
-    assert "go2_nixo" in docs
+    assert "go2_full" in docs
 
 
 def test_common_modules_are_capability_split_and_template_forbids_copy_paste_impls() -> None:
@@ -202,18 +201,18 @@ def test_agent_guidance_files_cover_core_onboarding_boundaries() -> None:
 def test_go2_standardization_checkpoint_is_locked_before_path_moves() -> None:
     migration = read("firmware/MIGRATION_PLAN.md")
     go2_readme = read("firmware/go2/README.md")
-    go2_nixo_readme = read("firmware/go2_nixo/README.md")
+    go2_full_readme = read("firmware/go2_full/README.md")
 
     for path in (
         "firmware/go2/config/runtime_config.h",
         "firmware/go2/config/runtime_config.cpp",
-        "firmware/go2_nixo/config/runtime_config.h",
-        "firmware/go2_nixo/config/runtime_config.cpp",
+        "firmware/go2_full/config/runtime_config.h",
+        "firmware/go2_full/config/runtime_config.cpp",
         "scripts/go2/provision.py",
-        "scripts/go2_nixo/provision.py",
+        "scripts/go2_full/provision.py",
         "scripts/go2_runtime/provisioning.py",
         "firmware/go2/.env.go2.example",
-        "firmware/go2_nixo/.env.go2_nixo.example",
+        "firmware/go2_full/.env.go2_full.example",
     ):
         assert (ROOT / path).exists(), path
 
@@ -222,18 +221,18 @@ def test_go2_standardization_checkpoint_is_locked_before_path_moves() -> None:
         "host-side provisioning/status scripts",
         "real bb_esp_ota OTA",
         "relay pins/polarity/channel count out of runtime config",
-        "Nixo fire timing/envelope NVS tuning",
+        "Blaster fire timing/envelope NVS tuning",
     ):
         assert required in migration
 
     assert "ota_supported=true" in go2_readme
-    assert "ota_supported=true" in go2_nixo_readme
+    assert "ota_supported=true" in go2_full_readme
     assert "MQTT `{mqtt_root}/devices/go2/{device_id}/ota`" in go2_readme
     assert "`local_secrets.h`는 표준 경로에서 필요하지 않습니다" in go2_readme
-    assert "local_secrets.h` is not read by default" in go2_nixo_readme
-    assert "OTA is deferred while the Nixo relay is firing" in go2_nixo_readme
-    assert "Nixo fire timing/envelope" in go2_nixo_readme
-    assert "relay pins, relay polarity, relay channel count" in go2_nixo_readme
+    assert "local_secrets.h` is not read by default" in go2_full_readme
+    assert "OTA is deferred while the Blaster relay is firing" in go2_full_readme
+    assert "fire timing are NVS-backed" in go2_full_readme
+    assert "two-channel relay pins and active-HIGH polarity are fixed build-time" in go2_full_readme
 
 
 def test_active_ota_release_workflows_publish_firmware_specific_stable_channels() -> None:
@@ -249,42 +248,37 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         "Firmware OTA Releases",
         "esp32dev_boss_target",
         "esp32dev_go2",
-        "esp32dev_go2_nixo_1ch",
-        "esp32dev_go2_nixo_2ch",
-        "esp32dev_go2_nixo_framed_packet_uart_1ch",
-        "esp32dev_go2_nixo_framed_packet_uart_2ch",
+        "esp32dev_go2_full_uart_2ch",
+        "esp32dev_go2_full_usb_2ch",
         "esp32dev_heavy_blaster",
         "esp32dev_station",
         "esp32dev_turret_fleet",
         "boss-target-manifest.json",
         "go2-manifest.json",
-        "go2-nixo-1ch-manifest.json",
-        "go2-nixo-2ch-manifest.json",
-        "go2-nixo-framed-packet-uart-1ch-manifest.json",
-        "go2-nixo-framed-packet-uart-2ch-manifest.json",
+        "go2-full-uart-2ch-manifest.json",
+        "go2-full-usb-2ch-manifest.json",
         "heavy-blaster-manifest.json",
         "station-manifest.json",
         "manifest.json",
         "boss-target-latest",
         "go2-latest",
-        "go2-nixo-1ch-latest",
-        "go2-nixo-2ch-latest",
-        "go2-nixo-framed-packet-uart-1ch-latest",
-        "go2-nixo-framed-packet-uart-2ch-latest",
+        "go2-full-uart-2ch-latest",
+        "go2-full-usb-2ch-latest",
         "heavy-blaster-latest",
         "station-latest",
         "turret-fleet-latest",
         "BB_BOSS_TARGET_VERSION",
         "BB_GO2_VERSION",
-        "BB_GO2_NIXO_VERSION",
+        "BB_GO2_FULL_VERSION",
         "BB_HEAVY_BLASTER_VERSION",
         "BB_STATION_VERSION",
         "BB_TURRET_FLEET_VERSION",
         "scripts/firmware/make_release_manifest.py",
         "scripts/go2_config.py",
-        "scripts/go2_nixo_config.py",
+        "scripts/go2_full_config.py",
         "lib/bb_esp_ota/**",
-        "needs: changes",
+        "needs: [changes, release-contract-tests, usb-upload-tests, go2-full-tests]",
+        "Enforce firmware-specific test gates",
         "matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}",
         '"selected=" + ",".join(job["id"] for job in selected)',
     ):
@@ -294,7 +288,7 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
         '"scripts/go2/**"',
         '"scripts/go2_runtime/**"',
         '"scripts/boss_target/**"',
-        '"scripts/go2_nixo/**"',
+        '"scripts/go2_full/**"',
         '"scripts/heavy_blaster/**"',
         '"scripts/station/**"',
         '"scripts/turret_fleet/**"',
@@ -303,15 +297,14 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
 
     assert 'r"^firmware/boss_target/"' in workflow
     assert 'r"^firmware/go2/"' in workflow
-    assert 'r"^firmware/go2_nixo/"' in workflow
-    assert 'r"^firmware/go2_nixo_framed_packet_uart/"' in workflow
+    assert 'r"^firmware/go2_full/"' in workflow
     assert 'r"^firmware/heavy_blaster/"' in workflow
     assert 'r"^firmware/station/"' in workflow
     assert 'r"^firmware/turret_fleet/"' in workflow
     assert 'r"^lib/bb_esp_hw/"' in workflow
     assert 'r"^lib/bb_esp_net/"' in workflow
     assert '"paths": [r"^firmware/go2/", r"^scripts/go2_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
-    assert '"paths": [r"^firmware/go2_nixo/", r"^scripts/go2_nixo_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
+    assert '"paths": [r"^firmware/go2_full/", r"^scripts/go2_full_config\\.py$", r"^lib/bb_esp_core/", r"^lib/bb_esp_hw/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
     assert '"paths": [r"^firmware/heavy_blaster/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
     assert '"paths": [r"^firmware/station/", r"^lib/bb_esp_core/", r"^lib/bb_esp_net/", r"^lib/bb_esp_nvs/", r"^lib/bb_esp_ota/"]' in workflow
 
@@ -349,15 +342,24 @@ def test_active_ota_release_workflows_publish_firmware_specific_stable_channels(
     assert "repo-wide `latest`" in firmware_readme
 
 
+def test_firmware_build_preserves_matching_debug_symbols() -> None:
+    workflow = read(".github/workflows/firmware-ota.yml")
+    assert "- name: Upload firmware debug symbols" in workflow
+    symbols = workflow.split("- name: Upload firmware debug symbols", 1)[1].split("\n      - name:", 1)[0]
+    assert "${{ matrix.id }}-symbols-${{ steps.version.outputs.version }}" in symbols
+    assert ".pio/build/${{ matrix.env }}/firmware.elf" in symbols
+    assert "if-no-files-found: error" in symbols
+
+
 def test_active_docs_no_longer_point_to_old_src_go2_path() -> None:
     active_docs = [
         "README.md",
         "src/README.md",
         "firmware/README.md",
-        "firmware/go2_nixo/README.md",
-        "firmware/go2_nixo/docs/README.md",
-        "firmware/go2_nixo/docs/build-upload-workflow.md",
-        "firmware/go2_nixo/docs/nixo-fire.md",
+        "firmware/go2_full/README.md",
+        "firmware/go2_full/docs/README.md",
+        "firmware/go2_full/docs/build-upload-workflow.md",
+        "firmware/go2_full/docs/blaster-fire.md",
     ]
 
     for path in active_docs:
@@ -368,9 +370,9 @@ def test_active_docs_no_longer_point_to_old_src_go2_path() -> None:
         assert "`src/go2_nixo`" not in text, path
 
     assert "firmware/go2/" in read("README.md")
-    assert "firmware/go2/" in read("firmware/go2_nixo/README.md")
-    assert "firmware/go2_nixo/" in read("README.md")
-    assert "firmware/go2_nixo/" in read("src/README.md")
+    assert "firmware/go2/" in read("firmware/go2_full/README.md")
+    assert "firmware/go2_full/" in read("README.md")
+    assert "firmware/go2_full/" in read("src/README.md")
 
 
 def test_moved_firmware_entrypoints_do_not_point_to_old_src_paths() -> None:

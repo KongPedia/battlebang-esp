@@ -9,18 +9,18 @@ are [C++ criteria](../.agents/references/engineering.md). This is not an instruc
 Use capability-scoped `bb_esp_*` private libraries plus thin product adapters, not copied NVS/Wi-Fi/OTA stacks, a mega
 firmware or a polymorphic framework. Product state machines, hardware profiles, commands and safe-state decisions stay local.
 
-The historical scope lists remain compatibility inputs to existing tests; framed UART/USB is also an active composition
-of the integrated Go2/Nixo family (see the current index).
+The scope lists remain compatibility inputs to existing tests. Go2 Full UART2/USB builds share one integrated
+runtime under `firmware/go2_full/`; the old newline runtime and integrated 1ch builds are not retained.
 
 ```python
-KEPT_FIRMWARE = ["go2", "go2_nixo", "boss_target", "heavy_blaster", "station", "turret_fleet"]
+KEPT_FIRMWARE = ["go2", "go2_full", "boss_target", "heavy_blaster", "station", "turret_fleet"]
 RETIRED_FIRMWARE = ["hit_target", "feeder", "nIxo", "turret"]
 ```
 
 The folder moves were performed one firmware at a time; these statements refer to repository paths, not physical devices:
 
 - Go2 physical migration is complete: `firmware/go2/`.
-- Go2-Nixo physical migration is complete: `firmware/go2_nixo/`.
+- Go2 Full consolidation is complete: `firmware/go2_full/`.
 - Boss Target physical migration is complete: `firmware/boss_target/`.
 - Heavy Blaster physical migration is complete: `firmware/heavy_blaster/`.
 - Station physical migration is complete: `firmware/station/`.
@@ -38,11 +38,11 @@ The root PlatformIO default remains a legacy turret env; select an explicit acti
   device-specific firmware images or credentials in tracked files/logs.
 - **real bb_esp_ota OTA:** shared manifest/transfer/hash/reboot-marker mechanism, product app/hardware/build/channel/safe-state
   admission. Firmware-specific stable pointers and versioned artifacts remain separate; a build/hash is not a successful boot.
-- **relay pins/polarity/channel count out of runtime config:** this Go2/Nixo boundary keeps electrical defaults in its
+- **relay pins/polarity/channel count out of runtime config:** this Go2 Full boundary keeps electrical defaults in its
   reviewed build/hardware profile. Turret Fleet's existing validated NVS relay-profile/per-channel-polarity settings are a
   separate product contract, not forbidden by that rule. Products own sequencing, safe-off, cooldown and inhibit;
   shared `bb_esp_hw` provides safe attach/off primitives.
-- **Nixo fire timing/envelope NVS tuning:** only supported validated runtime fields may change; preserve existing safety
+- **Blaster fire timing/envelope NVS tuning:** only supported validated runtime fields may change; preserve existing safety
   bounds and relay-variant semantics. OTA/network work must not starve local relay timing.
 - Share topic/JSON mechanisms, not domain collection names or fire/HP policy. Stage metadata does not establish wildcard
   subscription behavior. Preserve `src/common/relay_pin_utils.h` compatibility include users until separately migrated.

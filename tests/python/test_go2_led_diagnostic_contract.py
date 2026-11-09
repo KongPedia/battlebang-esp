@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HEADER = (ROOT / "firmware/go2_nixo/display/bar_display.h").read_text()
-SOURCE = (ROOT / "firmware/go2_nixo/display/bar_display.cpp").read_text()
-FRAMED = (ROOT / "firmware/go2_nixo_framed_packet_uart/main.cpp").read_text()
-RUNTIME = (ROOT / "firmware/go2_nixo/config/runtime_config.cpp").read_text()
-PROVISION = (ROOT / "scripts/go2_nixo/provision.py").read_text()
+HEADER = (ROOT / "firmware/go2_full/led/bar_display.h").read_text()
+SOURCE = (ROOT / "firmware/go2_full/led/bar_display.cpp").read_text()
+FRAMED = (ROOT / "firmware/go2_full/main.cpp").read_text()
+RUNTIME = (ROOT / "firmware/go2_full/config/runtime_config.cpp").read_text()
+PROVISION = (ROOT / "scripts/go2_full/provision.py").read_text()
 
 
 def test_hp_bar_diagnostic_selects_one_group_or_raw_pixel_with_timeout() -> None:
@@ -75,10 +75,10 @@ def test_29_column_capacity_and_per_robot_red_green_order() -> None:
     assert 'putUChar("bar_color", current.hit.hpBarColorOrder)' in RUNTIME
 
     env = os.environ.copy()
-    env.update(GO2_NIXO_HP_BAR_GROUP_COUNT="29", GO2_NIXO_HP_BAR_COLOR_ORDER="1")
+    env.update(GO2_FULL_HP_BAR_GROUP_COUNT="29", GO2_FULL_HP_BAR_COLOR_ORDER="1")
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/go2_nixo/provision.py"),
-         "--env-file", str(ROOT / "firmware/go2_nixo_framed_packet_uart/.env.go2_nixo_framed_packet_uart.example"),
+        [sys.executable, str(ROOT / "scripts/go2_full/provision.py"),
+         "--env-file", str(ROOT / "firmware/go2_full/.env.go2_full.example"),
          "--robot-id", "go2_05", "--no-serial", "--print-json"],
         cwd=ROOT, env=env, check=True, capture_output=True, text=True,
     )
@@ -88,10 +88,10 @@ def test_29_column_capacity_and_per_robot_red_green_order() -> None:
 
 
 def test_provision_env_can_select_go2_06_bar_without_changing_default() -> None:
-    script = ROOT / "scripts/go2_nixo/provision.py"
-    example = ROOT / "firmware/go2_nixo_framed_packet_uart/.env.go2_nixo_framed_packet_uart.example"
+    script = ROOT / "scripts/go2_full/provision.py"
+    example = ROOT / "firmware/go2_full/.env.go2_full.example"
     env = os.environ.copy()
-    env.update(GO2_NIXO_HP_BAR_GROUP_COUNT="27", GO2_NIXO_PIEZO_CHANNEL_ENABLE_MASK="2")
+    env.update(GO2_FULL_HP_BAR_GROUP_COUNT="27", GO2_FULL_PIEZO_CHANNEL_ENABLE_MASK="2")
     result = subprocess.run(
         [sys.executable, str(script), "--env-file", str(example), "--robot-id", "go2_06", "--no-serial", "--print-json"],
         cwd=ROOT,
@@ -106,10 +106,10 @@ def test_provision_env_can_select_go2_06_bar_without_changing_default() -> None:
 
 
 def test_usb_framed_provisioning_refuses_ascii_on_jetson_data_port() -> None:
-    script = ROOT / "scripts/go2_nixo/provision.py"
-    example = ROOT / "firmware/go2_nixo_framed_packet_uart/.env.go2_nixo_framed_packet_uart.example"
+    script = ROOT / "scripts/go2_full/provision.py"
+    example = ROOT / "firmware/go2_full/.env.go2_full.example"
     env = os.environ.copy()
-    env["GO2_NIXO_JETSON_TRANSPORT"] = "usb_serial"
+    env["GO2_FULL_JETSON_TRANSPORT"] = "usb_serial"
     result = subprocess.run(
         [sys.executable, str(script), "--env-file", str(example), "--command", "show-config", "--serial-port", "/dev/ttyUSB0"],
         cwd=ROOT,

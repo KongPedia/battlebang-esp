@@ -21,8 +21,8 @@ toolchain/error conventions. No throwing `fstream`, heap-allocated descriptor or
 
 ## Queue storage and borrowed views
 
-The framed transport's [FrameTxQueue API](../../../../firmware/go2_nixo_framed_packet_uart/uart/runtime.h) and
-[implementation](../../../../firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp) own a fixed buffer, reject enqueue
+The framed transport's [FrameTxQueue API](../../../../firmware/go2_full/uart/runtime.h) and
+[implementation](../../../../firmware/go2_full/uart/runtime.cpp) own a fixed buffer, reject enqueue
 overflow and expose a pointer/length through `peek()`. `consume()` advances the queue by the reported consumption.
 Review callers before changing or retaining that view, especially when a writer accepts only part of a chunk.
 

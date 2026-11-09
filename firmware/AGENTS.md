@@ -37,7 +37,7 @@ When adding `firmware/<name>/`, add or update all of these in the same branch:
 - Use runtime IDs for per-device identity. Do not create PlatformIO envs like `esp32dev_<firmware>_01` for numbered devices.
 - Keep unsafe electrical defaults such as relay pin maps, relay polarity, hardware variant channel count, and hard safety envelopes as build-time or hardware-profile data unless a safety review explicitly approves NVS control.
 - Preserve product-specific exceptions already implemented: Turret Fleet supports validated NVS-backed relay profiles and
-  per-channel polarity, unlike Go2/Nixo's build-only relay variants. Do not silently remove that contract or bypass safe-OFF.
+  per-channel polarity, unlike Go2 Full's fixed build-only 2ch relay profile. Do not silently remove that contract or bypass safe-OFF.
 - `stage_id` is part of the standard runtime config so Command Center can target only devices in a stage.
 
 ## OTA channel rules
@@ -54,4 +54,4 @@ When adding `firmware/<name>/`, add or update all of these in the same branch:
 - Run `git diff --check`.
 - Report missing deployment/physical evidence. Upload/provisioning/reboot needs separate target-specific authorization;
   movement/fire/recovery needs explicit actuation approval and human review. Do not automatically run hardware tests.
-- Preserve the selected product's transport: production USB-framed Go2/Nixo is binary-only, not a `show-status` text console.
+- Preserve the selected product's transport: production USB-framed Go2 Full is binary-only, not a `show-status` text console.

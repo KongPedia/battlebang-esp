@@ -50,8 +50,8 @@ Do not add compiler flags, linker layouts, dependencies or diagnostic hooks from
 - Keep protocol/storage layouts explicit; inspect `sizeof`/alignment in the actual compiler rather than assuming padding.
 - A ring buffer needs capacity checks, distinct full/empty state, overflow behavior and an access owner. Index wraparound
   alone does not provide any of these guarantees.
-- Reuse the bounded [FrameTxQueue implementation](../../../../firmware/go2_nixo_framed_packet_uart/uart/runtime.cpp)
-  for its existing transport responsibility. Its [API](../../../../firmware/go2_nixo_framed_packet_uart/uart/runtime.h)
+- Reuse the bounded [FrameTxQueue implementation](../../../../firmware/go2_full/uart/runtime.cpp)
+  for its existing transport responsibility. Its [API](../../../../firmware/go2_full/uart/runtime.h)
   exposes admission failure and pending bytes; it is not a thread-safe general-purpose queue.
 - Shared flag updates need the same synchronization discipline as other shared state; bit operations are not inherently atomic.
 

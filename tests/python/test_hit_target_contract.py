@@ -327,11 +327,12 @@ def test_serial_provisioning_keeps_existing_local_reset_and_status() -> None:
 def test_hit_target_platformio_env_is_distinct_from_go2_mounted_firmware() -> None:
     pio = read("platformio.ini")
     readme = read("README.md")
+    hit_target_block = pio.split("[env:esp32dev_hit_target]", 1)[1].split("\n[env:", 1)[0]
 
     assert "[env:esp32dev_hit_target]" in pio
-    assert "+<hit_target/**>" in pio
-    assert "+<../firmware/go2_nixo/**>" in pio
-    assert "firmware/go2_nixo/" in readme
+    assert "+<hit_target/**>" in hit_target_block
+    assert "+<../firmware/go2_full/**>" not in hit_target_block
+    assert "firmware/go2_full/" in readme
     assert "src/hit_target/" in readme
     assert "Go2-mounted" in readme
     assert "Generic standalone hit target" in readme
@@ -497,7 +498,7 @@ def test_hit_target_github_action_removed_while_firmware_ota_action_is_scoped() 
     assert '"scripts/boss_target/**"' not in workflow
     assert '"scripts/go2/**"' not in workflow
     assert '"scripts/go2_runtime/**"' not in workflow
-    assert '"scripts/go2_nixo/**"' not in workflow
+    assert '"scripts/go2_full/**"' not in workflow
     assert '"scripts/heavy_blaster/**"' not in workflow
 
 
@@ -512,7 +513,7 @@ def test_src_docs_define_firmware_migration_scope_and_ota_contract() -> None:
     assert "Unused/retire" in readme
     assert "hit_target` is unused" in readme
     assert "`firmware/go2/` — already moved" in readme
-    assert "`firmware/go2_nixo/` — already moved" in readme
+    assert "`firmware/go2_full/` — active consolidated path" in readme
     assert "turret-fleet-latest/manifest.json" in readme
     assert "hit-target-latest/hit-target-manifest.json" not in readme
 

@@ -5,7 +5,7 @@ Applies to `src/nIxo/**` in `battlebang-esp`.
 
 ## Ownership
 This folder retains the historical standalone Go2-mounted Nixo/game-blaster path for compatibility, not new active work.
-Use `firmware/go2_nixo` and the framed UART/USB family for active integrated firmware. Do not revive this path unless asked.
+Use `firmware/go2_full` and its framed UART2/USB builds for active integrated firmware. Do not revive this path unless asked.
 
 - Retained entrypoint: `src/nIxo/main.cpp`
 - PlatformIO environment: `esp32dev_nixo`
