@@ -1,7 +1,9 @@
 # C++ firmware engineering criteria
 
 Read the owning source and applicable `AGENTS.md` first. These are review criteria, not a claim every existing path
-already complies. Preserve actual hardware behavior and compatibility before improving shape.
+already complies. Preserve actual hardware behavior and compatibility before improving shape. These ESP policy
+requirements govern the use of selected plugin procedures; inspect the production owners below rather than importing
+a worked example or adding another reference bundle.
 
 ## Product boundaries and dependency direction
 
@@ -40,6 +42,24 @@ Go2 Full UART2/USB shares one runtime; changing a shared file can affect more th
 - For resource-affecting changes compare image RAM/flash and relevant stack/heap headroom; static build size alone does
   not establish runtime peak usage, timing or electrical stability. No invented universal percentage budget.
 
+### Existing ESP resource boundaries
+
+- NVS edits start with [ScopedPreferences](../../lib/bb_esp_nvs/src/bb_esp_nvs/common_runtime_config_store.h) and its
+  [implementation](../../lib/bb_esp_nvs/src/bb_esp_nvs/common_runtime_config_store.cpp). Copy operations are disabled;
+  `begin()` closes an earlier session, records the open result, and `end()` only closes an opened session. Retain this
+  single session owner and its failure status; a destructor does not validate a save or recover a partially written config.
+- Framed transmission uses [FrameTxQueue](../../firmware/go2_full/uart/runtime.h) and its
+  [implementation](../../firmware/go2_full/uart/runtime.cpp). Keep bounded admission and observable
+  overflow. `peek()` lends queue storage; account for the bytes actually accepted by the writer before `consume()`.
+  Trace all callers before retaining that address or reusing storage, including deferred callbacks. Do not replace this
+  transport owner with an unbounded container or mistake it for a synchronized ISR queue.
+- Check zero, full-capacity and oversized inputs at the relevant parser/queue boundary before size subtraction, casts
+  or copies. A view/iterator or fixed allocation does not prove bounds, ownership or lifetime. Exercise failed opens,
+  short writes, saturation, deferred-buffer reuse and interrupted saves only when the changed contract can affect them.
+- ESP implementation does not use plugin desktop/POSIX, throwing heap wrappers, GCC cleanup extensions, C/Rust or
+  C++20 desktop-locking examples as drop-in recipes. Keep the selected Arduino/PlatformIO facilities and existing
+  owners; no language conversion, nightly/sanitizer/Valgrind tooling, new flags, allocation framework or task is implied.
+
 ## Time, callbacks and concurrency
 
 - Preserve local safety/protocol work before reconnect/networking: framed main-loop ordering and `BlasterFireClient::tickLocal()`
@@ -50,11 +70,16 @@ Go2 Full UART2/USB shares one runtime; changing a shared file can affect more th
   rollover, zero/maximum lengths, duplicate/conflicting frames, lost ACKs/retries and sender restart/epoch where relevant.
 - Add a task/queue only for demonstrated timing/concurrency need. Document one state/resource owner, queue capacity,
   overload policy, shutdown and synchronization. `volatile` does not provide atomicity, mutual exclusion or cross-core order.
+  An atomic counter alone is not a publication contract for a multi-field frame; establish ownership for the whole state.
 - If an ISR is actually compiled/wired, keep it bounded with ISR-safe primitives; no blocking, heap, logging or network/NVS.
+  Defer substantial work to the existing foreground/task owner with matching SDK primitives, not a new task by default.
   A source file's existence is not proof it is selected by a particular env (Go2's sensor directory is filtered).
 - ESP-IDF FreeRTOS differs from vanilla examples: documented task stack parameters use bytes, scheduler startup is already
   managed, and SMP critical sections use platform spinlock/port primitives. Verify exact installed API/version; no ARM IRQ
   intrinsics, parameterless critical sections, `FreeRTOSConfig.h` edits or `vTaskStartScheduler()` transplanted from examples.
+  Check exact stack API/version, including static-allocation buffer element units; high-water observations do not bound
+  unvisited paths. Preserve queue capacity/admission/partial-consumption and initialization/readiness failure policy.
+  No live-stack painting/scanning, raw-flash recursive erase/retry or unchecked allocation/pool recipe from a reference.
 
 ## State, protocol and persistence
 
@@ -79,6 +104,10 @@ Do not move these solely to a server or bypass them to make calibration/CI pass.
 Turret `target` is aim-only; a pattern's explicit fire step is still an actuation request. No-fire calibration can still move.
 Production USB-framed transport is binary-only, unlike UART debug builds. Follow its family provisioning/service path.
 Deploy/provision/reboot and actual motion/fire/recovery require separate explicit target-specific authorization and human review.
+Sleep, wake, clock changes and peripheral gating must preserve local relay/lease/HP timing, safe OFF, recovery and no
+saved-fire resume; idle time alone does not establish eligibility. Selected ESP chip/driver/profile controls CAN, ADC,
+GPIO and peripheral constraints; STM32 mailboxes/ARM register/IRQ/linker values are not ESP recipes. Partition/linker,
+clock, watchdog and power-mode changes are application scope requiring explicit review, not a guide side effect.
 Deployment/serial reset can itself run a boot probe or HOME. Inspect that behavior before acting and require explicit
 boot-motion approval or verified physical output isolation; an upload is not inherently a non-actuating step.
 

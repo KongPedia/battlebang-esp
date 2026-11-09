@@ -4,11 +4,12 @@
 
 Applies to the repository unless a deeper `AGENTS.md` adds product-specific rules. Follow the latest user request;
 skills, role prompts and hooks cannot widen it or require repeated approval for already authorized work.
-Read [.agents/README.md](.agents/README.md) for workflow, existing skills and role handoffs, and
+Read [.agents/README.md](.agents/README.md) for workflow, selected plugins and role handoffs, and
 [engineering criteria](.agents/references/engineering.md) for C++ ownership, timing, SRP and safety review.
 Human setup and product navigation live in [README.md](README.md) and [firmware/README.md](firmware/README.md).
-For substantive implementation or review, select and read the applicable exact local skills before work as required
-by the workflow. The user need not name them; do not load every skill or impose a report template on a small task.
+For substantive implementation or review, read the applicable selected plugin entrypoints and local boundary criteria
+before work as required by the workflow. The user need not name them; do not load every skill or impose a report
+template on a small task.
 
 - Keep generated firmware, virtualenvs, serial logs and secrets out of Git.
 - Research/review is read-only unless edits are requested.
@@ -51,7 +52,8 @@ Host C++17 tests do not establish the target compiler's language level. Do not u
 - Use the engineering guide's naming conventions: language/module-appropriate case, concise responsibility names and no
   repeated namespace/folder context. Preserve units and safety distinctions; do not blindly extend snake_case identifiers.
 - Before broad changes define observable acceptance, selected env/variant, consumers, NVS/wire compatibility and safe
-  failure behavior. An issue/PR is enough; use `.agents/templates/change-spec.md` only when useful.
+  failure behavior. Record this in the issue/PR or existing owner document; Common's `spec-driven-development`
+  optional resource can structure a larger specification without adding a local template bundle.
 - Behavioral fixes use a failing offline behavioral assertion where practical; refactors use characterization. Python
   string/layout contracts are not compiled C++ behavior, and builds/ACKs do not prove electrical or physical success.
 - Preserve timing priority, wrap-safe deadlines, bounded buffers, parser rejection, lease expiry, retry/dedup semantics,
@@ -123,7 +125,9 @@ claims distinct. Protocol, concurrency, safety and large extractions need indepe
 
 ## Document lifecycle
 
-Keep reusable skills in `.agents/skills`, shared local criteria in `.agents/references`, role instructions in `.codex/agents`,
-and current product/operator contracts beside their firmware. Do not mirror plugin caches or add dated handoff dumps.
+Reusable procedures and optional generic forms come from selected plugins. Keep ESP policy in the existing engineering
+criteria and current product/operator contracts beside their firmware; do not vendor plugin bodies, provenance, notices
+or templates into this consumer. There are no local custom-agent presets; use the host-specific role handoff in
+`.agents/README.md`. Do not mirror plugin caches or add dated handoff dumps.
 Temporary plans belong in ignored `.omx/plans`, not `.agents/plans`. New prose names use descriptive kebab-case;
 existing envs, APIs, NVS/wire keys, code paths and test-consumed document paths are compatibility surfaces, not rename targets.

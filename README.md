@@ -3,7 +3,7 @@
 ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에 두고, 공통 NVS/MQTT/OTA/Wi-Fi 유틸은 `lib/bb_esp_*` PlatformIO 라이브러리로 조립합니다.
 
 - **펌웨어 선택·운영 문서:** [firmware index](firmware/README.md), [hardware assembly and power](BattleBang-HardwareKit-v1.0.md)
-- **Codex/LLM 개발:** [AGENTS.md](AGENTS.md) → [.agents workflow and skills](.agents/README.md) → [C++ engineering criteria](.agents/references/engineering.md)
+- **Codex/LLM 개발:** [AGENTS.md](AGENTS.md) → [.agents workflow and selected plugins](.agents/README.md) → [C++ engineering criteria](.agents/references/engineering.md)
 - **기존 경로:** [legacy/compatibility index](src/README.md). 새 작업은 활성 family를 선택합니다.
 
 `platformio.ini`의 기본 env는 아직 legacy `esp32dev_turret_5`입니다. 항상 `-e <env>`를 명시하세요.
