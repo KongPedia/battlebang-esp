@@ -215,7 +215,7 @@ Select the owning tests; do not inherit `TURRET_RUN_HW_TESTS=1` or run live inte
 Host tests, Python string contracts, target builds and physical validation prove different things.
 See [agent verification policy](AGENTS.md#environments-and-verification).
 
-- Framed production protocol/runtime: `./.venv-pio/bin/pio test -e native_go2_nixo_uart`
+- Framed production protocol/runtime: `./.venv-pio/bin/pio test -e native_go2_full`
 - Direct game-logic harness: `tests/run_tests.sh` (existing host GoogleTest required)
 - Native C++ tests:
   ```bash
