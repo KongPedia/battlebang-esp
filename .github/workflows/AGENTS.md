@@ -9,7 +9,8 @@ Applies to workflow files under `.github/workflows/**`.
 - Active firmware OTA publishing is centralized in `.github/workflows/firmware-ota.yml`.
 - Do not add one workflow per firmware unless there is a hard GitHub limitation that cannot be handled by the matrix.
 - Firmware release independence must be represented by matrix rows: env, app, hardware, channel, artifact prefix, manifest name, version tag prefix, stable tag, version header, and path filters.
-- `workflow_dispatch` should build the full matrix for smoke/release validation.
+- `workflow_dispatch` builds the full matrix for explicitly requested smoke/release validation; it can publish releases
+  by default. This describes behavior, not permission to dispatch or publish.
 - `push` to `main` should build only affected matrix rows.
 
 ## Path filter rules
@@ -30,5 +31,9 @@ Applies to workflow files under `.github/workflows/**`.
 ## Verification
 
 - Parse workflow YAML locally before claiming done.
-- Run contract tests that assert matrix rows, path filters, stable tags, and host-only script exclusions.
-- After changing release mechanics, run a branch/manual dispatch when possible and verify manifest URLs, firmware URL HTTP 200, sha256, and size.
+- For workflow application changes, run offline contract tests for matrix rows, path filters, stable tags and host-only
+  script exclusions. Guidance-only edits need static parsing/references/diff, not tests, builds or dispatch.
+- Report unverified release behavior. Run a branch/manual dispatch or publish only with explicit authorization and reviewed
+  inputs; distinguish build-only, versioned publication and stable-pointer updates. Do not use publication as a prose gate.
+- Existing main filters include firmware-folder documents; an authorized merge may publish affected images even when the
+  diff is prose-only. Report that impact without silently changing CI path filters.

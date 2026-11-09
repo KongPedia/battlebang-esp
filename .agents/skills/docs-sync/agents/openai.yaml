@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs Sync"
+  short_description: "Audit docs coverage and propose targeted updates"
+  default_prompt: "Use $docs-sync to audit the requested scope against the owning firmware/library README and relevant documentation or .agents guidance, then propose targeted updates."

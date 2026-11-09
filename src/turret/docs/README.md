@@ -1,4 +1,8 @@
-# Turret firmware docs
+# Legacy turret firmware reference
+
+이 문서는 retained `src/turret` 호환 펌웨어의 배선·보정·빌드 참고 자료입니다. 현재 generic fleet 개발/운영은
+[Turret Fleet](../../../firmware/turret_fleet/README.md)을 사용합니다. 아래 고정 ID/port는 과거 예시이지 현재 장치가 아닙니다.
+업로드/NVS/reboot와 이동·발사는 각각 승인된 대상에서만 수행하며, 문서 확인을 위한 자동 검증 단계가 아닙니다.
 
 현재 PlatformIO 기준 펌웨어 본체는 `src/turret/main.cpp`입니다.
 `src/turret/main_turret.cpp`는 Arduino IDE에 붙여 넣는 단일 파일 export 용도로만 남겨두고, PIO 빌드에서는 제외합니다.

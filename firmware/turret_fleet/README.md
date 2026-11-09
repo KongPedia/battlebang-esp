@@ -1,18 +1,18 @@
 # BattleBang Turret Fleet Firmware
 
-Existing `src/turret/` is intentionally left in place as the legacy/reference
-firmware. New fleet work for BTB-721 happens here. The compact handoff/context
-document is `docs/context.md`; the operator command/OTA usage guide is
-`docs/usage.md`; the longer execution plan is `docs/implementation-plan.md`.
+`src/turret/` remains legacy/reference; active fleet work belongs here. One generic ESP32 image uses runtime NVS
+identity, pose/calibration, network and motion/fire configuration. The controller and pattern compiler are implemented.
 
-This folder is a new, modular firmware path for the future fleet architecture:
+- [Architecture and ownership](docs/architecture.md)
+- [Current operator usage](docs/usage.md) and [wire/config/OTA contract](docs/mqtt-http-contract.md)
+- [Release flow](docs/github-actions.md)
+- [Historical per-unit hardware evidence](docs/context.md), not live defaults
+- [Implementation decision record](docs/implementation-plan.md), retained compatibility path, not an execution plan
 
-- one generic ESP32 firmware image
-- runtime turret configuration stored in ESP32 NVS/Preferences
-- config updates via Serial or MQTT
-- firmware update manifests via MQTT
-- firmware binary download via HTTP
-- GitHub tag/release driven build artifacts
+Upload/provisioning/OTA/reboot and actual motion/fire/recovery are separately approved stages; commands in the operator
+guide are not automatic agent completion steps. A no-fire aim/calibration can still move hardware.
+Upload/provision/reboot and serial reset can themselves trigger boot probe/HOME: approval must cover that motion,
+or physical outputs must be verifiably isolated before the operation.
 
 The goal is to remove per-turret hardcoding from the firmware image. Coordinates,
 `turret_id`, calibration, Wi-Fi, and MQTT settings belong to runtime config, not
