@@ -5,13 +5,13 @@ This is an existing Arduino ESP32 / PlatformIO monorepo, not a generated native 
 
 | Path | Owner |
 | --- | --- |
-| `firmware/` | Active Go2, Go2/Nixo newline/framed UART/USB, Boss Target, Heavy Blaster, Station and Turret Fleet products |
+| `firmware/` | Active Go2, Go2 Full framed UART2/USB, Boss Target, Heavy Blaster, Station and Turret Fleet products |
 | `lib/bb_esp_*` | Capability-scoped core, NVS, networking, OTA and hardware mechanisms; product safety policy stays local |
 | `src/` | Retained legacy/reference/compatibility firmware; no new active applications |
 | `platformio.ini` | Actual compilation map and env inheritance/filters; select an explicit env, not its legacy default |
 | `scripts/`, `bin/` | Host provisioning, protocol, operator and release helpers; not safe smoke tests or thin generic starters |
 | `test/`, `tests/` | Production-code native seams, game-logic harness, focused Python contracts and separately gated hardware tests |
-| `.github/workflows/` | Firmware OTA build/package/publication matrix; not proof of native/Python test execution |
+| `.github/workflows/` | Firmware OTA matrix with focused Python gates; inspect job results separately from physical evidence |
 | `docs/` | Navigation and cross-cutting pointers; current product/operator contracts remain beside firmware |
 | `.agents/` | Project workflow, ESP engineering policy and plugin setup; reusable bodies/forms/provenance/licenses stay with the provider |
 | `.codex/config.toml`, `.claude/settings.json` | Selected plugin activation, not installation/trust/discovery or custom Codex agent registration |
