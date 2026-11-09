@@ -33,6 +33,6 @@ When adding a firmware family, include tests that assert:
 - Use `.venv-turret-tests/bin/python -m pytest tests/python/<matching_contract>.py -q` for focused checks.
 - Use `python3 -m py_compile` for edited scripts/tests.
 - Run `git diff --check` before completion.
-- For framed protocol behavior use `./.venv-pio/bin/pio test -e native_go2_nixo_uart`; the separate
+- For framed protocol behavior use `./.venv-pio/bin/pio test -e native_go2_full`; the separate
   `tests/run_tests.sh` game-logic harness needs existing host GoogleTest. Run these only for relevant application work.
 - Report static/host/target/deployment/physical results distinctly; do not infer CI host-test coverage from OTA builds.

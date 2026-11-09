@@ -198,17 +198,17 @@ config {json}
 clear-config
 ```
 
-These are management-channel commands, not a universal USB console. Production USB-framed Go2/Nixo reserves
+These are management-channel commands, not a universal USB console. Production USB-framed Go2 Full reserves
 USB for binary packets: use the supported management channel in its
-[family guide](../go2_nixo_framed_packet_uart/README.md), never ASCII on the application stream.
+[family guide](../go2_full/README.md), never ASCII on the application stream.
 
-`provision`/`config` payloads should share the common field shape above and include a positive `config_version`. Firmware may add domain fields such as `robot_id`, `hit_topic_prefix`, `nixo_id`, or relay variant names, but it must not expose unsafe live hardware actions as generic common config.
+`provision`/`config` payloads should share the common field shape above and include a positive `config_version`. Firmware may add domain fields such as `robot_id`, `hit_topic_prefix`, `blaster_id`, or relay variant names, but it must not expose unsafe live hardware actions as generic common config.
 
 Host-side `scripts/<firmware_family>/provision.py` helpers should build this JSON shape from ignored `.env.<firmware_family>` files and delegate common field handling to shared script helpers where possible. They should not duplicate firmware parsing policy in every folder.
 
-Go2/Nixo relay pins, polarity, and channel count remain build/variant data, not generic runtime config.
-Its existing NVS-backed `nixo.prefire_delay_ms` and `nixo.relay_delay1_ms` are supported runtime tuning,
-each validated at <= 60000 ms in `firmware/go2_nixo/config/runtime_config.cpp`. Preserve those bounds and sequencing.
+Go2 Full relay pins, polarity, and channel count remain build/variant data, not generic runtime config.
+Its existing NVS-backed `blaster.prefire_delay_ms` and `blaster.relay_delay1_ms` are supported runtime tuning,
+each validated at <= 60000 ms in `firmware/go2_full/config/runtime_config.cpp`. Preserve those bounds and sequencing.
 Turret Fleet separately supports validated NVS relay profiles and per-channel polarity; do not remove that
 product-specific contract.
 
@@ -283,11 +283,11 @@ Relay GPIO attach/off behavior is shared hardware safety code and should live in
 lib/bb_esp_hw/src/bb_esp_hw/relay_pin_utils.h
 ```
 
-Relay profiles remain firmware-specific data, for example under:
+Relay profiles remain firmware-specific data. Go2 Full supports only its fixed
+2ch profile:
 
 ```text
-firmware/go2_nixo/variants/relay_1ch/config.json
-firmware/go2_nixo/variants/relay_2ch/config.json
+firmware/go2_full/variants/relay_2ch/config.json
 ```
 
 This keeps common code small while preserving product-specific relay order, polarity, and safety timing.
@@ -331,18 +331,17 @@ Rules:
 Current active families (folder moves are complete, not pending work):
 
 - `firmware/go2/` — already moved
-- `firmware/go2_nixo/` — already moved
+- `firmware/go2_full/` — consolidated active path; relay hardware is fixed at 2ch
 - `firmware/boss_target/` — already moved
 - `firmware/heavy_blaster/` — already moved
 - `firmware/turret_fleet/` — already moved
 - `firmware/station/` — already moved
-- `firmware/go2_nixo_framed_packet_uart/` — active framed UART/USB composition of Go2/Nixo
 
 Retained legacy/reference/compatibility paths, not sources for new active firmware:
 
 - `src/feeder/`
 - `src/hit_target/` — unused; do not use as template source for new work
-- `src/nIxo/` — standalone relay path replaced by Go2 Nixo direction unless explicitly revived
+- `src/nIxo/` — standalone relay path replaced by Go2 Full unless explicitly revived
 - `src/turret/`
 - loose legacy sketches such as `src/turret_demo*.cpp` and `src/test.cpp`
 

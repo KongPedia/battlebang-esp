@@ -14,9 +14,8 @@ ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에
 | PlatformIO env | Source entrypoint | Purpose | Runtime config |
 | --- | --- | --- | --- |
 | `esp32dev_go2` | `firmware/go2/main.cpp` | Go2-mounted hit/LED ESP: local piezo hit/HP/down + ESP-owned HP bar display | NVS: identity, stage/group/location, Wi-Fi, MQTT, OTA, hit tuning |
-| `esp32dev_go2_nixo`, `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch` | `firmware/go2_nixo/main.cpp` | Go2/Nixo single-character forced-newline UART firmware | NVS: same as Go2 plus Nixo identity/topic and fire timing; relay pins/polarity/channel count stay build variant |
-| `esp32dev_go2_nixo_framed_packet_uart_1ch`, `esp32dev_go2_nixo_framed_packet_uart_2ch` | `firmware/go2_nixo_framed_packet_uart/main.cpp` | Refactored Go2/Nixo framed packet UART firmware | Reuses Go2/Nixo NVS and relay hardware variants |
-| `esp32dev_go2_nixo_framed_packet_usb_1ch`, `esp32dev_go2_nixo_framed_packet_usb_2ch` | `firmware/go2_nixo_framed_packet_uart/main.cpp` | Production Go2/Nixo framed packet over the board USB connector | USB is binary-only at runtime; Bluetooth/MQTT management remains available |
+| `esp32dev_go2_full`, `esp32dev_go2_full_usb_2ch` | `firmware/go2_full/main.cpp` | Integrated Go2 hit/HP + Blaster relay + Jetson packet firmware over USB | Relay is fixed at 2ch; USB is binary-only at runtime and Bluetooth/MQTT management remains available |
+| `esp32dev_go2_full_uart_2ch` | `firmware/go2_full/main.cpp` | The same Go2 Full packet firmware over UART2 | Relay is fixed at 2ch; USB remains available for debug/management |
 | `esp32dev_boss_target` | `firmware/boss_target/main.cpp` | Boss target firmware | NVS/MQTT/OTA standard template |
 | `esp32dev_heavy_blaster` | `firmware/heavy_blaster/main.cpp` | Heavy blaster firmware | NVS/MQTT/OTA standard template |
 | `esp32dev_station` | `firmware/station/main.cpp` | Target Station firmware | NVS: station/device/stage identity, network, capture tuning, OTA |
@@ -25,9 +24,47 @@ ESP32 펌웨어 모노레포입니다. 활성 펌웨어는 `firmware/` 아래에
 | `esp32dev_hit_target` | `src/hit_target/main.cpp` | Retired standalone circular hit-target firmware | Legacy/runtime config retained but not active path |
 | `esp32dev_turret_*` | `src/turret/main.cpp` | Legacy turret variants | Legacy |
 
-Uploading a different env replaces the running application. Reconfirm board, env/variant, port, NVS compatibility and rollback before an approved upload; do not assume flashing preserves or erases all NVS/partitions.
+Firmware images are application-specific. Initial provisioning and layout changes
+are separate from routine application-only updates; uploading a different app
+does not automatically provision its NVS identity.
 
-## Active Go2/Nixo firmware layout
+## Jetson에서 Go2 Full USB 펌웨어 업데이트
+
+> **기본 선택:** 버전을 생략하면 USB discovery 포인터가 가리키는 릴리스를 받습니다.
+> 2026-11-09 확인 기준 기본값은 `0.3.40`이며, main의 Go2 Full USB 릴리스가 성공하면 새 버전으로 자동 갱신됩니다.
+> 이전 `0.3.39-usb-upload`는 02번에서 `loopTask` 스택 오류로 재부팅한 immutable audit 기록이므로 사용하지 마세요.
+
+이미 설정된 Go2 Full USB 2ch는 [릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를 사용합니다.
+runtime이 이미 중지된 상태에서 다음 명령만 실행합니다. 로컬 `battlebang-esp` clone이나 BattleBang repo,
+Git, Docker, Python, venv, PlatformIO가 필요하지 않습니다.
+
+```bash
+(
+  set -e
+  uploader=$(mktemp)
+  trap 'rm -f "$uploader"' EXIT
+  curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    -o "$uploader" \
+    https://raw.githubusercontent.com/KongPedia/battlebang-esp/go2-full-usb-2ch-v0.3.40/bin/upload_esp.sh
+  printf '%s  %s\n' 9515e77b7a21f015ab118602e3c50bb883a02820bb0eef962f57d39820c9343a "$uploader" \
+    | sha256sum -c -
+  bash "$uploader"
+)
+```
+
+URL과 SHA-256은 검증된 uploader **코드**를 `0.3.40`에 고정합니다. 펌웨어 버전을 생략하면 이 uploader가
+USB discovery 포인터의 최신 기본 펌웨어를 받습니다. 특정 immutable 릴리스를 받으려면 마지막 줄을
+`bash "$uploader" --version 0.3.41`처럼 바꿉니다.
+
+Jetson에서 PlatformIO·host Python·가상환경을 만들거나 빌드하지 않고 버전별 immutable 릴리즈의 앱 영역만
+115200 baud로 교체합니다. `0.3.41`도 [명시 선택 가능한 게시 릴리즈](https://github.com/KongPedia/battlebang-esp/releases/tag/go2-full-usb-2ch-v0.3.41)이지만,
+게시 여부·기본 선택 여부·실물 기능 검증 여부는 서로 다른 상태입니다. 자세한 현재 상태와 검증 범위는
+[릴리즈 USB 업로드 안내](docs/usb-release-upload.md)를 확인하세요.
+
+이 절차는 firmware upload만 수행하며 runtime이나 BattleBang 애플리케이션을 변경하지 않습니다.
+아래 PlatformIO 명령은 개발/초기 설정용이며 현장 업데이트 경로의 의존성이 아닙니다.
+
+## Active Go2 firmware layout
 
 현재 Go2는 **runtime-provisioned generic image** 방식입니다. `go2_01`, `go2_02`, `go2_03` 같은 robot id는 PlatformIO env 이름이 아니라 ESP32 NVS에 들어가는 사용자 지정 runtime identity입니다. 같은 `esp32dev_go2` 이미지를 굽고, 이후 serial/MQTT config로 `robot_id`, `device_id`, `stage_id` 등을 바꿉니다.
 
@@ -36,13 +73,15 @@ Uploading a different env replaces the running application. Reconfirm board, env
   - Command Center에는 `hit_event`/device `status`로 `accepted_hit_count`, `hp_remaining`, `max_hits`, `down` publish
   - 빌드/업로드 env: `esp32dev_go2`
   - NVS 튜닝: `robot_id`, `hit_topic_prefix`, piezo threshold/rearm/capture/debug/rearm-stable, hit cooldown, `max_hits`, `hit_flash_ms`, offline queue, LED brightness
-- Optional one-ESP fallback/reference: `firmware/go2_nixo/`
-  - hit/LED/Nixo relay가 한 ESP에 통합된 경로
-  - 단일 문자 강제 개행 env: `esp32dev_go2_nixo`(default 2ch), `esp32dev_go2_nixo_1ch`, `esp32dev_go2_nixo_2ch`
-  - production USB packet env: `esp32dev_go2_nixo_framed_packet_usb_1ch`, `esp32dev_go2_nixo_framed_packet_usb_2ch`
-  - GPIO/debug env: `esp32dev_go2_nixo_framed_packet_uart_1ch`, `esp32dev_go2_nixo_framed_packet_uart_2ch` (`Serial2` packet link + USB logs/commands)
-  - NVS 튜닝: Go2 hit 튜닝 + `nixo_id`, `nixo_command_topic_prefix`, ring brightness, Nixo fire duration/cooldown/prefire/relay delay
-  - relay pin/polarity/channel count는 안전상 build variant/hardware profile에 남깁니다.
+- Integrated Go2 Full: `firmware/go2_full/`
+  - hit/HP display, Blaster relay, PR #59 Jetson framed packet을 한 ESP에 통합한 경로
+  - relay는 GPIO23 flywheel + GPIO22 chain의 2ch 구성만 지원
+  - production USB packet env: `esp32dev_go2_full` 또는 `esp32dev_go2_full_usb_2ch`
+  - service UART env: `esp32dev_go2_full_uart_2ch` (`Serial2` packet link + USB logs/commands)
+  - 외부 배포 스크립트를 위한 기존 `*_framed_packet_{usb|uart}_2ch` env 이름은 같은 `go2_full` 이미지를 빌드하는 alias이며, 이전 펌웨어나 프로토콜을 보존하지 않음
+  - NVS 튜닝: Go2 hit 튜닝 + `blaster_id`, `blaster_command_topic_prefix`, ring brightness, Blaster fire duration/cooldown/prefire/relay delay
+  - NVS는 `go2_full` / `go2_full_hw`로 이관하며, MQTT `battlebang/nixo` wire identity는 기존 서버 호환을 위해 유지
+  - GPIO27 버튼은 부팅 시 OFF인 piezo ADC 감지만 토글하며, packet HP/fire 명령에는 영향을 주지 않음
 - Standalone Nixo `src/nIxo/`는 현재 active path가 아니며 compatibility env만 유지합니다.
 
 ### Separately approved upload/provision flow
@@ -57,23 +96,25 @@ cp firmware/go2/.env.go2.example firmware/go2/.env.go2
 # edit GO2_ROBOT_ID=go2_03, GO2_STAGE_ID=stage_1, Wi-Fi/MQTT/OTA/tuning
 ./.venv-pio/bin/python scripts/go2/provision.py --serial-port /dev/cu.usbserial-XXXX
 
-# Optional integrated Go2+Nixo 2ch fallback
-./.venv-pio/bin/pio run -e esp32dev_go2_nixo_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
-# Debug/service build: USB Serial Monitor + text commands, Jetson packet link on Serial2.
-./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_uart_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
-cp firmware/go2_nixo/.env.go2_nixo.example firmware/go2_nixo/.env.go2_nixo
-# edit GO2_NIXO_ROBOT_ID=go2_03, GO2_NIXO_NIXO_ID=nixo_go2_03, GO2_NIXO_STAGE_ID=stage_1
-./.venv-pio/bin/python scripts/go2_nixo/provision.py \
+# Go2 Full service image: Jetson packets on UART2, USB text management enabled.
+pio run -e esp32dev_go2_full_uart_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
+cp firmware/go2_full/.env.go2_full.example firmware/go2_full/.env.go2_full
+# Edit GO2_FULL_ROBOT_ID, GO2_FULL_BLASTER_ID, GO2_FULL_STAGE_ID, Wi-Fi/MQTT.
+# This command runs through the UART2 service image's USB text port, but writes
+# the FINAL USB transport identity/channel into NVS. Keep OTA auto-check off
+# until the go2-full stable pointer is published.
+./.venv-pio/bin/python scripts/go2_full/provision.py \
+  --env-file firmware/go2_full/.env.go2_full \
   --serial-port /dev/cu.usbserial-ZZZZ \
-  --firmware framed_packet_uart \
   --jetson-transport usb_serial \
   --management-transport uart2_usb_debug \
   --relay-variant relay_2ch
-# Production build last. After boot the USB port is binary-only.
-./.venv-pio/bin/pio run -e esp32dev_go2_nixo_framed_packet_usb_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
+# USB production image: provision through Bluetooth SPP after flashing because
+# the running application reserves USB for binary Jetson packets.
+pio run -e esp32dev_go2_full_usb_2ch -t upload --upload-port /dev/cu.usbserial-ZZZZ
 ```
 
-Provision with the UART2 maintenance/debug image (`esp32dev_go2_nixo_framed_packet_uart_2ch`) already flashed; `--management-transport uart2_usb_debug` declares that prerequisite, not a production USB text mode. Then flash the production USB build. Both builds keep the ESP bootloader USB upload path, but the production build intentionally disables USB text commands and application logs so they cannot corrupt framed packets. Do not feed the ESP 5 V rail from both the expansion-board regulator and Jetson USB unless the hardware explicitly isolates those sources.
+The new app/hardware identity does not accept the old Go2-Nixo OTA identity. Migrate with a deliberate USB flash and provision the new `GO2_FULL_*` settings; do not copy an old OTA channel or manifest URL into the new env. When a UART2 service image provisions a device that will end on the USB image, pass `--jetson-transport usb_serial --management-transport uart2_usb_debug` exactly as shown so NVS stores the USB OTA identity instead of the temporary UART identity. Both builds keep the ESP bootloader USB upload path, but the USB production build intentionally disables USB text commands and application logs so they cannot corrupt framed packets. Do not feed the ESP 5 V rail from both the expansion-board regulator and Jetson USB unless the hardware explicitly isolates those sources.
 
 ## Go2 hit/LED ESP firmware summary
 
@@ -121,7 +162,8 @@ python3 -m venv .venv-pio
 
 # Build active firmware
 ./.venv-pio/bin/pio run -e esp32dev_go2
-./.venv-pio/bin/pio run -e esp32dev_go2_nixo
+pio run -e esp32dev_go2_full_usb_2ch
+pio run -e esp32dev_go2_full_uart_2ch
 ./.venv-pio/bin/pio run -e esp32dev_boss_target
 ./.venv-pio/bin/pio run -e esp32dev_heavy_blaster
 ./.venv-pio/bin/pio run -e esp32dev_station

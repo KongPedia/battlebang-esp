@@ -11,6 +11,7 @@ For substantive implementation or review, read the applicable selected plugin en
 before work as required by the workflow. The user need not name them; do not load every skill or impose a report
 template on a small task.
 
+- Keep generated firmware, virtualenvs, serial logs and secrets out of Git.
 - Research/review is read-only unless edits are requested.
 - Document/prompt/skill/agent-configuration maintenance uses parsing, references, provenance and diff inspection.
   Do not install tools, build firmware, run application tests, start CI, access devices or publish MQTT for prose.
@@ -25,7 +26,7 @@ template on a small task.
 
 | Path | Responsibility |
 | --- | --- |
-| `firmware/` | Active products: Go2, integrated Go2/Nixo newline and framed UART/USB, Boss Target, Heavy Blaster, Station, Turret Fleet |
+| `firmware/` | Active products: Go2, Go2 Full framed UART2/USB, Boss Target, Heavy Blaster, Station, Turret Fleet |
 | `lib/bb_esp_*` | Capability-scoped core, NVS, network, OTA and hardware mechanisms; not product/game policy |
 | `scripts/`, `bin/` | Host provisioning, protocol, operator and release helpers; commands may touch real devices |
 | `test/`, `tests/` | Native production-code seams, game-logic harness, Python contracts and separately gated hardware tests |
@@ -37,7 +38,8 @@ and release changes follow `.github/workflows/AGENTS.md`. Scope retained `src/` 
 Do not remove legacy envs or hardware/calibration notes just because they are not in the release matrix.
 
 `platformio.ini` is the compilation map. Its default remains legacy `esp32dev_turret_5`; always select an explicit env.
-Framed builds reuse selected `go2_nixo` sources, so inspect `extends`, filters, build scripts and every consumer.
+Go2 Full UART2/USB builds share `firmware/go2_full/`; inspect `extends`, filters, build scripts and every consumer.
+Legacy env aliases do not restore the removed newline protocol or integrated 1ch firmware.
 Firmware uses Arduino ESP32, but the committed config does not pin a universal C++ standard or platform version.
 Host C++17 tests do not establish the target compiler's language level. Do not upgrade dependencies/flags for examples.
 
@@ -74,7 +76,7 @@ Host C++17 tests do not establish the target compiler's language level. Do not u
   Reset during fire must not resume saved firing. Preserve recovery markers and safe `WAIT_COMMAND` behavior.
 - Turret normal setpoints stay within `motion.limits`; reject invalid frame/config envelopes. Keep relay/ESC order and
   feedback/calibration guards. Do not enable unsafe calibration modes to make a test pass.
-- Production USB-framed Go2/Nixo is binary-only: no ASCII `show-status`, serial monitor or provisioning text on its
+- Production USB-framed Go2 Full is binary-only: no ASCII `show-status`, serial monitor or provisioning text on its
   application stream. Use its family guide and protocol-appropriate evidence, not a universal serial recipe.
 - Do not feed the ESP 5 V rail from both regulator and USB without verified hardware isolation.
 
@@ -104,7 +106,7 @@ For authorized application work, select the checks for the changed owner and eve
 # Focused offline contracts; select matching files, never hardware/integration suites by accident.
 ./.venv-turret-tests/bin/python -m pytest tests/python/test_turret_fleet_contract.py -q
 # Framed protocol changes: real production parser/runtime on the host.
-./.venv-pio/bin/pio test -e native_go2_nixo_uart
+./.venv-pio/bin/pio test -e native_go2_full
 # Edited host Python scripts: syntax check, without importing/running operational helpers.
 python3 -m py_compile <edited_python_files>
 git diff --check
@@ -112,7 +114,8 @@ git diff --check
 
 Shared-library changes build all consuming envs/variants, not only the example above. Review RAM/flash/stack and timing
 impact where applicable. The direct game-logic harness is `tests/run_tests.sh`; it needs existing host GoogleTest.
-The OTA workflow builds/packages/releases; do not claim it runs native/Python suites unless the workflow changes.
+The OTA workflow runs focused Python release/template, USB-uploader and Go2 Full boot/pairing gates before
+firmware-specific builds/publication. This is not a full native/host suite or physical validation; inspect each job result.
 
 Guidance-only completion requires one-off JSON/TOML/YAML/frontmatter parsing where changed, source/resource/link checks,
 instruction-conflict review and `git diff --check`, including newly added files. Do not create checker/test infrastructure

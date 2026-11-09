@@ -91,3 +91,7 @@ firmware/boss_target/.env.boss_target
 .venv-turret-tests/
 
 __pycache__/
+
+# Go2 Full operator-local hardware/secret files.
+firmware/go2_full/local_secrets.h
+firmware/go2_full/upload_targets.toml

@@ -35,7 +35,7 @@ Native tools/subagents suffice; launch an OMX runtime only when requested. Do no
   Do not install a spec framework or reverse-specify the whole repository. SDD here is not the similarly abbreviated
   subagent-driven development workflow.
 - **TDD:** test pure policy and existing production-code host seams, then the smallest implementation. Framed UART's
-  `native_go2_nixo_uart` exercises actual parser/runtime; Python contracts check layout/config and some host-stub syntax.
+  `native_go2_full` exercises actual parser/runtime; Python contracts check layout/config and some host-stub syntax.
   Missing fixtures/imports are not behavioral RED. Use characterization for extractions and static review for prose.
   Do not require hardware to obtain RED, or mislabel mocked/stub compilation as target behavior. Preserve existing
   production code, valid characterization, shared helpers and others' edits; do not delete them for a test-first ritual.
@@ -125,17 +125,17 @@ change model/effort implicitly. No new local specialization is implied.
 
 | Request | Scope | Acceptance |
 | --- | --- | --- |
-| Fix fire-hold expiry | Framed `main.cpp`, shared `NixoFireClient` and affected variants, debugging/TDD | Regression reaches actual expiry/stop policy; safe-off and affected target builds; no live fire |
+| Fix fire-hold expiry | Framed `main.cpp`, shared `BlasterFireClient` and affected variants, debugging/TDD | Regression reaches actual expiry/stop policy; safe-off and affected target builds; no live fire |
 | Extract NVS mechanism | Product key maps + shared helper + dependent envs | Keys/defaults/error paths preserved; no erase; builds/size impact, independent review |
 | Add firmware family | Existing template, explicit env, runtime IDs, unique OTA identity | Product policy local; selective libs, scripts/contracts/matrix updated together |
 | Fix reconnect timing | Local tick before network, bounded work and cancellation/expiry | Offline failure cases; no lease extension/stale command replay or added task by default |
 | Consolidate guidance | Catalog/owner docs/test-read paths and source provenance | No stale current claims or missing resources; no firmware builds/tests/CI/hardware |
 | Approved deployment | Exact board/variant/build/hash/NVS/rollback plan | Upload/boot evidence separate from actuation; protocol-correct USB evidence and human safety review |
 
-The current `native_go2_nixo_uart` target compiles the codec/runtime, not framed `main.cpp`'s fire-hold expiry. Its HP
+The current `native_go2_full` target compiles the codec/runtime, not framed `main.cpp`'s fire-hold expiry. Its HP
 damage-guard lease assertion is not a fire-hold regression. A behavioral repair must first reach the real policy through
 a minimal production seam or suitable offline adapter; do not credit a nearby passing test as that evidence.
-For wire changes, follow the [framed host/fixture handoff](../firmware/go2_nixo_framed_packet_uart/README.md#protocol-consumer-handoff)
+For wire changes, follow the [framed host/fixture handoff](../firmware/go2_full/README.md#protocol-consumer-handoff)
 and record consumer repository/ref plus fixture evidence, or explicitly report external compatibility pending.
 
 Task briefs can stay in ordinary language: identify the affected env/variant and consumers, the selected local paths,
