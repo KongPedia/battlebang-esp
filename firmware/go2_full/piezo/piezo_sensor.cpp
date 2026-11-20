@@ -1,33 +1,63 @@
 #include "go2_full/piezo/piezo_sensor.h"
 
 #include <Arduino.h>
+#include <driver/adc.h>
+#include <driver/rtc_io.h>
 
 #include "go2_full/debug_serial.h"
 
 namespace go2 {
+namespace {
+
+// ADC1 channel for a GPIO, or -1 when the pin is not on ADC1 (ADC2 or none).
+int8_t adc1ChannelForPin(int pin) {
+  if (pin < 0) return -1;
+  const int8_t channel = digitalPinToAnalogChannel(static_cast<uint8_t>(pin));
+  return (channel >= 0 && channel < SOC_ADC_MAX_CHANNEL_NUM) ? channel : -1;
+}
+
+}  // namespace
+
+PiezoSensor::Input PiezoSensor::configureInput(const PiezoSensorConfig& config,
+                                               uint8_t channel,
+                                               int pin) {
+  Input input;
+  if ((config.channelEnableMask & channel) == 0 || pin < 0) return input;
+  input.adc1Channel = adc1ChannelForPin(pin);
+  if (input.adc1Channel < 0) {
+    // Not an ADC1 pin: keep the previous Arduino analogRead path.
+    pinMode(pin, INPUT);
+#if defined(ADC_11db)
+    analogSetPinAttenuation(pin, ADC_11db);
+#endif
+    return input;
+  }
+  // adc1_config_channel_atten() reinitializes the RTC pad and clears pulls, so
+  // the pull-down must be applied after it. Sampling then uses adc1_get_raw(),
+  // which leaves the pad pulls untouched (analogRead/pinMode would clear them).
+  adc1_config_channel_atten(static_cast<adc1_channel_t>(input.adc1Channel), ADC_ATTEN_DB_12);  // == ADC_11db (3)
+  const gpio_num_t gpio = static_cast<gpio_num_t>(pin);
+  // GPIO34-39 are input-only pads without internal pull resistors.
+  if (pin < 34 && rtc_gpio_is_valid_gpio(gpio)) {
+    rtc_gpio_pullup_dis(gpio);
+    input.pulldown = rtc_gpio_pulldown_en(gpio) == ESP_OK;
+  }
+  return input;
+}
+
+int PiezoSensor::readInput(const Input& input, int pin) {
+  if (input.adc1Channel >= 0) {
+    return adc1_get_raw(static_cast<adc1_channel_t>(input.adc1Channel));
+  }
+  return analogRead(pin);
+}
 
 void PiezoSensor::begin(const PiezoSensorConfig& config, bool enabled, uint32_t now) {
-  if ((config.channelEnableMask & PIEZO_CHANNEL_LEFT) != 0 && config.leftPin >= 0) {
-    pinMode(config.leftPin, INPUT);
-  }
-  if ((config.channelEnableMask & PIEZO_CHANNEL_RIGHT) != 0 && config.rightPin >= 0) {
-    pinMode(config.rightPin, INPUT);
-  }
-  if ((config.channelEnableMask & PIEZO_CHANNEL_FRONT) != 0 && config.frontPin >= 0) {
-    pinMode(config.frontPin, INPUT);
-  }
   analogReadResolution(12);
-#if defined(ADC_11db)
-  if ((config.channelEnableMask & PIEZO_CHANNEL_LEFT) != 0 && config.leftPin >= 0) {
-    analogSetPinAttenuation(config.leftPin, ADC_11db);
-  }
-  if ((config.channelEnableMask & PIEZO_CHANNEL_RIGHT) != 0 && config.rightPin >= 0) {
-    analogSetPinAttenuation(config.rightPin, ADC_11db);
-  }
-  if ((config.channelEnableMask & PIEZO_CHANNEL_FRONT) != 0 && config.frontPin >= 0) {
-    analogSetPinAttenuation(config.frontPin, ADC_11db);
-  }
-#endif
+  adc1_config_width(ADC_WIDTH_BIT_12);
+  left_ = configureInput(config, PIEZO_CHANNEL_LEFT, config.leftPin);
+  right_ = configureInput(config, PIEZO_CHANNEL_RIGHT, config.rightPin);
+  front_ = configureInput(config, PIEZO_CHANNEL_FRONT, config.frontPin);
   if (config.debugDoPin >= 0) pinMode(config.debugDoPin, INPUT_PULLDOWN);
 
   // Initialize once before reading so readSample can use the configured pins.
@@ -38,11 +68,14 @@ void PiezoSensor::begin(const PiezoSensorConfig& config, bool enabled, uint32_t 
     BB_DEBUG_SERIAL.println("[PIEZO AO] disabled: no enabled channel has a valid pin");
     return;
   }
-  BB_DEBUG_SERIAL.printf("[PIEZO AO] ADC threshold mode mask=%u left=%d right=%d front=%d threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
+  BB_DEBUG_SERIAL.printf("[PIEZO AO] ADC threshold mode mask=%u left=%d right=%d front=%d pulldown=%u/%u/%u threshold=%d rearm_raw=%d capture_window_ms=%lu cooldown_ms=%lu debug_period_ms=%lu initial_raw=%d left_raw=%d right_raw=%d front_raw=%d do_pin=%d do=%d\n",
                          config.channelEnableMask,
                          config.leftPin,
                          config.rightPin,
                          config.frontPin,
+                         left_.pulldown ? 1U : 0U,
+                         right_.pulldown ? 1U : 0U,
+                         front_.pulldown ? 1U : 0U,
                          config.thresholdRaw,
                          config.rearmRaw,
                          (unsigned long)config.captureWindowMs,
@@ -129,13 +162,13 @@ PiezoSample PiezoSensor::readSample() const {
   if (!core_.enabled() || !core_.available()) return sample;
   const PiezoSensorConfig& config = core_.config();
   if (core_.channelEnabled(PIEZO_CHANNEL_LEFT) && config.leftPin >= 0) {
-    sample.left = analogRead(config.leftPin);
+    sample.left = readInput(left_, config.leftPin);
   }
   if (core_.channelEnabled(PIEZO_CHANNEL_RIGHT) && config.rightPin >= 0) {
-    sample.right = analogRead(config.rightPin);
+    sample.right = readInput(right_, config.rightPin);
   }
   if (core_.channelEnabled(PIEZO_CHANNEL_FRONT) && config.frontPin >= 0) {
-    sample.front = analogRead(config.frontPin);
+    sample.front = readInput(front_, config.frontPin);
   }
   return sample;
 }

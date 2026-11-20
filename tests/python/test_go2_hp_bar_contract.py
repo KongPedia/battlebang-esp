@@ -938,18 +938,20 @@ def test_go2_host_provisioning_scripts_generate_standard_runtime_json_without_re
 def test_go2_piezo_threshold_defaults_match_btb782_three_channel_script() -> None:
     for firmware, _bar_cpp, build_config, robots_json in HP_BAR_FIRMWARES:
         defaults = json.loads(robots_json.read_text())["defaults"]
-        assert defaults["piezo_left_pin"] == 34, firmware
-        assert defaults["piezo_right_pin"] == 35, firmware
-        assert defaults["piezo_front_pin"] == 32, firmware
+        # Go2 Full uses pull-down capable ADC1 pins; its front channel has no free pin.
+        left, right, front = (32, 33, -1) if firmware == "go2_full" else (34, 35, 32)
+        assert defaults["piezo_left_pin"] == left, firmware
+        assert defaults["piezo_right_pin"] == right, firmware
+        assert defaults["piezo_front_pin"] == front, firmware
         assert "piezo_ao_pin" not in defaults, firmware
         assert defaults["piezo_ao_threshold_raw"] == 2400, firmware
         assert defaults["piezo_ao_rearm_raw"] == 1800, firmware
         assert defaults["piezo_ao_debug_period_ms"] == 1000, firmware
         assert defaults["piezo_ao_threshold_raw"] > defaults["piezo_ao_rearm_raw"], firmware
         source = build_config.read_text()
-        assert "#define BATTLEBANG_LEFT_PIEZO_AO_PIN 34" in source, firmware
-        assert "#define BATTLEBANG_RIGHT_PIEZO_AO_PIN 35" in source, firmware
-        assert "#define BATTLEBANG_FRONT_PIEZO_AO_PIN 32" in source, firmware
+        assert f"#define BATTLEBANG_LEFT_PIEZO_AO_PIN {left}" in source, firmware
+        assert f"#define BATTLEBANG_RIGHT_PIEZO_AO_PIN {right}" in source, firmware
+        assert f"#define BATTLEBANG_FRONT_PIEZO_AO_PIN {front}" in source, firmware
         assert "#define BATTLEBANG_PIEZO_AO_THRESHOLD_RAW 2400" in source, firmware
         assert "#define BATTLEBANG_PIEZO_AO_REARM_RAW 1800" in source, firmware
         assert "static constexpr uint32_t HIT_REARM_STABLE_MS = 30;" in source, firmware

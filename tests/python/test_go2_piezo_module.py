@@ -83,6 +83,19 @@ int main(int argc, char** argv) {
     assert(!d.front.enabled && !d.front.qualified);
     return 0;
   }
+  if (test == "front_unassigned") {
+    // Go2 Full default: front pin -1, so a set front mask bit must not enable it.
+    PiezoSensorConfig cfg = config();
+    cfg.leftPin = 32; cfg.rightPin = 33; cfg.frontPin = -1;
+    PiezoSensorCore core; core.begin(cfg, true, initial, 0);
+    assert(core.available() && !core.channelEnabled(PIEZO_CHANNEL_FRONT));
+    qualify_and_arm(core);
+    PiezoDiagnostics d = core.diagnostics();
+    assert(d.left.qualified && d.right.qualified && !d.front.enabled && !d.front.qualified);
+    assert(!core.processSample(sample(100, 100, 4095), 200, out));
+    assert(!core.diagnostics().capturing);
+    return 0;
+  }
   if (test == "peak") {
     PiezoSensorCore core; core.begin(config(), true, initial, 0); qualify_and_arm(core);
     assert(!core.processSample(sample(2500, 2600, 2700), 200, out));
@@ -164,7 +177,7 @@ int main(int argc, char** argv) {
 
 @pytest.mark.parametrize(
     "case",
-    ("off", "qualify", "mask_invalid", "peak", "cooldown", "toggle", "wrap", "diagnostics"),
+    ("off", "qualify", "mask_invalid", "front_unassigned", "peak", "cooldown", "toggle", "wrap", "diagnostics"),
 )
 def test_extracted_piezo_core_preserves_pr59_behavior(piezo_core_binary: Path, case: str) -> None:
     subprocess.run([str(piezo_core_binary), case], check=True)

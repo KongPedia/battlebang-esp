@@ -11,7 +11,7 @@ BUILD_SCRIPT = (ROOT / "scripts/go2_full_config.py").read_text()
 
 
 def test_front_channel_is_retained_but_disabled_by_default() -> None:
-    assert "#define BATTLEBANG_FRONT_PIEZO_AO_PIN 32" in BUILD_CONFIG
+    assert "#define BATTLEBANG_FRONT_PIEZO_AO_PIN -1" in BUILD_CONFIG
     assert "#define BATTLEBANG_PIEZO_CHANNEL_ENABLE_MASK 0x03" in BUILD_CONFIG
     assert "PIEZO_CHANNEL_FRONT = 0x04" in PIEZO_HEADER
 
