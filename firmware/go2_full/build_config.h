@@ -408,15 +408,15 @@
 #endif
 
 #ifndef BATTLEBANG_LEFT_PIEZO_AO_PIN
-#define BATTLEBANG_LEFT_PIEZO_AO_PIN 34
+#define BATTLEBANG_LEFT_PIEZO_AO_PIN 32
 #endif
 
 #ifndef BATTLEBANG_RIGHT_PIEZO_AO_PIN
-#define BATTLEBANG_RIGHT_PIEZO_AO_PIN 35
+#define BATTLEBANG_RIGHT_PIEZO_AO_PIN 33
 #endif
 
 #ifndef BATTLEBANG_FRONT_PIEZO_AO_PIN
-#define BATTLEBANG_FRONT_PIEZO_AO_PIN 32
+#define BATTLEBANG_FRONT_PIEZO_AO_PIN -1
 #endif
 
 #ifndef BATTLEBANG_PIEZO_AO_PIN
@@ -517,12 +517,13 @@ static_assert(NUM_LEDS == HP_BAR_EXPECTED_LED_COUNT,
 static_assert(RING_NUM_LEDS > 0, "fire ring LED count must be positive");
 static_assert(HP_BAR_LED_PIN != RING_LED_PIN,
               "HP bar and fire ring pins must be different");
-static_assert(PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0 &&
-                  PIEZO_FRONT_AO_PIN >= 0,
-              "left/right/front piezo AO pins must be configured for 3ch hit firmware");
+// Front may be -1 (unassigned): the runtime treats a negative pin as unavailable.
+static_assert(PIEZO_LEFT_AO_PIN >= 0 && PIEZO_RIGHT_AO_PIN >= 0,
+              "left/right piezo AO pins must be configured");
 static_assert(PIEZO_LEFT_AO_PIN != PIEZO_RIGHT_AO_PIN &&
-                  PIEZO_LEFT_AO_PIN != PIEZO_FRONT_AO_PIN &&
-                  PIEZO_RIGHT_AO_PIN != PIEZO_FRONT_AO_PIN,
+                  (PIEZO_FRONT_AO_PIN < 0 ||
+                   (PIEZO_LEFT_AO_PIN != PIEZO_FRONT_AO_PIN &&
+                    PIEZO_RIGHT_AO_PIN != PIEZO_FRONT_AO_PIN)),
               "left/right/front piezo AO pins must be different");
 static_assert(PIEZO_AO_THRESHOLD_RAW > 0,
               "piezo AO threshold must be positive");

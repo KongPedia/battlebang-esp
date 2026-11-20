@@ -74,7 +74,7 @@ Shared pins and limits are defined in `hardware_profile.json`.
 
 - HP bar: GPIO18, up to 87 WS2812B addresses
 - Blaster state ring: GPIO4, 40 LEDs
-- piezo ADC: left GPIO34, right GPIO35, optional front GPIO32
+- piezo ADC: left GPIO32 (ADC1_CH4), right GPIO33 (ADC1_CH5); front channel unassigned (`-1`)
 - piezo enable button: GPIO27, active HIGH, `INPUT_PULLDOWN`
 - relay: GPIO23 flywheel + GPIO22 chain, active HIGH
 
@@ -95,9 +95,15 @@ at boot must be released and pressed again. Toggling clears a pending ADC peak
 and requires fresh quiet qualification, while UART HP/fire commands remain
 available. The enabled state is deliberately not persisted or remotely armed.
 
-GPIO34 and GPIO35 have no internal pull resistor. Disable absent piezo channels
-with `GO2_FULL_PIEZO_CHANNEL_ENABLE_MASK` and use suitable external bias and
-protection; the GPIO27 pull-down does not stabilize the ADC inputs.
+The piezo AO inputs use GPIO32/GPIO33 because they have an internal RTC
+pull-down; GPIO34-39 have none and float when the connector is open. The
+firmware configures ADC1 attenuation first, then enables the pull-down, and
+samples with `adc1_get_raw()` (not `analogRead()`, which would clear the pull).
+The weak internal pull-down is not a substitute for suitable external bias and
+protection. The front channel has no free pull-down ADC1 pin and stays
+unavailable even if its mask bit is set. Disable absent piezo channels with
+`GO2_FULL_PIEZO_CHANNEL_ENABLE_MASK`; the GPIO27 pull-down does not stabilize
+the ADC inputs.
 
 ## Jetson packet protocol
 

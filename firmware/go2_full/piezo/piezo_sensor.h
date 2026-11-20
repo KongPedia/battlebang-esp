@@ -24,9 +24,19 @@ class PiezoSensor {
   const PiezoSensorConfig& config() const { return core_.config(); }
 
  private:
+  struct Input {
+    int8_t adc1Channel = -1;  // -1: not ADC1, sampled with analogRead()
+    bool pulldown = false;    // internal RTC pull-down enabled on the pad
+  };
+
+  static Input configureInput(const PiezoSensorConfig& config, uint8_t channel, int pin);
+  static int readInput(const Input& input, int pin);
   PiezoSample readSample() const;
 
   PiezoSensorCore core_;
+  Input left_;
+  Input right_;
+  Input front_;
 };
 
 }  // namespace go2
