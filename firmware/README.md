@@ -48,6 +48,9 @@ The unified [Firmware OTA Releases workflow](../.github/workflows/firmware-ota.y
 family/variant matrix after focused Python release/template, USB-uploader and Go2 Full boot/pairing gates.
 Inspect those job results separately; publication does not prove full native/host coverage or successful device boot.
 Each variant owns a stable polling pointer and versioned audit artifacts; never use repo-wide `/releases/latest/download/...`.
+The unified `Firmware OTA Releases` workflow covers all active firmware families and publishes these channels without
+using repo-wide `latest`. On `main` pushes it builds only the affected firmware matrix entries; manual dispatch builds
+the full matrix for branch smoke/release validation.
 
 | Firmware / variant | Stable tag / manifest | Versioned tag prefix |
 | --- | --- | --- |
