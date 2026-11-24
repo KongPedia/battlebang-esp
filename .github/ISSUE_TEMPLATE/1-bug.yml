@@ -1,0 +1,81 @@
+name: 펌웨어 버그 보고
+description: ESP32 펌웨어, 업로드·프로비저닝 도구, OTA 릴리즈가 기대와 다르게 동작합니다.
+title: "fix. "
+type: Bug
+labels: ["needs-triage"]
+projects: ["KongPedia/1"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 한 줄 요약
+    validations:
+      required: true
+  - type: dropdown
+    id: firmware
+    attributes:
+      label: 펌웨어 (PlatformIO env)
+      options:
+        - esp32dev_go2_full_usb_2ch
+        - esp32dev_go2_full_uart_2ch
+        - esp32dev_go2
+        - esp32dev_boss_target
+        - esp32dev_heavy_blaster
+        - esp32dev_turret_fleet
+        - 펌웨어와 무관 (업로드 스크립트·CI·릴리즈)
+        - 모름
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 펌웨어 버전·릴리즈 태그
+      description: 예 go2-full-usb-2ch-v0.3.47-main, 또는 커밋 SHA. `show-status` 출력의 빌드 값이면 가장 좋습니다.
+    validations:
+      required: true
+  - type: dropdown
+    id: usb-chip
+    attributes:
+      label: 보드 USB 칩
+      options:
+        - CP2102
+        - CH340
+        - 모름
+        - 해당 없음
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: 연결된 장비
+      description: 예 go2-09 / Jetson 10 / 단독 벤치
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 재현 절차
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작과 실제 동작
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 시리얼 로그·명령 출력
+      description: Wi-Fi·MQTT 비밀번호와 `.env` 내용은 지우고 붙입니다.
+      render: shell
+  - type: dropdown
+    id: safety
+    attributes:
+      label: 안전 영향
+      options:
+        - 없음 (발사·모터 출력과 무관)
+        - 발사 릴레이·모터 출력과 관련
+        - 부팅·OTA 실패로 장비를 못 쓰게 될 수 있음
+    validations:
+      required: true

@@ -1,0 +1,45 @@
+name: 작업·기능
+description: 펌웨어 기능, 도구, 릴리즈 파이프라인 작업의 범위와 완료 기준을 적습니다.
+title: "feat. "
+type: Task
+labels: ["needs-triage"]
+projects: ["KongPedia/1"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 한 줄 요약
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 왜 필요한가
+      description: 해결 방법이 아니라 지금의 문제부터 씁니다.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 기준
+      description: 빌드·계약 테스트로 확인할 것과 실기로 확인할 것을 나눠 씁니다.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: 범위 밖
+  - type: checkboxes
+    id: firmware
+    attributes:
+      label: 영향받는 펌웨어
+      options:
+        - label: go2_full
+        - label: go2
+        - label: boss_target
+        - label: heavy_blaster
+        - label: turret_fleet
+        - label: 공통 라이브러리 (lib/bb_esp_*)
+        - label: 도구·CI·릴리즈만
