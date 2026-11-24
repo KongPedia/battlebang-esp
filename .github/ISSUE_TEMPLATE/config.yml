@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 계약 변경 (MQTT·UART 패킷·NVS·OTA가 Jetson/Command Center와 맞물림)
+    url: https://github.com/KongPedia/battlebang/issues/new?template=3-contract-change.yml
+    about: 부모 이슈는 battlebang에 만들고, 이 저장소에는 하위 이슈로 연결합니다.
+  - name: 현장 배포·점검 (Jetson 드라이버, 업로드)
+    url: https://github.com/KongPedia/battlebang/issues/new?template=4-field-ops.yml
+    about: 장비별 체크리스트가 필요한 현장 작업은 battlebang에 등록합니다.
+  - name: 운영 규칙 (이슈·프로젝트·라벨)
+    url: https://github.com/KongPedia/battlebang/blob/develop/docs/runbooks/github-issue-workflow.md
+    about: 두 저장소가 공유하는 규칙의 정본입니다.
